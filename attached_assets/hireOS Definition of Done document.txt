@@ -1,0 +1,272 @@
+﻿🔢 Phase 1: MVP Delivery (Core Candidate Flow)
+1. Hiring Intake Form → Auto Job Setup
+* Description: Create a web-based intake form where internal managers can initiate hiring requests. The form must capture job title, role type (e.g., contractor/full-time), hiring urgency, skills/KPIs, and team context. Upon submission:
+
+   * Triggers a call to GPT-4 (using the existing Job Description Generator) with input payload.
+
+   * Returns a complete job description and suggested title, rendered on-screen.
+
+   * Auto-generates a HiPeople assessment link tied to the job type.
+
+   * All three outputs are saved to Replit DB, with timestamps and submitter ID.
+
+   * Logs event details (duration, success/fail, preview string) to Replit Console for observability.
+
+   * Displays results in a preview pane with "Approve & Post" CTA.
+
+   * Input schema validation via Zod, with fallback error rendering in the UI.
+
+      * Story Points: 6
+
+      * Estimated Time: 4.5 hours
+
+2. Job Description Approval + Posting Flow
+         * Description: Build a minimal approval workflow interface. Once hiring stakeholders review the generated job description, they must be able to approve or reject it. On approval:
+
+            * Job is posted to configured channels (LinkedIn, onlinejobs.ph), initially mocked via stub or dev-only API keys.
+
+            * System logs post results (posted URL, platform ID, status code) into Replit DB.
+
+            * A Slack webhook is triggered containing the job title, posting platform(s), and timestamp for traceability.
+
+            * Retry-on-failure logic is added with capped retries (1 retry after 5s backoff).
+
+               * Story Points: 4
+
+               * Estimated Time: 3 hours
+
+3. Applicant Handler + Assessment Delivery
+                  * Description: Automate first-touch logic for incoming candidates. When an applicant submits their information:
+
+                     * A 3-hour delay timer is set using Replit Cron (based on timestamp diff) before contact.
+
+                     * After the delay, the system sends a branded email (via Replit email API) containing:
+
+                        * A welcome message
+
+                        * The job title
+
+                        * The unique HiPeople assessment link for that role
+
+                           * The DB logs the assessment delivery timestamp and link status.
+
+                           * If "Express Review" is toggled on for the role, the 3-hour wait is bypassed entirely.
+
+                              * Story Points: 5
+
+                              * Estimated Time: 3 hours
+
+4. Candidate Screener View
+                                 * Description: Create a UI panel for hiring managers to evaluate candidate applications:
+
+                                    * Automatically filters candidates with HiPeople scores above the 50th percentile.
+
+                                    * Includes status indicators (e.g., Awaiting Interview, Talent Pool, Rejected).
+
+                                    * UI buttons allow managers to take action: Reject, Talent Pool, or Invite to Interview.
+
+                                    * Every action writes an audit entry to Replit DB with userID, timestamp, and decision.
+
+                                       * Story Points: 6
+
+                                       * Estimated Time: 4.5 hours
+
+5. Interview Scheduling Trigger
+                                          * Description: On interview invite action:
+
+                                             * An automated email is sent with a pre-configured calendar scheduling link (e.g., Calendly or Airtable embed).
+
+                                             * DB is updated to mark the candidate status as "Interview Scheduled."
+
+                                             * Replit Console logs show success/failure and email metadata.
+
+                                                * Story Points: 3
+
+                                                * Estimated Time: 2 hours
+
+6. Interview Viewer + Grading Interface
+                                                   * Description: Interface to facilitate structured review of recorded interviews:
+
+                                                      * One-way video interviews are embedded from secure platforms (e.g., Dropbox, YouTube unlisted).
+
+                                                      * UI includes input fields for grading each question + overall comments.
+
+                                                      * Submitted scores are saved to DB under the candidate’s profile for later viewing.
+
+                                                      * Optional: auto-calculate average score and standardize to 100-point scale.
+
+                                                         * Story Points: 4
+
+                                                         * Estimated Time: 3 hours
+
+7. COO Final Review + Offer Trigger
+                                                            * Description: Provide an executive-facing interface to conduct 2nd-round decisions:
+
+                                                               * Page must display all relevant candidate data: grades, resume, role metadata, and previous decisions.
+
+                                                               * Buttons allow COO to Reject, Talent Pool, or Send Offer.
+
+                                                               * Each decision is written to Replit DB and triggers appropriate downstream logic.
+
+                                                                  * Story Points: 4
+
+                                                                  * Estimated Time: 3 hours
+
+8. Offer Generator + Email Delivery
+                                                                     * Description: When the "Send Offer" button is clicked:
+
+                                                                        * Populate a dynamic offer template with candidate and role variables (comp, dates, contractor vs salaried).
+
+                                                                        * Email is sent using team@firmos.ai address.
+
+                                                                        * Click-tracking and email delivery status saved to DB.
+
+                                                                        * A copy of the contract URL is stored and linked to the candidate’s record.
+
+                                                                           * Story Points: 4
+
+                                                                           * Estimated Time: 3 hours
+
+9. Rejection + Talent Pool Messaging
+                                                                              * Description: Trigger messaging logic for end-of-pipeline outcomes:
+
+                                                                                 * Sends branded, polite rejection or talent pool email templates with delay logic (2-hour delay via Cron).
+
+                                                                                 * Candidate status in DB is updated accordingly.
+
+                                                                                 * Email failure handling and delivery logging implemented.
+
+                                                                                    * Story Points: 3
+
+                                                                                    * Estimated Time: 2 hours
+
+10. Replit Cron: MVP Follow-Up Automations
+                                                                                       * Description: Implement automation to reduce bottlenecks:
+
+                                                                                          * If an interview is not scheduled within 72 hours of assessment completion, notify hiring manager in Slack.
+
+                                                                                          * If candidate has no update for 5+ days, send escalation summary.
+
+                                                                                          * Automatically retry failed notification jobs once via Cron.
+
+                                                                                             * Story Points: 4
+
+                                                                                             * Estimated Time: 2.5 hours
+
+________________
+
+
+Phase 1 Totals:
+                                                                                                * Story Points: 47
+
+                                                                                                * Estimated Time: 34 hours
+
+________________
+
+
+🔣 Phase 2: Admin, Observability, and Scale-Up Readiness
+11. Onboarding Trigger + Checklist Email
+                                                                                                   * Description: Automate the onboarding kickoff post-offer acceptance:
+
+                                                                                                      * Once offer is marked accepted, candidate status updates to "Hired."
+
+                                                                                                      * Email with onboarding checklist + contract download link is sent.
+
+                                                                                                      * Internal Slack alert is sent to onboarding/ops channel.
+
+                                                                                                      * Timestamped DB entry records that onboarding has been triggered.
+
+                                                                                                         * Story Points: 3
+
+                                                                                                         * Estimated Time: 2 hours
+
+12. Analytics Dashboard (Internal + Client)
+                                                                                                            * Description: Build an internal dashboard with SSR-rendered views:
+
+                                                                                                               * Pulls from Replit DB (with view ready for Supabase fallback if needed).
+
+                                                                                                               * Filter by job, role, date range, customer, and manager.
+
+                                                                                                               * Display funnel metrics: applicants received, assessments completed, interviews conducted, offers sent, hires.
+
+                                                                                                                  * Story Points: 5
+
+                                                                                                                  * Estimated Time: 3.5 hours
+
+13. JWT Role-Based UI Routing
+                                                                                                                     * Description: Enable secure and scoped dashboard views:
+
+                                                                                                                        * Decode JWT claims to determine user type (COO, Hiring Manager, Client).
+
+                                                                                                                        * Render conditional UI blocks based on role.
+
+                                                                                                                        * Allow access via signed invite token or embedded login.
+
+                                                                                                                           * Story Points: 4
+
+                                                                                                                           * Estimated Time: 3 hours
+
+14. Telemetry View (/admin)
+                                                                                                                              * Description: Build an admin dashboard to monitor system health:
+
+                                                                                                                                 * Display Cron job success/failure rates.
+
+                                                                                                                                 * Track recent email deliveries and errors.
+
+                                                                                                                                 * Visualize latest candidate activity and pipeline stage breakdown.
+
+                                                                                                                                    * Story Points: 3
+
+                                                                                                                                    * Estimated Time: 2 hours
+
+15. Escalation-Ready Service Adapters
+                                                                                                                                       * Description: Prepare the system for future scale:
+
+                                                                                                                                          * Wrap all DB calls in adapter functions to enable hot-swap to Supabase.
+
+                                                                                                                                          * Abstract email sending logic (allowing switch to SendGrid or Resend).
+
+                                                                                                                                          * Stub Make.com logic for 3+ step automation fallback.
+
+                                                                                                                                             * Story Points: 5
+
+                                                                                                                                             * Estimated Time: 4 hours
+
+16. Deployment Hygiene + Failover Flags
+                                                                                                                                                * Description: Final hardening of infrastructure:
+
+                                                                                                                                                   * Set .env flags for staging vs production flows.
+
+                                                                                                                                                   * Add toggle to disable all Cron tasks instantly.
+
+                                                                                                                                                   * Implement rollback safety net: if 3+ errors in 10 minutes, revert to last working commit.
+
+                                                                                                                                                      * Story Points: 3
+
+                                                                                                                                                      * Estimated Time: 2 hours
+
+________________
+
+
+Phase 2 Totals:
+                                                                                                                                                         * Story Points: 38
+
+                                                                                                                                                         * Estimated Time: 16.5 hours
+
+________________
+
+
+🌐 Summary
+Phase
+	Story Points
+	Dev Time
+	Phase 1 (MVP)
+	47
+	34 hours
+	Phase 2 (Scale + Admin)
+	38
+	16.5 hours
+	Total
+	85
+	50.5 hours
+	This two-phase rollout plan ensures fast delivery of a working MVP and a structured roadmap to scale up. Phase 1 maximizes Replit-native capabilities for rapid automation and internal UX. Phase 2 positions the product for client readiness, observability, system robustness, and modular reusability across future FirmOS tools.

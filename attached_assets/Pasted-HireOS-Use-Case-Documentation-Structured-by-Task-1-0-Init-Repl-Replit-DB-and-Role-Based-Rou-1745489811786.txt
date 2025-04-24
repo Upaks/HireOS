@@ -1,0 +1,257 @@
+HireOS - Use Case Documentation (Structured by Task)
+1.0 - Init Repl, Replit DB, and Role-Based Routing
+UC000: System Initialization and Role Routing
+**Trigger:** User accesses application
+**Actors:** System, All Roles
+**Preconditions:** User authenticated with JWT; system initialized
+**Main Flow:**
+1. User logs in
+2. System decodes JWT
+3. Conditional UI rendered by role
+4. Logs access
+**Alternate Flow:**
+JWT invalid or expired → redirect to login
+**Postconditions:** User dashboard displayed based on role
+**Description:**
+Bootstraps full-stack Repl with React + Express. Initializes Replit DB and role-based access routing.
+
+
+
+1.1 - Hiring Intake Form → Auto Job Setup
+UC001: Auto-generate Job Post from Hiring Form
+**Trigger:** Hiring Form submission
+**Actors:** Hiring Manager
+**Preconditions:** Form is valid
+**Main Flow:**
+1. Form submitted
+2. GPT generates title & description
+3. HiPeople link generated
+4. Outputs saved to DB
+5. Preview shown
+**Alternate Flow:**
+GPT fails → Show error, allow manual entry
+**Postconditions:** Job record saved; status: pending approval
+**Description:**
+Automates job setup using AI + Replit DB. Includes validation, logging, and preview interface.
+
+
+
+1.2 - Job Description Approval + Posting Flow
+UC002: Approve and Publish Job Post
+**Trigger:** Approve button clicked
+**Actors:** Hiring Manager / COO
+**Preconditions:** Job post generated and valid
+**Main Flow:**
+1. User approves job
+2. Posts to job boards
+3. Logs to DB
+4. Slack ping triggered
+**Alternate Flow:**
+Post fails → retry + notify
+**Postconditions:** Job marked as live in DB
+**Description:**
+Enables review + approval flow before public job posting with retry logic and Slack alerting.
+
+
+
+1.3 - Applicant Handler + Assessment Delivery
+UC004: Send Assessment to New Applicant
+**Trigger:** Candidate applies
+**Actors:** System (Cron)
+**Preconditions:** HiPeople link available
+**Main Flow:**
+1. Wait 3 hours
+2. Send branded email with assessment link
+3. Log timestamp
+**Alternate Flow:**
+Express Review → skip wait
+Email fails → retry
+**Postconditions:** Candidate status updated: Assessment Sent
+**Description:**
+Automates initial outreach using Replit Cron and branded comms; handles delays and retry on fail.
+
+
+
+1.4 - Candidate Screener View
+UC006: Screen Top-50% Candidates
+**Trigger:** Assessment completed
+**Actors:** Hiring Manager
+**Preconditions:** Candidate scored > 50th percentile
+**Main Flow:**
+1. Filtered view loads
+2. Manager acts (Reject / Invite / Pool)
+3. Action logged
+**Alternate Flow:**
+No action → candidate flagged as idle later
+**Postconditions:** Candidate routed to next step or archived
+**Description:**
+Enables fast screening and decisions with logged actions and audit trail.
+
+
+
+1.5 - Interview Scheduling Trigger
+UC007: Interview No-Show Reminder
+**Trigger:** Interview invite sent but not booked for 72h
+**Actors:** System (Cron)
+**Preconditions:** Assessment complete, invite sent
+**Main Flow:**
+1. Cron checks booking
+2. Slack nudge sent to manager
+**Alternate Flow:**
+No response → escalate to COO
+**Postconditions:** Candidate tagged as idle or scheduled
+**Description:**
+Ensures interviews don't stall via delayed Slack nudges and escalations.
+
+
+
+1.6 - Interview Viewer + Grading Interface
+UC008: Score One-Way Interview
+**Trigger:** Manager opens candidate's interview
+**Actors:** Hiring Manager
+**Preconditions:** Interview uploaded and assigned
+**Main Flow:**
+1. Video loads
+2. Manager enters scores and notes
+3. Data saved to DB
+**Alternate Flow:**
+Video fails to load → fallback link shown
+**Postconditions:** Candidate profile updated with scores
+**Description:**
+Grading interface with DB save and optional score normalization logic.
+
+
+
+1.7 - COO Final Review + Offer Trigger
+UC010: Offer Sent by COO
+**Trigger:** COO clicks 'Send Offer'
+**Actors:** COO
+**Preconditions:** All interviews complete and scores available
+**Main Flow:**
+1. COO reviews candidate
+2. Clicks Send Offer
+3. Contract populated, email sent
+**Alternate Flow:**
+Email fails → retry and alert
+**Postconditions:** Candidate tagged as 'Offer Sent'
+**Description:**
+Final step to send formal offer with contract and traceable log.
+
+
+
+1.8 - Offer Generator + Email Delivery
+UC011: Offer Link Clicked
+**Trigger:** Candidate clicks email link
+**Actors:** Candidate
+**Preconditions:** Offer sent successfully
+**Main Flow:**
+1. Link opens offer
+2. Contract rendered in browser
+**Alternate Flow:**
+Link broken → fallback to resend
+**Postconditions:** Candidate tagged as 'Offer Viewed'
+**Description:**
+Trackable delivery of contract and link interaction monitoring.
+
+
+
+1.9 - Rejection + Talent Pool Messaging
+UC009: Send Rejection with Delay
+**Trigger:** Manager marks candidate rejected or pooled
+**Actors:** System, Manager
+**Preconditions:** Decision made on candidate
+**Main Flow:**
+1. Delay via Cron (2h)
+2. Email sent
+3. DB status updated
+**Alternate Flow:**
+Email fails → retry and log
+**Postconditions:** Candidate archived or tagged
+**Description:**
+Ensures polite, branded follow-up without manual action.
+
+
+
+1.10 - Replit Cron: MVP Follow-Up Automations
+UC012: Automated Follow-Up Checks
+**Trigger:** Time elapsed without candidate update
+**Actors:** System (Cron)
+**Preconditions:** Candidate status unchanged for 72h+
+**Main Flow:**
+1. Check timestamps
+2. Alert via Slack or escalate
+**Alternate Flow:**
+Auto-reject or reassign
+**Postconditions:** Candidate escalated or removed
+**Description:**
+Keeps hiring process moving with Cron-based nudges and retries.
+
+
+
+2.1 - Onboarding Trigger + Checklist Email
+UC014: Onboard New Hire
+**Trigger:** Offer accepted
+**Actors:** System, HR
+**Preconditions:** Offer marked as accepted in DB
+**Main Flow:**
+1. Send onboarding checklist email
+2. Slack alert
+3. DB updated
+**Alternate Flow:**
+Email fails → resend fallback
+**Postconditions:** Candidate marked as 'Hired'
+**Description:**
+Triggers onboarding workflow and internal notifications post-acceptance.
+
+
+
+2.2 - Analytics Dashboard (Internal + Client)
+UC013: Load Analytics Dashboard
+**Trigger:** User accesses analytics view
+**Actors:** Product Manager, COO
+**Preconditions:** Metrics available in DB
+**Main Flow:**
+1. Load dashboard
+2. Filter metrics
+3. Render charts
+**Alternate Flow:**
+DB too slow → fallback summary
+**Postconditions:** Dashboard loaded and usage logged
+**Description:**
+Tracks funnel KPIs and hiring volume for internal or client-facing review.
+
+
+
+2.3 - JWT Role-Based UI Routing
+UC015: Decode Role for Conditional UI
+**Trigger:** User logs in via token
+**Actors:** System
+**Preconditions:** JWT present and valid
+**Main Flow:**
+1. Decode token
+2. Match role
+3. Load scoped UI view
+**Alternate Flow:**
+Invalid token → redirect to login
+**Postconditions:** Correct UI scope displayed
+**Description:**
+Role-based routing to restrict access and conditionally load views.
+
+
+
+2.4 - Telemetry View (/admin)
+UC016: System Telemetry Monitoring
+**Trigger:** Admin opens telemetry dashboard
+**Actors:** Admin, Product Manager
+**Preconditions:** Monitoring data available
+**Main Flow:**
+1. Load recent errors and logs
+2. Display success rates and job health
+**Alternate Flow:**
+No data → show empty state
+**Postconditions:** Telemetry view rendered
+**Description:**
+Provides observability over Cron jobs, emails, and candidate pipeline status.
+
+
+

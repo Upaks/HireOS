@@ -1,0 +1,1738 @@
+﻿✅ Section 1: Roadblocks
+🔧 Primary Roadblock
+Manual, fragmented hiring workflows slow down decision-making and lead to missed or delayed action on top candidates.
+🔍 Specific Breakdown in the Workflow:
+* Hiring manager submits a Hiring Assessment Form
+
+* Job title, description, and HiPeople link must be manually created and reviewed
+
+* Delays in stakeholder approval via Google Docs slow job posting
+
+* Candidate applications come in across platforms (LinkedIn, onlinejobs.ph) with partial automation — unclear messaging bots running on onlinejobs.ph
+
+* No centralized view of qualified candidates (HiPeople score >50th percentile)
+
+* Interview scheduling and follow-ups require Slack nudges and manual Airtable filtering
+
+* Final offers and rejections are ad-hoc, with no structured flow for the COO or HR to take action
+          
+🛠️ Systems or Infrastructure Gaps:
+   * No centralized "hub" or Replit-native system for tracking job-to-offer lifecycle
+
+   * Fragmented use of UseWhale SOPs, Airtable, Slack, and platform-specific bots
+
+   * Job Description GPT exists but is not yet linked to trigger automation from form submissions
+
+   * Unknown status of automation bots created by a former team member — no ownership or documentation
+
+📉 Measurable Outcomes:
+      * ~4+ day average delay from final interview to offer letter
+
+      * ~50% of qualified candidates not reviewed within 48 hours
+
+      * 5–10 Slack nudges required per hire to remind about posting, approvals, or scheduling
+
+      * 3 hours of manual effort per candidate across job creation, messaging, and follow-ups
+
+
+💡 Attempts Made Previously & Why They Didn’t Work:
+         * Onlinejobs.ph bots and UseWhale SOPs used to automate parts of the flow — but the developer who built them left, leaving gaps in documentation and logic
+
+         * Job Description GPT built and in use — but not yet wired to auto-generate and distribute descriptions
+
+         * Slack reminders, Airtable filters, and Google Docs were used manually — but became overwhelming and unreliable at scale
+
+
+
+⚠️ Cost of Inaction
+            * Delayed job visibility reduces applicant pool and delays hiring for critical roles
+
+            * High-quality candidates drop off due to lack of timely follow-ups
+
+            * Hiring managers spend excessive time manually coordinating basic steps
+
+            * Stakeholders (e.g. COO) lack visibility and structure to make fast hiring decisions
+
+            * Inconsistent rejections harm candidate experience and company brand
+
+            * Cannot scale hiring across 5–10 roles without operational gridlock
+
+
+
+🧠 Project Impact Statement
+This system will automate the entire candidate lifecycle from job intake to final offer or rejection.
+               * Job descriptions, HiPeople links, and posting logic auto-generated
+
+               * Qualified candidates surfaced and filtered automatically
+
+               * Interview scheduling, reminders, and status updates handled without human bottlenecks
+
+               * Offers sent with a single click by COO inside a structured approval view
+
+               * Auto-rejects and polite messaging sent to non-qualified candidates
+
+Recurring team pain — like Slack reminders, tab-hopping, and Airtable status updates — becomes fully systematized.
+
+
+🔩 Replit-First Lens
+Replit-native tools are sufficient for 90%+ of the system:
+                  * Replit DB: Job data, candidate scoring, hiring status tracking
+
+                  * Autoscale Repl: Frontend (Next.js) + backend logic
+
+                  * Replit Cron: Scheduled reminders, assessment follow-ups, offer delays
+
+                  * Console Logs: Centralized system error tracing
+
+Escalation Triggers:
+                     * Use Supabase only if scoring or role-based permissions require relational filters
+
+                     * Use Make/n8n only if automation chains go beyond 3+ branches or 3rd-party handoffs
+
+                     * Use Cursor if prompt chains or agentic grading logic becomes too complex for standard functions
+
+
+
+✅ Section 2: Objectives & Key Results
+🎯 Objective
+Accelerate and automate the end-to-end hiring flow to increase hiring velocity and candidate quality.
+
+
+📊 Key Results
+Metric
+	Definition
+	Target
+	Total Positions Hiring
+	Count of active roles using HireOS
+	5+
+	Active Job Posts per Position
+	# of platforms each role is published to
+	3+ (LinkedIn, onlinejobs.ph, others)
+	Applicants Collected per Position
+	# of candidate form submissions per role
+	25+
+	Assessments Completed per Position
+	# of HiPeople assessments submitted
+	75%+ completion
+	1st Interviews Completed per Position
+	% of screened candidates interviewed
+	60%+
+	2nd Interviews Completed per Position
+	% of 1st round pass-throughs interviewed again
+	70%+
+	Total New Hires
+	Final offer acceptances across all roles
+	2 Full Stack Devs (MVP), 5+ Total (Phase 2)
+	New Hires : Completed Assessments Ratio
+	Conversion efficiency metric
+	≥1:10
+	
+
+🚧 Dependencies & Risks
+                        * Platform Access: Unknown ownership of legacy bots on onlinejobs.ph
+
+                        * Stakeholder Bandwidth: Delays in hiring manager review or COO decision may create gaps even if the system works
+
+                        * Legacy Automations: Partial Make/zapier setups from ex-team member may create conflicts or confusion if not deprecated
+
+                        * System Scale Risk: Replit DB or memory constraints if data grows unexpectedly fast (e.g. hundreds of applicants per role)
+
+
+
+🧰 Tool Simplicity Principle
+✅ Yes — Replit-first by default. Escalate to:
+                           * Supabase only for relational queries, access control, or role-based visibility
+
+                           * Make/n8n only if workflow logic exceeds 3+ external steps or has retry chains
+
+                           * Cursor only if logic is better built with embedded agentic decision-making
+
+
+
+✅ Section 3: Product Vision
+🔓 Strategic Unlock
+HireOS enables FirmOS to run a fully automated hiring system across both internal and customer roles, with only two required human inputs:
+                              1. Initial Hiring Form submission
+
+                              2. Review decision at key stages (screening and interview)
+
+All other actions — job description generation, job posting, assessment follow-ups, interview scheduling, and offer delivery — are fully automated.
+Decisions supported:
+                                 * Pre-interview: Reject, Talent Pool, or Send Interview
+
+                                 * Post-interview: Reject, Talent Pool, or Send Offer (with auto-email + contract link)
+
+
+
+💡 Unique Differentiator
+                                    * Supports both internal and customer-facing hiring pipelines
+
+                                    * Allows both salaried and contractor positions with dynamic offer templates
+
+                                    * Eliminates 10+ Slack/email/manual actions through Replit automation
+
+                                    * Centralizes every step into a single UI flow with Slack + Copilot notification hooks
+
+                                    * Creates structured logs and records for every decision, increasing accountability
+
+
+
+🧱 Reusability & Modularity
+                                       * Template engine supports multiple role-based offer letters
+
+                                       * Same logic and decision layer can be reused for:
+
+                                          * Future role-based onboarding
+
+                                          * Vendor or partner intake flows
+
+                                          * Promotion and internal mobility reviews
+
+                                             * Flexible enough to support multi-client logic (internal vs customer teams) via flag or view switch
+
+
+
+⚙️ Automation Maturity Level
+Level 4 – Tool-Based AI Agent
+                                                * GPT-based job generation
+
+                                                * Replit Cron for scheduling follow-ups
+
+                                                * Slack/API integrations for alerting and status updates
+
+                                                * Decision logic handled via UI buttons mapped to backend triggers (no manual data entry)
+
+
+
+🗓️ 6-Month Target State
+Metric
+	Target
+	Adoption Rate
+	100% of FirmOS and customer hires run through HireOS
+	Feature Reliability
+	>95% workflows complete without manual rescue
+	Spin-Off Tools
+	Promotion review engine, onboarding assistant, client-facing hiring analytics UI
+	✅ Section 4: Replit Build Strategy
+🏗️ Architecture Type
+Single Repl MVP — combining frontend (Next.js + TypeScript), backend API logic, Replit DB, and Replit Cron in one deployable Repl.
+                                                   * Goal: Fastest path to usable prototype with minimal overhead.
+
+                                                   * Future-ready: Easy to modularize into separate Repls (e.g., split out cron logic or offer flow).
+
+
+
+🚀 Deployment Type
+                                                      * Autoscale Repl: For UI and API logic (scales automatically with usage)
+
+                                                      * Replit Cron: Handles background workflows:
+
+                                                         * Follow-up nudges
+
+                                                         * Rejection delay timers
+
+                                                         * Notification batching for internal + customer teams
+
+
+
+🗃️ Data Storage Logic
+Layer
+	Tool
+	Use Case
+	Escalation Threshold
+	Primary
+	Replit DB
+	Job records, candidate assessments, interview states, offer metadata
+	Safe for <1K records, <50MB total, and non-relational reads
+	Fallback
+	Supabase
+	Multi-role access, filtering by job/client/team, role-based dashboards
+	Escalate if:
+	                                                            * 
+
+1K records
+
+
+                                                            * Relational joins (e.g., job → candidates → offer)
+
+                                                            * Internal vs customer auth separation
+
+                                                            * Email-verification or login protection |
+
+We'll build with Replit DB first, but structure read/write logic as functions so a Supabase swap is seamless when needed.
+
+
+⚙️ Performance Optimizations
+                                                               * Lazy-load GPT job generation and contract rendering modules
+
+                                                               * Avoid blocking I/O on email or webhook calls (use async / background queues)
+
+                                                               * Monitor RAM and startup time via Replit Console; consider Reserved VM if cron tasks grow
+
+
+
+🔐 Session Management
+                                                                  * Stateless JWT for internal user roles (COO, hiring managers)
+
+                                                                  * Separate dashboard views for internal vs customer teams
+
+                                                                  * Role-based visibility toggle via signed JWT claims or invite links
+
+
+
+✉️ Sender Identity
+                                                                     * All outbound emails (offers, rejections, reminders) will be sent from:
+team@firmos.ai
+
+                                                                     * This will be wired into Replit email send logic (or fallback SMTP service)
+
+                                                                     * Optional: Add SendGrid or Resend for delivery observability (Phase 2+)
+
+🧱 Baseline Stack
+Layer
+	Tech
+	Notes
+	UI
+	Next.js
+	Replit-native SSR support, route-based dashboards
+	Lang
+	TypeScript
+	Required for prop typing, LLM prompt schema
+	Storage
+	Replit DB → Supabase fallback
+	ReplDB first for speed
+	Automation
+	Replit Cron
+	Triggers rejections, reminders, idle escalations
+	AI
+	Job Description GPT (existing)
+	Wired from hiring form trigger
+	Email
+	Replit email API → SMTP fallback
+	Branded sender, async-safe
+	✅ Section 5: Target Users
+👤 Primary Personas
+Role
+	Description
+	FirmOS Managers
+	Any internal manager responsible for screening, grading, and interviewing candidates. Can initiate hiring and conduct 1st-round interviews.
+	COO
+	Conducts 2nd-round interviews (values-based), makes final decision to offer, reject, or talent pool.
+	FirmOS Customers
+	External managers who may:
+	                                                                        * 
+Conduct 1 or 2 rounds of interviews
+
+                                                                        * Delegate screening to FirmOS
+
+                                                                        * Use the system for viewing, interviewing, and decision-making on talent |
+
+The system must support internal and external users, where internal FirmOS may act on behalf of customers (including running 1st-round interviews if needed).
+
+
+⚠️ Daily Pain
+Persona
+	Frustration
+	Managers (FirmOS or Customer)
+	“I can’t tell who’s been screened already, or who I need to review. I waste time checking Airtable and pinging team members.”
+	COO
+	“I don’t know which candidates are ready for me. Offers and rejections are inconsistent.”
+	Customers
+	“I don’t have time to screen every applicant. I just want to see the top 3. I also don’t know who’s been contacted or scheduled.”
+	
+
+🧩 Secondary Stakeholders
+Role
+	Dependency
+	HR / Compliance
+	Needs to know when an offer has been accepted to trigger onboarding.
+	Program Coordinators
+	Monitor hiring volume, timeline, and health across multiple customer accounts.
+	Operations / Client Success
+	Want visibility into which roles are filled, stalled, or ready for action.
+	
+
+✨ Desired Transformation
+Problem
+	Transformation
+	“Too many tools, not enough visibility”
+	Single UI for screening, grading, and decision-making
+	“Candidates get ignored or ghosted”
+	Auto-rejections and follow-ups without needing Slack nudges
+	“Approvals stall the pipeline”
+	Actionable buttons at each stage: reject, invite, offer — all from one view
+	“Customers want FirmOS to do more of the process”
+	System supports FirmOS-led screening/interviews, with customer decision only at the end
+	
+
+🔐 Trust Threshold
+This tool must:
+                                                                           * Support role-based visibility (customers shouldn’t see internal data)
+
+                                                                           * Be polished enough for external customer access
+
+                                                                           * Never send an offer or rejection without a logged user decision
+
+Offer emails and rejections will include sender identity and candidate tracking ID.
+
+
+✅ Section 6: Solution Overview (Final)
+
+
+🧩 In Scope
++ Existing Modules (already detailed above — Intake → Offer)
+[✅ See previous message for detailed logic on: Job intake, screening, interviews, Slack alerts, offer emails, etc.]
+
+
+🧭 11. Onboarding Workflow (Newly Added)
+Once an offer is accepted:
+                                                                              * Candidate status is updated to “Hired”
+
+                                                                              * Auto-trigger onboarding email with:
+
+                                                                                 * Welcome message
+
+                                                                                 * Contract download link
+
+                                                                                 * Onboarding checklist (via link or embedded)
+
+                                                                                    * Status field auto-updates in Replit DB + optional Airtable sync
+
+Internal onboarding team receives Slack ping to begin:
+                                                                                       * Payroll entry
+
+                                                                                       * Access provisioning
+
+                                                                                       * Background check (if required)
+
+System logs all steps to ensure onboarding is timely, trackable, and externally auditable
+
+
+📊 12. Analytics & Dashboards (Newly Added)
+Embedded dashboards for internal ops, COO, and client-facing Copilot views
+ Powered by Replit DB queries or Supabase views (if escalated)
+🎯 Metrics Captured:
+Metric
+	Description
+	Total Positions Hiring
+	Count of open roles across all teams or clients
+	Total Active Job Posts per Position
+	Live job listings per title
+	Applicants Collected per Position
+	Number of applications submitted
+	Assessments Completed per Position
+	Number of applicants who completed HiPeople
+	1st Interviews Completed per Position
+	Logged completion of 1st round interviews
+	2nd Interviews Completed per Position
+	Logged completion of 2nd round interviews
+	Total New Hires
+	All roles marked as “Offer Accepted”
+	New Hires : Assessment Ratio
+	Conversion efficiency metric
+	Filters by: role, manager, customer, and date range
+Graphs to be displayed in dashboard (Phase 2: add exports or alerts)
+
+
+🧩 Updated Out of Scope (for now)
+Feature
+	Notes
+	Mobile App / Native App
+	Web-based app only; fully responsive
+	Multi-language Candidate UX
+	Default English UI + comms
+	Client-side billing logic
+	Access assumed via FirmOS subscription or Copilot seat
+	
+
+♻️ Updated Reusability Targets
+Component
+	Future Use
+	Onboarding Trigger + Checklist
+	Cloneable for promotions, internal transfers, vendor intake
+	Analytics Module
+	Expandable for retention, performance, or revenue-based hiring decisions
+	Offer + Rejection Templates
+	Reused in other lifecycle messaging (offboarding, reviews, etc.)
+	✅ Section 7: Feature Requirements
+Feature
+	Description
+	User Benefit
+	Automation Level
+	Priority
+	Telemetry?
+	Test Case
+	Hiring Assessment Intake Trigger
+	Form submission triggers job title, description generation, and assessment link
+	Eliminates manual setup
+	Level 3 – Dynamic logic (LLM + rule routing)
+	🔥 Must-Have
+	✅ Trigger + output logs
+	Submit form → Job GPT runs → Outputs appear in console and UI
+	Job Description Approval Flow
+	Stakeholder reviews & approves job details before posting
+	Prevents outdated/inaccurate posts
+	Level 2 – Semi-automated with UI confirmation
+	🔥 Must-Have
+	✅ Decision event logged
+	Approve → Post triggered → Slack notification sent
+	Automated Job Posting Distribution
+	Posts job across all configured platforms (e.g. onlinejobs.ph, LinkedIn)
+	Faster visibility to candidates
+	Level 4 – Multi-tool API automation
+	✅ Should-Have
+	✅ Post success/failure logs
+	Approve job → Platform API confirms live post
+	Applicant Auto-Response & Assessment Link Delivery
+	Sends response + HiPeople link to new applicants within 3 hours
+	Professional, timely candidate experience
+	Level 3 – Time-based webhook trigger
+	🔥 Must-Have
+	✅ Delivery timestamp logged
+	Apply → Response sent → Check delay accuracy
+	Candidate Screener View (Pre-Interview)
+	UI for managers to review top-50% applicants and take action
+	Streamlines candidate evaluation
+	Level 2 – Manual decision via automated UI
+	🔥 Must-Have
+	✅ Button click + decision audit
+	Load candidate → Click Reject / Talent Pool / Interview
+	Interview Scheduling Automation
+	Sends calendar link when interview is triggered
+	Simplifies scheduling for both parties
+	Level 4 – Contextual email trigger
+	✅ Should-Have
+	✅ Slack + DB update log
+	Click Invite → Email sent → Airtable calendar entry created
+	One-Way Interview Viewer + Scoring Interface
+	Displays async video and allows grading in UI
+	Makes interview decisioning structured
+	Level 2 – Manual scoring
+	🔥 Must-Have
+	✅ Scores + notes saved
+	Watch → Score → Submit → Candidate updated
+	Second Interview Flow (COO or Customer)
+	Review all data and trigger offer, rejection, or talent pool
+	Ensures holistic decision with minimal friction
+	Level 3 – Decision engine via dashboard
+	🔥 Must-Have
+	✅ Final decision stored
+	Complete interview → View candidate → Choose action
+	Offer Email Generator + Contract Link
+	Populates template, sends via team@firmos.ai
+	Fast, accurate, trackable offers
+	Level 4 – Output automation with dynamic data
+	🔥 Must-Have
+	✅ Email delivery + link click tracked
+	Send Offer → Email received → Contract rendered
+	Rejection & Talent Pool Flows
+	Branded polite messaging sent, tags candidate
+	Maintains brand + future pipeline
+	Level 3 – Delayed or manual-triggered email
+	✅ Should-Have
+	✅ Email timestamp stored
+	Reject → Message sent → DB tagged
+	Automated Follow-Up System (Replit Cron)
+	Reminds or escalates if key actions are delayed
+	Keeps process on track without nudging
+	Level 4 – Time-aware automation
+	🔥 Must-Have
+	✅ Trigger logs
+	No interview booked in 72h → Slack nudge sent
+	Analytics Dashboard
+	View key funnel stats by job, stage, or customer
+	Drives hiring performance and visibility
+	Level 3 – Visualized DB queries
+	✅ Should-Have
+	✅ View loads logged
+	View dashboard → Filter by position → Metrics render correctly
+	Onboarding Trigger + Checklist
+	Sends welcome + task list post-offer
+	Ensures smooth candidate transition
+	Level 3 – Trigger + fixed email flow
+	✅ Should-Have
+	✅ Checklist delivery logged
+	Offer accepted → Email sent → Internal alert triggered
+	✅ Section 8: Replit Constraints & Escalation Plan (Final)
+
+
+🧨 Risk Monitoring (Replit Platform Limits)
+Constraint
+	Threshold
+	Mitigation
+	Memory Usage
+	>7.5 GiB sustained
+	Monitor Replit Console; offload batch jobs to second Repl
+	File System Size
+	>3 GiB
+	Store assets externally (e.g., resumes/videos via GDrive)
+	In-memory Object Size
+	>512MB
+	Paginate large Airtable/API reads
+	Boot Time (Cold Starts)
+	>10s
+	Lazy-load heavy GPT logic, use Reserved VM if needed
+	Module Error / Package Bloat
+	Any failed npm install
+	Audit and trim unused dependencies or isolate large logic to background Repl
+	
+
+⚠️ Platform & Third-Party Constraints
+Tool
+	Constraint
+	Fallback Strategy
+	onlinejobs.ph
+	500 outbound messages per month (platform DM limit)
+	Auto-throttle messages based on position priority, use platform email only for top-tier applicants, move rest to standard email outreach
+	HiPeople
+	Per-user or per-assessment rate limits (TBD)
+	Add email queue + retry logic via Replit Cron; rotate assessment links if needed
+	Slack API
+	Rate limit: 1 message/sec/channel
+	Batch messages + throttle in Cron queue
+	
+
+⛑️ Escalation Thresholds
+System
+	Escalate If...
+	Fallback
+	Supabase
+	>1,000 records + filters or multi-role auth needed
+	Use Supabase for analytics and permissioned dashboards
+	Make.com
+	>3 chained automations, or webhook dependency with external systems
+	Use Make for multi-tool orchestration (e.g., Slack + email + GHL + LinkedIn)
+	Reserved VM
+	Interview UI or GPT job generation slows at scale
+	Move heavy logic or UI to persistent VM
+	Email Provider (Replit native)
+	>200 daily emails or deliverability issues
+	Switch to SendGrid/Resend for volume and delivery tracking
+	Storage / File Uploads
+	>50MB per video or resume
+	Use external file links (Google Drive, Dropbox, YouTube unlisted)
+	
+
+🧩 Fallback Design Principles
+                                                                                          * Environment-driven feature flags for:
+
+                                                                                             * DB layer (Replit DB vs Supabase)
+
+                                                                                             * Messaging rate-throttle mode
+
+                                                                                             * Email provider
+
+                                                                                                * Zero-Downtime Swaps:
+
+                                                                                                   * All escalation logic modularized via service adapters
+
+                                                                                                   * Escalation triggers monitored via telemetry (e.g., msg count/month, error retries)
+
+                                                                                                      * Sync Layer (if Replit DB + Supabase coexist):
+
+                                                                                                         * Cron sync daily for analytics or external dashboarding
+✅ Section 9: Automation Scope
+
+
+🧠 Level 1–5 Classification
+Area
+	Classification
+	Notes
+	System Overall
+	Level 4 – Tool-Based AI Agent
+	AI and human inputs determine multi-step actions, cross-tool orchestration
+	Job Description Generation
+	Level 3
+	GPT used for content generation with deterministic triggers
+	Application & Assessment Follow-Up
+	Level 4
+	Timed auto-responses, personalized messages, and retry logic
+	Interview Scheduling & Offer Flow
+	Level 4
+	Decisions via human interface, but downstream steps fully automated
+	Rejections & Talent Pooling
+	Level 4
+	Delayed fallback triggers + polite templates
+	
+
+⚙️ Trigger Inputs & System Response
+Trigger Type
+	Event
+	System Behavior
+	Fallback / Edge Handling
+	Form Submission
+	Hiring Assessment Form submitted
+	Triggers GPT job description, generates assessment link, preps for approval
+	Logs output to console and Slack; retry on GPT fail
+	Manual Approval
+	Stakeholder clicks "Approve Job Description"
+	Posts job across platforms, notifies channel
+	Re-queue if post fails; throttle to avoid API block
+	Applicant Submission
+	New candidate applies via form
+	Waits 3 hours → sends HiPeople link + intro
+	Skip delay if "Express Review" toggle active
+	Assessment Completion
+	Candidate finishes HiPeople
+	Score stored, flagged if >50th percentile
+	Retry if API not responsive; soft log failures
+	UI Action: Send Interview
+	Manager clicks invite
+	Sends interview link + calendar
+	Email retry logic + Slack confirmation
+	UI Action: Send Offer
+	COO or manager clicks offer
+	Populates and sends email + contract link
+	Logs to DB; alerts if offer fails
+	UI Action: Reject
+	Reject clicked at any stage
+	Sends branded email, archives record
+	Skips if already marked "Rejected"
+	UI Action: Talent Pool
+	Talent Pool clicked
+	Sends light message, adds tag
+	Skips email if already in pool
+	Interview No-Show or Delay
+	No booking in 72h
+	Slack nudge + manager ping
+	Re-queue up to 3x, escalate to COO
+	No Decision Made
+	Candidate stalled in status 5+ days
+	Sends Slack summary & escalates to dashboard
+	Optional auto-reject after timeout
+	
+
+🔄 Fallback Stack Use Criteria
+Stack
+	Use When
+	n8n / Make.com
+	Replit Cron cannot handle external webhook chaining (e.g. Slack + Airtable + Email) or error branching becomes complex
+	Supabase
+	Role-based dashboards, secure filtering, or real-time collaboration needed
+	SendGrid / Resend
+	Email volume >200/day or deliverability tracking required
+	Cursor
+	Advanced prompt chaining, interview score routing, or offer clause generation needed
+	
+
+🧠 LLM Involvement
+Use Case
+	Engine
+	Prompt Safety
+	Job Description Generation
+	GPT-4 (existing FirmOS model)
+	Deterministic inputs; retry on null
+	Email Templating (Offer, Rejection)
+	Replit logic (template fill)
+	No LLM needed — structured template logic
+	Auto-summarization (Optional Phase 2)
+	GPT or Claude
+	Under 85% confidence = hold for review
+	All GPT logic must be idempotent (retry-safe) and promptlib-documented for audit.
+✅ Section 10: Data Flow Architecture
+
+
+🧾 Input Nodes
+Source
+	Format
+	Description
+	Hiring Assessment Form
+	JSON (via frontend submission)
+	Captures role type, manager, KPIs, requirements, urgency, etc.
+	Candidate Application Form
+	JSON (form submission or webhook)
+	Captures resume, portfolio, intro answers
+	HiPeople Webhook
+	JSON payload
+	Includes candidate ID, assessment score, percentile
+	One-Way Interview Upload
+	Video file URL or reference string
+	Link to unlisted YouTube, Dropbox, etc.
+	Interview Grading UI
+	Typed object
+	Grading per question with notes (1st + 2nd round)
+	Offer Action UI
+	Button-triggered JSON
+	Accepts candidate ID, template type, and populated terms
+	Slack Action (Phase 2)
+	Webhook event
+	Manager triggers action via Slack shortcut or Copilot UI
+	
+
+🔄 Processing Layers
+Step
+	Logic
+	Tool
+	Validation
+	Form inputs validated via Zod or TS schema
+	TypeScript (in-Repl)
+	Mapping
+	Fields mapped to GPT job prompt and Airtable
+	Local Repl logic
+	LLM Triggering
+	GPT job description generation based on form values
+	GPT-4 via internal API
+	Assessment Scoring
+	HiPeople score parsed, normalized, stored
+	Repl logic + DB write
+	Grading Aggregation
+	Interview scores and notes collated into final decision object
+	Local reducer function
+	Throttling
+	onlinejobs.ph outbound messaging count tracked per month
+	Local counter + .env limit flag
+	Time-based Routing
+	Auto-rejects, nudges, reminders triggered by time delta
+	Replit Cron or TTL checks
+	
+
+🗃️ Schema Decisions
+Data Type
+	Storage
+	Notes
+	Job Listings
+	Replit DB (initial) → Supabase fallback
+	Includes status, description, GPT source
+	Candidates
+	Replit DB
+	Scored, tagged, status-tracked
+	Interviews & Grades
+	Replit DB
+	Supports multi-round grading
+	Offer Metadata
+	Replit DB
+	Includes terms, sent timestamp, signed flag
+	Dashboards
+	Derived in-memory → Supabase optional
+	Filters by role, client, job ID
+	One-Way Videos
+	External link only
+	Link stored in DB, never file itself
+	All data is namespaced by role ID and/or customer account (if external-facing).
+
+
+📤 Output Surface
+Destination
+	Format
+	Trigger
+	UI Dashboard
+	SSR-rendered list/detail views
+	Load → DB fetch
+	Slack Alerts
+	Webhook messages
+	Replit Cron or user action
+	Email (Rejections, Offers)
+	HTML template (filled from DB)
+	Button click or timeout
+	Online Job Boards
+	API submission
+	Triggered after approval
+	Replit Console
+	Logs for GPT calls, failures
+	Every key system event
+	Analytics Dashboards
+	SSR table + chart (TS/React)
+	Triggered on page load
+	Airtable (optional sync)
+	Row insert/update
+	Mirror DB records for ops audit (Phase 2)
+	
+
+⚠️ Error Tracing
+Mechanism
+	Trigger
+	Replit Console Logs
+	All processing layers
+	Retry-on-failure for GPT & Email
+	Retry 3x with backoff
+	Failure Alerting (Optional)
+	>3 job post failures or >5 offer email fails in 1 hour
+	
+
+✅ Section 11: Deployment Footprint
+
+
+🌐 Environments
+Environment
+	Setup
+	Purpose
+	Development
+	Local Replit or branch-linked Repl
+	For active code changes and feature testing
+	Staging
+	Separate Repl or feature flag in main
+	Used to test full workflow before production release (with mock data)
+	Production
+	Main Repl (Autoscale enabled)
+	All live candidate + hiring flows; must be locked from experimental changes
+	MVP uses a single Repl with env-based gating
+ Phase 2 may split Staging and Production if customer-facing scale increases.
+
+
+🚀 Release Mechanics
+Mechanism
+	Description
+	Git commit-based deploys
+	Code changes pushed to GitHub auto-deploy via Replit integration
+	Feature flags
+	Key logic (e.g. Slack alerts, Supabase sync, Offer Generator v2) is gated behind env flags
+	Config via .env
+	Role-based routing, DB toggle, onlinejobs.ph throttle count managed via .env
+	
+
+🛠️ Hotfix Capability
+Method
+	Description
+	Push override
+	Authorized users can push emergency fixes via Replit Console or commit
+	Rollback Timer
+	If new build fails >3x in 10 minutes, system auto-reverts to last stable commit
+	Cron job disable switch
+	Replit Cron flows can be suspended via .env (DISABLE_CRON=true) to stop retries or stuck flows immediately
+	
+
+🧯 Failover Plan
+Risk
+	Strategy
+	Replit downtime
+	Local CSV export triggered (for candidate + job backup); Slack alert to #hiring-ops
+	Cold start stalls offer flow
+	Move Offer logic to Reserved VM or isolate it in second Repl
+	Supabase sync delay (if escalated)
+	Logs queue in Replit DB and retries on next Cron tick
+	Email provider outage
+	Swap to fallback SMTP or Resend (template-based switch logic already modularized)
+	✅ Section 12: Observability & Success Metrics
+
+
+📊 Tracked Metrics
+Metric
+	Description
+	Alert Trigger
+	Tool
+	Task Success/Failure Rate
+	Percentage of triggered automations that complete without error
+	>3 consecutive failures for any task
+	Replit Console + optional Slack alert
+	Memory Usage
+	Monitors Repl's runtime RAM use
+	Sustained >7.5 GiB
+	Replit Console
+	API Response Time
+	Duration of outbound requests (HiPeople, Slack, etc.)
+	>5s on average over 5-min window
+	Console log + Slack warning
+	Email Delivery Status
+	Offer/rejection/talent pool emails sent successfully
+	Any bounce or fail-to-send >2x/hour
+	Replit log; Resend API (Phase 2)
+	Cron Job Health
+	Scheduled jobs run on time
+	Missed Cron trigger or runtime >60s
+	Cron error → Slack alert
+	GPT Job Description Failures
+	Failed prompt completions or invalid output
+	>1 null/empty generation in a row
+	Logged; flagged in Console
+	
+
+📢 Alert System
+Type
+	Channel
+	Recipient
+	Slack Webhook Alerts
+	#hiring-ops
+	COO, PM, Dev
+	Internal Email Alert
+	(optional)
+	Developer-on-call
+	Console Logs (Default)
+	Replit Console
+	Developer only
+	Phase 2: consider Replit-to-Sentry or Replit-to-Slack middleware for structured alerts with error context.
+
+
+🔐 Telemetry Visibility
+                                                                                                         * All task and failure counts visible in a simple /admin view (internal only)
+
+                                                                                                         * Key workflows (e.g. offer send, rejection send) timestamped and visualized
+
+                                                                                                         * Optional: Slack daily digest of:
+
+                                                                                                            * Total candidates applied
+
+                                                                                                            * Assessments completed
+
+                                                                                                            * Interviews scheduled
+
+                                                                                                            * Offers sent
+
+
+
+Metric
+	Target
+	Tool
+	Baseline
+	Recovery Plan
+	Use Case ID (future)
+	Time to Offer Sent (Post Final Interview)
+	<24 hours
+	Replit DB + Cron logs
+	~96 hours
+	Trigger Slack alerts at 24h mark + daily escalation summary
+	UC010
+	Qualified Candidates Reviewed in <48h
+	≥95%
+	Slack digest + Replit DB
+	~50%
+	Daily Cron pings + manager summary
+	UC006
+	Assessment to Interview Conversion Rate
+	≥30%
+	UI view filter
+	Unknown
+	If <20%, audit scoring filters or notification lags
+	UC004
+	Offer Email Delivery Success Rate
+	≥98%
+	Console logs or Resend (if active)
+	Unknown
+	Fallback to alternate provider after 2 fails/hour
+	UC011
+	Auto-Followup Success (Cron Tasks)
+	≥95% complete without manual retry
+	Console + Cron logs
+	Unknown
+	Flag failed tasks in Console + add retry queue
+	UC007
+	Job Description Approval Within 24h
+	≥90%
+	Timestamp delta (form → approve)
+	~50–60%
+	Add 24h Slack follow-up + highlight “stuck jobs”
+	UC002
+	Polite Rejections Sent Within 72h
+	≥90%
+	Email timestamp audit
+	Unknown
+	Escalate to Slack + auto-reject fallback
+	UC009
+	Analytics Dashboard Adoption (Weekly Views)
+	≥80% of internal hiring managers
+	Replit DB + dashboard logs
+	0% (new)
+	Add weekly Slack summary link, feature flag metrics used
+	UC013
+	✅ Section 14: Non-Functional Requirements
+These define how HireOS must perform, respond, and behave — even if functionality is complete.
+
+
+⚡ Performance
+Requirement
+	Target
+	Page Load Time
+	≤1.2 seconds (measured on first load and dashboard views)
+	Cold Start Time
+	<2.5 seconds on any new Repl boot
+	API Latency
+	<1 second on average for all internal API calls
+	Memory Utilization
+	<90% sustained memory use in any autoscale Repl
+	
+
+📱 Responsiveness
+Requirement
+	Target
+	Mobile Compatibility
+	Must render cleanly on iOS Safari, Chrome Android
+	Tablet View
+	All table/grid views should be scrollable and responsive
+	Zoom Behavior
+	No UI breakage at 75–125% zoom on desktop browsers
+	
+
+🛰️ Low Bandwidth / Offline Fallback
+Scenario
+	Behavior
+	Network timeout
+	Display graceful retry option with error message
+	Video load failure
+	Show fallback "Video failed to load" message with candidate email link
+	Offline form submit
+	Store in localStorage and retry on reconnect (optional Phase 2)
+	
+
+🧑‍💻 Accessibility (AA Minimum)
+Requirement
+	Implementation
+	Keyboard Navigation
+	All action buttons and form fields must be tab-navigable
+	Color Contrast
+	Use Tailwind default with contrast-safe themes
+	Aria Labels
+	Apply to dynamic content (e.g., grading buttons, modal buttons)
+	
+
+✅ Section 15: Risks & Mitigations
+
+
+🧨 Risk Table
+Risk
+	Impact
+	Likelihood
+	Mitigation Strategy
+	Replit DB limitations (scale, filters, joins)
+	High if record count grows fast or filters become complex
+	Medium
+	Begin with Replit DB; modularize logic for easy Supabase migration after 1,000+ records or 3+ relational queries
+	onlinejobs.ph 500 msg/month limit
+	Could throttle applicant messaging, hurt candidate flow
+	High
+	Prioritize messages to top-tier candidates, queue others via email or fallback comms channel
+	Slack / Email API rate limits
+	Alerts could get delayed or fail silently
+	Medium
+	Add rate-limiting guards + batching logic in Cron flow
+	Offer email fails (spam, delivery)
+	Missed offers = lost candidates
+	Low
+	Track email logs + swap to SendGrid/Resend if delivery rate drops below 95%
+	Manager inaction (e.g. no job approval)
+	Delays candidate intake or hiring actions
+	High
+	Replit Cron escalations + dashboard “stuck” flag + Slack reminders
+	LLM job description failure or hallucination
+	Inaccurate postings could affect hiring quality
+	Low
+	Retry logic on empty GPT output, audit logs, and option for manual override
+	Lack of user adoption
+	System built but unused = ROI drop
+	Medium
+	Weekly Slack usage digest, product manager coaching, usage-based visibility for COO
+	Video platform policy changes (e.g. YouTube unlisted rules)
+	Could break one-way interview playback
+	Low
+	Store video links in a modular format; allow alternative upload paths in future builds
+	Copilot/Customer access abuse or confusion
+	Data visibility or workflow misuse
+	Medium
+	Role-based view enforcement with JWT-auth & environment-based access control
+	
+
+✅ Resilience Design Summary
+                                                                                                               * Every automation flow has a retry plan
+
+                                                                                                               * Critical workflows (offer, rejection, posting) include:
+
+                                                                                                                  * audit logs
+
+                                                                                                                  * confirmation messages
+
+                                                                                                                  * alert fallbacks (Slack, Console, optional email)
+
+                                                                                                                     * Third-party escalations (Supabase, Make, SendGrid) are wrapped in feature flags with easy rollback
+
+✅ Section 16: System Dependencies
+
+
+🧩 Primary Stack (Replit-First)
+Component
+	Tool
+	Role
+	IDE + Runtime
+	Replit
+	Primary development and deployment environment
+	Frontend Framework
+	Next.js (via Replit)
+	UI rendering and routing
+	Language
+	TypeScript
+	Required for typed schemas, LLM prompt safety, component reusability
+	Database
+	Replit DB
+	Key-value store for job posts, candidates, decisions
+	Automation Engine
+	Replit Cron
+	Scheduled triggers for nudges, follow-ups, and rejections
+	LLM Integration
+	GPT (via internal API)
+	SEO job title + job description generation
+	Email Trigger
+	Replit-native email function (or SMTP fallback)
+	Sends offers, rejections, interview invites
+	Logging
+	Replit Console
+	Default tracing surface for all backend logic and system events
+	
+
+🧰 Escalation & Fallback Tools
+Component
+	Tool
+	Use Case
+	Database (relational, joins, auth)
+	Supabase
+	Use if:
+	                                                                                                                        * 
+
+1,000 candidate records
+
+
+                                                                                                                        * Row-level filtering (e.g. client-specific views)
+
+                                                                                                                        * Auth-protected analytics dashboards | | Automation (multi-step workflows) | Make.com or n8n | Use if Replit Cron must trigger >3 chained external systems or fails | | Email Volume or Deliverability | Resend / SendGrid | Use if daily sends >200 or email bounce rate >5% | | Prompt Development or Agent Chaining | Cursor | Use if interview grading or job logic requires agentic reasoning or prompt sandboxing | | UI Hosting (Customer) | Reserved VM | For consistent performance across customer-access dashboards if latency or boot-time becomes a blocker |
+
+
+
+❌ Explicitly Avoided / Not Needed
+Tool
+	Reason
+	Firebase
+	Adds auth/storage complexity; Supabase preferred fallback
+	MongoDB, Postgres (manual)
+	Adds infra burden; Replit DB → Supabase covers spectrum
+	Airtable (write-side)
+	Read-only sync only; all source-of-truth lives in Replit-native DB
+	Heroku, Vercel, Netlify
+	All deployment is via Replit Autoscale
+	Zapier
+	Replaced by Replit Cron or Make.com if necessary
+	✅ Section 17: Maintenance Plan
+
+
+🧼 Weekly Tasks
+Task
+	Owner
+	Tool
+	Review Cron Failure Logs
+	Product Manager
+	Replit Console
+	Check Job Posting Statuses
+	Any Manager
+	UI view + Slack digest
+	Verify Email Send Health
+	Product Manager
+	Console log or Resend dashboard (if active)
+	Clear Stuck Candidate States
+	Product Manager
+	DB filter: status: pending_review, >7 days
+	
+
+🧾 Monthly Tasks
+Task
+	Owner
+	Tool
+	Back up Replit DB
+	Product Manager
+	Manual export or cron job to CSV
+	Analytics Report Generation
+	COO
+	View dashboard or export chart data
+	Promptlib Review (LLM Prompts)
+	Product Owner
+	Prompt file audit, update tone/structure if needed
+	Candidate Volume Health Check
+	Product Manager
+	Count: Applied → Hired funnel ratio check
+	Rate Limit Usage Check (onlinejobs.ph)
+	Developer / PM
+	Track outbound message count vs 500 cap
+	
+
+🔐 Security & Access Management
+Check
+	Frequency
+	Owner
+	JWT token secret rotation
+	Quarterly
+	Developer
+	Access token expiration
+	Set to 30 days
+	Replit env logic
+	Customer dashboard access review
+	Monthly
+	Product Manager
+	
+
+🔄 Infrastructure Stress Tests
+Test
+	Frequency
+	Tool
+	Cold Start Stress Test
+	Bi-weekly
+	Manual refresh + boot log timing
+	Email Retry Behavior
+	Monthly
+	Simulate fail → confirm fallback sends
+	Large Candidate Volume Load Test
+	After every major hiring cycle
+	Load 500 candidates → check UI response + memory usage
+	
+
+
+
+✅ Section 18: Technical & Tool Constraints
+
+
+💻 Core Environment Constraints (Replit Autoscale)
+Constraint
+	Value
+	Notes
+	RAM Limit
+	8 GiB
+	Sustained usage above 7.5 GiB requires either logic split or Reserved VM
+	vCPUs
+	4
+	Avoid long-running compute tasks; break into async microflows
+	File Storage
+	50 GiB
+	Includes node_modules, system logs, and temp uploads
+	File System Size per File
+	<250MB
+	One-way videos must be externally hosted (YouTube, Drive, Dropbox)
+	Network Bandwidth
+	Shared pool
+	Burst-safe but not CDN-grade — SSR must be performant
+	
+
+🚫 GPU Access
+                                                                                                                           * Replit currently does not support GPU workloads
+
+                                                                                                                           * AI work must be prompt-based (GPT, Claude), not model training or fine-tuned LLMs
+
+
+
+⛔ Long-Polling or Streaming
+                                                                                                                              * Avoid persistent long-poll (e.g., socket.io without server support)
+
+                                                                                                                              * If real-time needed: escalate to WebSockets or use polling via Replit Cron
+
+
+
+✅ UI & Code Standards
+Area
+	Requirement
+	UI Stack
+	Tailwind + shadcn/ui
+	TypeScript Enforcement
+	All user-facing components and backend handlers
+	Interface Contracts
+	Use Zod or TS interfaces for all input validation
+	Component Rules
+	Typed props, no any, minimal logic in views
+	Form Behavior
+	1-click submission; all async ops show loading + error fallback
+	Mobile Responsiveness
+	Required on all views; test at 375px width (iPhone baseline)
+	
+
+🚫 Tooling Restrictions
+Tool
+	Reason
+	Firebase, MongoDB, Auth0
+	Adds unnecessary auth complexity
+	Zapier, Retool, Vercel
+	Covered by Replit Cron, native deploy, and Make fallback
+	Custom Analytics Engines
+	Replit DB + Supabase views are sufficient for reporting
+	Unstructured GPT outputs
+	All LLM outputs must be wrapped in promptlib schema or parsed before display
+	✅ Section 19: API Integration Needs
+
+
+🔌 Internal APIs
+API
+	Purpose
+	Auth Method
+	Fallback Behavior
+	Replit DB (native)
+	Store job posts, candidates, interview scores, decisions
+	N/A (in-Repl access)
+	Requeue failed writes via local retry wrapper
+	Replit Cron
+	Trigger timed workflows (rejections, reminders)
+	N/A
+	Retry missed jobs on next scheduled tick
+	Promptlib (internal prompt wrapper)
+	Call GPT for job title/description generation
+	API key via .env
+	If LLM fails or returns null: retry 3x, then fallback to manual review flag
+	
+
+🌐 External APIs
+API
+	Purpose
+	Auth Method
+	Retry Logic
+	Failure Behavior
+	HiPeople
+	Get assessment completion + percentile
+	API key or token (stored in .env)
+	Retry 2x if rate-limited
+	Skip to Slack alert if score fetch fails
+	Slack API
+	Notify hiring actions, reminders, offer sent
+	Bot token (OAuth or fixed token)
+	1/sec rate throttle guard + queue
+	If Slack fails → Console alert
+	Email Provider (Replit SMTP → Resend)
+	Send offers, rejections, interview links
+	SMTP or API key
+	Retry 3x with 5s backoff
+	Log fail; flag offer as “unsent”
+	Onlinejobs.ph (POST/DM)
+	Post job listings + respond to applicants
+	Cookie-based or token (manual key)
+	Outbound counter guard
+	If over 500/month → switch to email-only fallback
+	Copilot (if used)
+	Push update cards to customer-facing workspace
+	API key
+	Retry 2x
+	If failed, log to Console only
+	
+
+🔐 Auth Layers and Token Strategy
+Type
+	Usage
+	Expiration
+	Storage
+	Bearer Token (internal APIs)
+	Promptlib, Replit DB
+	30d
+	.env or secured config object
+	JWT (role-based access)
+	Customer dashboard views
+	1h signed token
+	In URL query or session cookie
+	Slack Bot Token
+	Slack channel notifications
+	n/a
+	.env
+	API Keys (external)
+	HiPeople, Resend, Make (if used)
+	Based on service
+	.env only (never in client)
+	
+
+🧯 Retry Strategy (Global)
+                                                                                                                                 * All third-party POSTs and GETs have built-in:
+
+                                                                                                                                    * 3 retries
+
+                                                                                                                                    * Exponential backoff (5s, 10s, 30s)
+
+                                                                                                                                    * Final fallback flag → Slack alert or DB write with status: failed_external_call
+
+✅ Section 20: UX/UI Guidelines
+
+
+🧱 Component & Styling Standards
+Area
+	Guideline
+	UI Framework
+	All components use shadcn/ui with Tailwind CSS utility classes
+	Styling System
+	Tailwind defaults extended for FirmOS brand: primary, secondary, accent
+	Component Layout
+	Mobile-first, grid-aligned, xl:2xl rounded corners, shadow-md, clear padding (p-4 minimum)
+	Theme
+	Light mode default; add dark mode toggle only if candidate-facing
+	Responsive
+	Must pass on Chrome, Safari, Firefox, iOS Safari, and Android Chrome at 375px
+	
+
+🧩 Component Rules
+Rule
+	Description
+	Props must be typed
+	Use Zod or TS interfaces for all props, especially async forms
+	Avoid any type
+	Use unknown + refine, or shape narrowing
+	Error States
+	All async buttons/forms show a fallback: spinner, error toast, or console fallback
+	Loading Indicators
+	Every async action (send offer, GPT call, submit grading) must show loading UI
+	Forms
+	Use react-hook-form or zodResolver with 1-click submit, inline validation errors
+	Button Groups
+	Decision actions (Reject / Offer / Talent Pool) grouped logically with confirmation prompt (optional Phase 2)
+	
+
+🧑‍💻 DX Enhancers
+Area
+	Rule
+	Ghostwriter / AI Assist
+	Component prop hints and TS interfaces should be AI-friendly (clear names, comments)
+	Shared Library
+	Reusable logic lives in /lib, components in /components
+	API Routes
+	Typed input/output using TS + api/route.ts pattern
+	Promptlib Integration
+	All GPT logic uses reusable generatePrompt() or equivalent wrapper
+	State Management
+	Avoid context unless necessary; use props-down, events-up pattern
+	
+
+✅ Section 21: Release Plan
+
+
+🧭 Milestones
+Stage
+	Trigger
+	Dev Complete
+	All backend + UI flows working in Dev Repl
+	QA Ready
+	All must-have features pass manual test cases from Section 7
+	UAT Ready
+	PM and COO walk through hiring flow with real candidate data
+	Prod Launch
+	All prod .env values set + Replit Autoscale toggled on
+	
+
+🛠️ Cutover Types
+Type
+	Usage
+	Full Cutover
+	Default for MVP — replaces Airtable/Slack manual flow day one
+	Staged Rollout
+	Optional if adding new customer dashboard in Phase 2 (behind env flag)
+	
+
+✅ Section 22: Delivery Infrastructure Blueprint
+
+
+Layer
+	Stack
+	Frontend
+	Replit Autoscale Static Hosting (Next.js)
+	Backend
+	API routes in same Repl (Node + TypeScript)
+	Worker Queue
+	Replit Cron (time-based triggers), fallback to Make if >3 tool chain
+	Email Sender
+	Replit Email API → fallback: Resend or SendGrid
+	Database
+	Replit DB (K/V) → Supabase fallback
+	Authentication
+	JWT-based — signed tokens passed via query param or cookie for customer views
+	Logging
+	Replit Console for dev; optional Slack error alerts
+	
+
+✅ Fully Replit-native unless autoscale ceiling hit — modular fallback options already structured (Supabase, Resend, Reserved VM).
+
+
+✅ Section 23: Observability Matrix
+
+
+Component
+	Metric
+	Threshold
+	Alert Channel
+	Owner
+	Replit Cron Jobs
+	Job execution success
+	<95% in 24h
+	Slack + Console
+	Product Manager
+	Offer Emails
+	Delivery rate
+	<98% success
+	Console log or Resend UI
+	PM
+	Job Post Approvals
+	Time from form to approved
+	>24h average
+	Slack nudge
+	Any Manager
+	UI Load Time
+	Page load in prod
+	>1.2s average
+	Console or Lighthouse
+	Developer
+	DB Query Failures
+	Errors per route
+	>5/hour
+	Console log
+	Developer
+	HiPeople Score Ingest
+	Missed webhook rate
+	>2/day
+	Console + PM review
+	Product Manager
+	
+
+✅ Section 24: Compliance & Risk Summary
+
+
+📜 Data Protection
+Area
+	Standard
+	GDPR Compliance
+	All candidate data (assessment scores, resumes, videos) deletable on request within 30 days
+	Data Residency
+	U.S.-hosted only — Replit and third-party APIs must use U.S. regions or equivalents
+	Candidate Consent
+	Application form includes opt-in notice for HiPeople assessments + data sharing with FirmOS teams and partners
+	Data Retention
+	Talent Pool records held for 12 months, then archived or auto-deleted (future feature)
+	
+
+🧑‍💻 Access Control
+Role
+	Access
+	Internal Managers / COO
+	Full access to job posts, candidates, grading, offers
+	Customers
+	Role-scoped views (JWT-signed or secure URL), no access to internal-only fields
+	Program Managers
+	View access to all accounts they manage; no delete/write access to candidate records directly
+	
+
+🔐 Audit Logging & Traceability
+Activity
+	Logged?
+	Tool
+	Offer Sent
+	✅
+	DB + Console log
+	Candidate Rejected
+	✅
+	DB + timestamp
+	Job Approved
+	✅
+	DB + Slack
+	Assessment Score Received
+	✅
+	DB insert w/ webhook signature
+	
+
+✅ Section 25: Tech Stack Decision Tree
+Question
+	Decision
+	Does your app have a UI?
+	✅ Yes → Use Next.js + TypeScript
+	Is your logic reusable or multi-user?
+	✅ Yes → Use TS + Replit DB (modularized)
+	Does it require SSR or routing?
+	✅ Yes → Use Next.js app router
+	Is the workload memory-bound or time-sensitive?
+	🚧 Potentially → Escalate to Reserved VM or multi-Repl split
+	Will candidate or manager roles require login/auth?
+	✅ Yes → Use JWT-based access tokens (no full auth system yet)
+	Will the system grow to >1,000 records?
+	✅ Yes → Build modular DB connector for Supabase fallback
+	Are 3+ third-party tools required in a single workflow?
+	⚠️ Yes → Escalate to Make.com fallback only if Cron breaks
+	
+
+✅ Section 26: Use Case Library
+Each use case captures the flow from input → logic → action → output. These are traceable back to feature requirements and success metrics.
+Use Case ID
+	Title
+	Primary Actor(s)
+	Trigger
+	Preconditions
+	Main Flow Summary
+	Alternate Flows
+	Post-Conditions
+	UC001
+	Auto-generate job post from hiring form
+	Any Manager
+	Hiring Form Submitted
+	Form is valid
+	GPT generates title, description, HiPeople link
+	GPT fails → manual review
+	Job stored + queued for approval
+	UC002
+	Approve and publish job post
+	Manager / COO
+	Approve button clicked
+	Job fields are complete
+	Posts to onlinejobs.ph + Slack ping
+	Fail = retry or notify PM
+	Job marked as “Live”
+	UC004
+	Send assessment to new applicant
+	Cron after form submit
+	Candidate applied
+	HiPeople link exists
+	Email sent after 3hr delay
+	Email fails → alert + retry
+	Candidate tagged “Assessment Sent”
+	UC006
+	Screen top-50% candidates
+	Any Manager
+	Assessment completed
+	Score > 50%
+	Candidate shown in screener UI
+	No-show = re-nudge
+	Manager takes action (reject/invite)
+	UC007
+	Interview no-show reminder
+	Cron triggers
+	Candidate unbooked for 72h
+	Interview link sent
+	Slack alert sent to manager
+	No response = escalation
+	Candidate tagged “Idle”
+	UC009
+	Send rejection with delay
+	Manual or Cron
+	Candidate in "Reject" queue
+	Final decision made
+	Rejection email sent with template
+	Fallback = Slack alert
+	Candidate archived
+	UC010
+	Offer sent by COO
+	COO clicks Send Offer
+	Interviews complete
+	Contract generated, email sent
+	Email fails = retry
+	Candidate tagged “Offer Sent”
+	
+
+	UC011
+	Offer link clicked
+	Candidate
+	Offer email received
+	Email was sent successfully
+	Contract rendered from template
+	Broken link = resend flow
+	Candidate tagged “Offer Viewed”
+	UC013
+	Load analytics dashboard
+	Product Manager
+	Page loaded
+	DB has sufficient records
+	Filters + charts load from DB/Supabase
+	Query too slow = warn + fallback
+	Dashboard timestamped, cached
+	
+
+✅ Section 27: Appendix
+
+
+📂 Documentation & SOPs (UseWhale)
+The following documents are stored in UseWhale and define key logic, flows, and interfaces used in HireOS:
+File
+	Relevance
+	Hiring Roadmap Process Design.pdf
+	Defines the hiring phases, ownership per step, and overall workflow
+	Candidate Interviewing.pdf
+	Details the questions and structure for live and async interviews
+	Candidate Hiring.pdf
+	Outlines offer and contract logic, including fallback messaging
+	Assessment Screener.pdf
+	Shows how to read HiPeople data and filter based on percentile
+	One Way Video Interview Questions.pdf
+	Standard set of one-way video questions for pre-interview round
+	Talent Assessment Process Design.pdf
+	Explains score interpretation, grading rubric, and thresholds
+	Job Posting Decision Tree.pdf
+	Decision logic for when and how to post to onlinejobs.ph and other platforms
+	Employment Offering Email Template.pdf
+	Offer letter content and structure used for email + contract templates
+	Independent Contractor Template.pdf
+	Contract used for contractor roles; populated dynamically by the app
