@@ -19,7 +19,7 @@ async function testOpenRouter() {
     
     // Request body
     const data = {
-      model: "gpt-4o",
+      model: "google/gemini-2.0-flash-001",
       messages: [
         {
           role: "system",
