@@ -58,7 +58,7 @@ export function setupSimpleTestRoutes(app: Express) {
       
       // Request body
       const data = {
-        model: "openai/gpt-3.5-turbo", // Using a more cost-effective model
+        model: "google/gemini-2.0-flash-001", // Using Gemini model for cost effectiveness
         messages: [
           {
             role: "system",

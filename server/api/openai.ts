@@ -8,7 +8,7 @@ import axios from "axios";
  * pricing and capabilities.
  * 
  * Current configuration:
- * - Model: openai/gpt-3.5-turbo (cost-effective option)
+ * - Model: google/gemini-2.0-flash-001 (cost-effective option with good performance)
  * - Authentication: Uses OPENAI_API_KEY environment variable
  * - API Endpoint: https://openrouter.ai/api/v1/chat/completions
  * 
@@ -19,12 +19,12 @@ import axios from "axios";
  * 
  * Alternative models to consider:
  * - openai/gpt-4o (higher quality but more expensive)
- * - google/gemini-pro (good balance of cost and quality) 
+ * - openai/gpt-3.5-turbo (very cost-effective)
  * - anthropic/claude-2 (good for longer content)
  */
 
 /**
- * Generates a job description using OpenRouter API with gpt-3.5-turbo
+ * Generates a job description using OpenRouter API with google/gemini-2.0-flash-001
  * @param jobData Job data containing title, type, skills, and team context
  * @returns Generated job description
  */
