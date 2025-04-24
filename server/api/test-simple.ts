@@ -58,7 +58,7 @@ export function setupSimpleTestRoutes(app: Express) {
       
       // Request body
       const data = {
-        model: "gpt-4o",
+        model: "gemini-1.5-flash-latest",
         messages: [
           {
             role: "system",

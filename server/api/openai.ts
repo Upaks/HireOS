@@ -65,7 +65,7 @@ export async function generateJobDescription(jobData: {
     
     // Request body
     const data = {
-      model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024
+      model: "gemini-1.5-flash-latest", // Using Gemini Flash to reduce costs
       messages: [
         {
           role: "system",
