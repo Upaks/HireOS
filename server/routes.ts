@@ -25,22 +25,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupTestIntegrationRoutes(app);
   setupSimpleTestRoutes(app);
 
-  // Seed admin user if none exists
-  const adminUser = await storage.getUserByUsername("admin");
-  if (!adminUser) {
-    try {
-      await storage.createUser({
-        username: "admin",
-        password: "$2b$10$rQDofbHWiGq.mL0D9I3G4OwCR9OPAR5y4elqaHJ5wMqMAZxqUEsqm", // hashed "adminpassword"
-        fullName: "Admin User",
-        email: "admin@firmos.ai",
-        role: "admin"
-      });
-      console.log("Admin user created");
-    } catch (error) {
-      console.error("Error creating admin user:", error);
-    }
-  }
+  // We're using the rebuild-users.ts script to create users now
+  // The script creates users for each role with the password "justtesting"
 
   const httpServer = createServer(app);
 

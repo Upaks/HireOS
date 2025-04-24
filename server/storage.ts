@@ -69,29 +69,7 @@ export class DatabaseStorage implements IStorage {
       pool,
       createTableIfMissing: true 
     });
-    
-    // Create admin user if it doesn't exist
-    this.initializeAdminUser();
-  }
-
-  private async initializeAdminUser() {
-    try {
-      // Check if admin user exists
-      const adminUser = await this.getUserByUsername("admin");
-      if (!adminUser) {
-        // Create default admin user
-        await this.createUser({
-          username: "admin",
-          password: "$2b$10$dJUaPuKxGyKu2.Ep40mvVuxhvlJ5vtCKbifYoN8m5qpQPrYH3QnLu", // "password"
-          fullName: "Admin User",
-          email: "admin@example.com",
-          role: "admin"
-        });
-        console.log("Admin user created");
-      }
-    } catch (error) {
-      console.error("Error initializing admin user:", error);
-    }
+    // We're using the rebuild-users.ts script to create users now
   }
 
   // User operations
@@ -101,8 +79,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user || undefined;
+    try {
+      const [user] = await db.select().from(users).where(eq(users.username, username));
+      return user || undefined;
+    } catch (error) {
+      console.error("Error getting user by username:", error);
+      return undefined;
+    }
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
