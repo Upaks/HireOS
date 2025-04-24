@@ -237,7 +237,8 @@ export class MemStorage implements IStorage {
       hiPeopleCompletedAt: candidate.hiPeopleCompletedAt ?? null,
       experienceYears: candidate.experienceYears ?? null,
       expectedSalary: candidate.expectedSalary ?? null,
-      notes: candidate.notes ?? null
+      notes: candidate.notes ?? null,
+      job: null
     };
     
     this.candidates.set(id, newCandidate);

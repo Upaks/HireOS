@@ -4,8 +4,8 @@ import { scrapeHipeople, HiPeopleResult } from "./hipeople";
 
 // Test endpoints without authentication for development purposes
 export function setupSimpleTestRoutes(app: Express) {
-  // Simple test endpoint for OpenAI integration
-  app.post("/api/test/simple-openai", async (req, res) => {
+  // Simple test endpoint for OpenRouter integration
+  app.post("/api/test/simple-openrouter", async (req, res) => {
     try {
       const { title, type, skills, teamContext, department } = req.body;
       

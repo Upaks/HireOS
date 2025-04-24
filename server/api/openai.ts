@@ -65,7 +65,7 @@ export async function generateJobDescription(jobData: {
     
     // Request body
     const data = {
-      model: "gemini-1.5-flash-latest", // Using Gemini Flash to reduce costs
+      model: "anthropic/claude-3-haiku-20240307", // Using Claude Haiku to reduce costs
       messages: [
         {
           role: "system",
