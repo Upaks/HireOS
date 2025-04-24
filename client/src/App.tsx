@@ -9,10 +9,13 @@ import { ProtectedRoute } from "@/lib/protected-route";
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
 import Dashboard from "@/pages/dashboard";
+import Jobs from "@/pages/jobs";
 import CandidateScreener from "@/pages/candidate-screener";
+import Interviews from "@/pages/interviews";
 import InterviewGrading from "@/pages/interview-grading";
 import CooReview from "@/pages/coo-review";
 import Analytics from "@/pages/analytics";
+import Settings from "@/pages/settings";
 import { ThemeProvider } from "next-themes";
 import { UserRoles } from "@shared/schema";
 
@@ -22,31 +25,41 @@ function Router() {
       {/* Dashboard is accessible to all authenticated users */}
       <ProtectedRoute path="/" component={Dashboard} />
       
+      {/* Job Postings - accessible to all authenticated users */}
+      <ProtectedRoute path="/jobs" component={Jobs} />
+      
       {/* Candidate screening for HR and above */}
       <ProtectedRoute 
         path="/candidates" 
         component={CandidateScreener} 
-        roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN]}
+        roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]}
       />
+      
+      {/* Interviews page - accessible to all authenticated users */}
+      <ProtectedRoute path="/interviews" component={Interviews} />
       
       {/* Interview grading for all authenticated users */}
-      <ProtectedRoute 
-        path="/interviews/:id" 
-        component={InterviewGrading}
-      />
+      <ProtectedRoute path="/interviews/:id" component={InterviewGrading} />
       
-      {/* Final reviews for COO and Admin only */}
+      {/* Final reviews for COO, CEO and Admin only */}
       <ProtectedRoute 
         path="/reviews" 
         component={CooReview} 
-        roles={[UserRoles.COO, UserRoles.ADMIN]} 
+        roles={[UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]} 
       />
       
-      {/* Analytics for Project Managers, COO and Admin only */}
+      {/* Analytics for Project Managers, COO, CEO and Admin only */}
       <ProtectedRoute 
         path="/analytics" 
         component={Analytics}
-        roles={[UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN]}
+        roles={[UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]}
+      />
+      
+      {/* System Settings for COO, CEO and Admin only */}
+      <ProtectedRoute 
+        path="/settings" 
+        component={Settings}
+        roles={[UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]}
       />
       
       <Route path="/auth" component={AuthPage} />
