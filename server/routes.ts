@@ -7,6 +7,7 @@ import { setupInterviewRoutes } from "./api/interview";
 import { setupAnalyticsRoutes } from "./api/analytics";
 import { setupHiPeopleRoutes } from "./api/hipeople";
 import { setupTestIntegrationRoutes } from "./api/test-integration";
+import { setupSimpleTestRoutes } from "./api/test-simple";
 import { storage } from "./storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {

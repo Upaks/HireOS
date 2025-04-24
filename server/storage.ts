@@ -128,7 +128,9 @@ export class MemStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.userIdCounter++;
     const createdAt = new Date();
-    const user: User = { ...insertUser, id, createdAt };
+    // Ensure role is not undefined
+    const role = insertUser.role || 'hiring_manager';
+    const user: User = { ...insertUser, id, createdAt, role };
     this.users.set(id, user);
     return user;
   }
@@ -137,12 +139,25 @@ export class MemStorage implements IStorage {
   async createJob(job: InsertJob & { description: string; hiPeopleLink?: string; suggestedTitle?: string }): Promise<Job> {
     const id = this.jobIdCounter++;
     const now = new Date();
+    // Create the job object with required fields and appropriate null values
     const newJob: Job = {
-      ...job,
+      title: job.title,
+      type: job.type,
+      description: job.description,
       id,
-      status: job.status || "draft",
+      status: "draft",  // Set a default status
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      postedDate: null,
+      department: job.department ?? null,
+      urgency: job.urgency ?? null,
+      skills: job.skills ?? null,
+      teamContext: job.teamContext ?? null,
+      hiPeopleLink: job.hiPeopleLink ?? null,
+      suggestedTitle: job.suggestedTitle ?? null,
+      expressReview: job.expressReview === true ? true : null,
+      submitterId: job.submitterId ?? null,
+      candidateCount: 0
     };
     this.jobs.set(id, newJob);
     return newJob;
@@ -210,7 +225,19 @@ export class MemStorage implements IStorage {
       ...candidate,
       id,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      status: candidate.status || "new",
+      skills: candidate.skills || [],
+      phone: candidate.phone ?? null,
+      location: candidate.location ?? null,
+      resumeUrl: candidate.resumeUrl ?? null,
+      source: candidate.source ?? null,
+      hiPeopleScore: candidate.hiPeopleScore ?? null,
+      hiPeoplePercentile: candidate.hiPeoplePercentile ?? null,
+      hiPeopleCompletedAt: candidate.hiPeopleCompletedAt ?? null,
+      experienceYears: candidate.experienceYears ?? null,
+      expectedSalary: candidate.expectedSalary ?? null,
+      notes: candidate.notes ?? null
     };
     
     this.candidates.set(id, newCandidate);
@@ -275,11 +302,11 @@ export class MemStorage implements IStorage {
       candidateId: interviewData.candidateId!,
       type: interviewData.type || 'video',
       status: interviewData.status || 'scheduled',
-      scheduledDate: interviewData.scheduledDate,
-      conductedDate: interviewData.conductedDate,
-      interviewerId: interviewData.interviewerId,
-      videoUrl: interviewData.videoUrl,
-      notes: interviewData.notes,
+      scheduledDate: interviewData.scheduledDate || null,
+      conductedDate: interviewData.conductedDate || null,
+      interviewerId: interviewData.interviewerId || null,
+      videoUrl: interviewData.videoUrl || null,
+      notes: interviewData.notes || null,
       createdAt: now,
       updatedAt: now
     };
