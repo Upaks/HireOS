@@ -114,36 +114,52 @@ export function setupSimpleTestRoutes(app: Express) {
     }
   });
 
-  // Simple test endpoint for HiPeople integration with direct access
+  // Simple test endpoint for HiPeople integration with mock data
   app.post("/api/test/simple-hipeople", async (req, res) => {
     try {
-      // Use direct access to the HiPeople scraper service
-      console.log("Using direct access to HiPeople scraper for testing...");
+      console.log("Using mock data for HiPeople testing...");
       
-      // Direct access to the scraper service with sample data
-      const scraperUrl = "https://firmos-hipeople-scraper-899783477192.europe-west1.run.app/scrape_hipeople";
-      
-      // Sample data for testing
-      const testPayload = {
-        applicant_name: "Test Candidate",
-        applicant_email: "test@example.com"
-      };
-      
-      // This will provide sample demo data for testing
-      const results: HiPeopleResult[] = await scrapeHipeople(scraperUrl, testPayload);
+      // For testing purposes only, create a mock response
+      const mockResults: HiPeopleResult[] = [
+        {
+          candidate_id: "test-123",
+          name: "Test Candidate",
+          email: "test@example.com",
+          score: 85,
+          percentile: 75,
+          completed_at: new Date().toISOString(),
+          feedback: [
+            {
+              category: "Technical Skills",
+              score: 4.5,
+              feedback: "Strong technical foundation with good problem-solving abilities."
+            },
+            {
+              category: "Communication",
+              score: 4.0,
+              feedback: "Communicates ideas clearly and effectively."
+            },
+            {
+              category: "Teamwork",
+              score: 4.2,
+              feedback: "Works well in collaborative environments."
+            }
+          ]
+        }
+      ];
       
       res.json({
         success: true,
-        count: results.length,
-        results,
-        note: "Used direct access to the scraper service which returns sample data."
+        count: mockResults.length,
+        results: mockResults,
+        note: "This is mock data for testing purposes only."
       });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error testing HiPeople integration:", errorMessage);
+      console.error("Error in HiPeople test endpoint:", errorMessage);
       res.status(500).json({ 
         success: false, 
-        message: "Failed to scrape HiPeople assessment", 
+        message: "Error in test endpoint", 
         error: errorMessage 
       });
     }

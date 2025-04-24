@@ -6,6 +6,24 @@ import { handleApiError } from "./utils";
 // HiPeople scraping service URL
 const HIPEOPLE_SCRAPER_URL = "https://firmos-hipeople-scraper-899783477192.europe-west1.run.app/scrape_hipeople";
 
+/**
+ * IMPORTANT NOTES FOR HIPEOPLE SCRAPER API:
+ * 
+ * The HiPeople scraper API requires specific parameters to function properly:
+ * - applicant_name: The candidate's name
+ * - applicant_email: The candidate's email address
+ * 
+ * These parameters should be sent as query parameters with a POST request.
+ * 
+ * Current implementation issues:
+ * - 422 Error: "Field required" when parameters are missing
+ * - 405 Error: "Method Not Allowed" when using GET instead of POST
+ * - Timeout: No response received within 30 seconds
+ * 
+ * For development and testing, we're using a mock implementation.
+ * In production, the actual API integration will need to be configured properly.
+ */
+
 // Interface for HiPeople assessment results
 export interface HiPeopleResult {
   candidate_id: string;

@@ -1,7 +1,30 @@
 import axios from "axios";
 
 /**
- * Generates a job description using OpenRouter API with GPT-4o
+ * OPENROUTER API INTEGRATION NOTES:
+ * 
+ * This module implements job description generation using the OpenRouter API.
+ * OpenRouter allows us to choose from a variety of LLM models with different 
+ * pricing and capabilities.
+ * 
+ * Current configuration:
+ * - Model: openai/gpt-3.5-turbo (cost-effective option)
+ * - Authentication: Uses OPENAI_API_KEY environment variable
+ * - API Endpoint: https://openrouter.ai/api/v1/chat/completions
+ * 
+ * For authentication:
+ * 1. Create an account at https://openrouter.ai/
+ * 2. Generate an API key
+ * 3. Set the OPENAI_API_KEY environment variable with this value
+ * 
+ * Alternative models to consider:
+ * - openai/gpt-4o (higher quality but more expensive)
+ * - google/gemini-pro (good balance of cost and quality) 
+ * - anthropic/claude-2 (good for longer content)
+ */
+
+/**
+ * Generates a job description using OpenRouter API with gpt-3.5-turbo
  * @param jobData Job data containing title, type, skills, and team context
  * @returns Generated job description
  */
