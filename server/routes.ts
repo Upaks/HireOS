@@ -21,6 +21,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupAnalyticsRoutes(app);
   setupHiPeopleRoutes(app);
   setupTestIntegrationRoutes(app);
+  setupSimpleTestRoutes(app);
 
   // Seed admin user if none exists
   const adminUser = await storage.getUserByUsername("admin");
