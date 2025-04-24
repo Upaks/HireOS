@@ -113,23 +113,23 @@ export function setupSimpleTestRoutes(app: Express) {
     }
   });
 
-  // Simple test endpoint for HiPeople integration
+  // Simple test endpoint for HiPeople integration with direct access
   app.post("/api/test/simple-hipeople", async (req, res) => {
     try {
-      const { url } = req.body;
+      // Use direct access to the HiPeople scraper service
+      console.log("Using direct access to HiPeople scraper for testing...");
       
-      if (!url) {
-        return res.status(400).json({ message: "HiPeople assessment URL is required" });
-      }
+      // Direct access to the scraper service
+      const scraperUrl = "https://firmos-hipeople-scraper-899783477192.europe-west1.run.app/scrape_hipeople";
       
-      console.log(`Scraping HiPeople assessment from ${url} (non-authenticated test)`);
-      
-      const results: HiPeopleResult[] = await scrapeHipeople(url);
+      // This will provide sample demo data for testing
+      const results: HiPeopleResult[] = await scrapeHipeople(scraperUrl);
       
       res.json({
         success: true,
         count: results.length,
-        results
+        results,
+        note: "Used direct access to the scraper service which returns sample data."
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
