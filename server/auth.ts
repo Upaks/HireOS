@@ -15,7 +15,7 @@ declare global {
 
 const scryptAsync = promisify(scrypt);
 
-async function hashPassword(password: string) {
+export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
   const buf = (await scryptAsync(password, salt, 64)) as Buffer;
   return `${buf.toString("hex")}.${salt}`;
@@ -128,15 +128,44 @@ export function setupAuth(app: Express) {
   });
 
   // Middleware to check authorization
+  
+  // Admin routes - accessible by ADMIN, CEO, and COO
   app.use("/api/admin", (req, res, next) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
-    if (req.user?.role !== UserRoles.ADMIN) return res.sendStatus(403);
+    const userRole = req.user?.role as string;
+    if (![UserRoles.ADMIN, UserRoles.CEO, UserRoles.COO].includes(userRole as any)) {
+      return res.sendStatus(403);
+    }
     next();
   });
 
+  // COO routes - accessible by COO, CEO, and ADMIN 
   app.use("/api/coo", (req, res, next) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
-    if (req.user?.role !== UserRoles.COO && req.user?.role !== UserRoles.ADMIN) return res.sendStatus(403);
+    const userRole = req.user?.role as string;
+    if (![UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN].includes(userRole as any)) {
+      return res.sendStatus(403);
+    }
+    next();
+  });
+  
+  // CEO routes - accessible by CEO and ADMIN only
+  app.use("/api/ceo", (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userRole = req.user?.role as string;
+    if (![UserRoles.CEO, UserRoles.ADMIN].includes(userRole as any)) {
+      return res.sendStatus(403);
+    }
+    next();
+  });
+  
+  // User management routes - accessible by COO, CEO, and ADMIN only
+  app.use("/api/users", (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userRole = req.user?.role as string;
+    if (![UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN].includes(userRole as any)) {
+      return res.sendStatus(403);
+    }
     next();
   });
 }

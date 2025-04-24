@@ -6,6 +6,7 @@ import { setupCandidateRoutes } from "./api/candidate";
 import { setupInterviewRoutes } from "./api/interview";
 import { setupAnalyticsRoutes } from "./api/analytics";
 import { setupHiPeopleRoutes } from "./api/hipeople";
+import { setupUserRoutes } from "./api/users";
 import { setupTestIntegrationRoutes } from "./api/test-integration";
 import { setupSimpleTestRoutes } from "./api/test-simple";
 import { storage } from "./storage";
@@ -20,6 +21,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupInterviewRoutes(app);
   setupAnalyticsRoutes(app);
   setupHiPeopleRoutes(app);
+  setupUserRoutes(app);
   setupTestIntegrationRoutes(app);
   setupSimpleTestRoutes(app);
 
