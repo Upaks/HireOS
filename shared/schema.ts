@@ -34,7 +34,7 @@ export const jobs = pgTable("jobs", {
   teamContext: text("team_context"),
   status: text("status").notNull().default("draft"), // draft, pending, active, closed
   hiPeopleLink: text("hi_people_link"),
-  expressReview: boolean("express_review").default(false),
+  expressReview: boolean("express_review"),
   submitterId: integer("submitter_id").references(() => users.id),
   postedDate: timestamp("posted_date"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -50,13 +50,14 @@ export const insertJobSchema = createInsertSchema(jobs)
     urgency: true,
     skills: true,
     teamContext: true,
-    expressReview: true,
     submitterId: true,
     status: true
   })
   .extend({
     // Adding status field with default value of 'draft'
-    status: z.enum(['draft', 'review', 'active', 'closed']).default('draft')
+    status: z.enum(['draft', 'review', 'active', 'closed']).default('draft'),
+    // Make expressReview optional to avoid type issues
+    expressReview: z.boolean().optional()
   });
 
 // Job Posting Platforms
