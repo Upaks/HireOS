@@ -23,11 +23,26 @@ export interface HiPeopleResult {
 export async function scrapeHipeople(assessmentUrl: string): Promise<HiPeopleResult[]> {
   try {
     // Call the HiPeople scraper API
+    console.log(`Fetching HiPeople assessments from ${assessmentUrl}`);
     const response = await axios.post(HI_PEOPLE_SCRAPER_URL, { url: assessmentUrl });
+    
+    if (!response.data || !response.data.results) {
+      throw new Error("Invalid response format from HiPeople scraper");
+    }
+    
+    console.log(`Found ${response.data.results.length} assessment results`);
     return response.data.results;
   } catch (error) {
-    console.error("Error calling HiPeople scraper:", error);
-    throw new Error("Failed to fetch HiPeople assessment results");
+    if (axios.isAxiosError(error)) {
+      // Handle axios-specific errors
+      const message = error.response?.data?.message || error.message;
+      console.error(`HiPeople API error (${error.code}): ${message}`);
+      throw new Error(`HiPeople scraper API error: ${message}`);
+    } else {
+      // Handle other errors
+      console.error("Error calling HiPeople scraper:", error);
+      throw new Error(error instanceof Error ? error.message : "Failed to fetch HiPeople assessment results");
+    }
   }
 }
 
@@ -124,8 +139,9 @@ export function setupHiPeopleRoutes(app: Express) {
           results: hiPeopleResults
         });
       } catch (error) {
-        console.error("Error updating HiPeople assessments:", error);
-        return res.status(500).json({ message: "Failed to update assessments", error: error.message });
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error("Error updating HiPeople assessments:", errorMessage);
+        return res.status(500).json({ message: "Failed to update assessments", error: errorMessage });
       }
     } catch (error) {
       handleApiError(error, res);
@@ -214,8 +230,9 @@ export function setupHiPeopleRoutes(app: Express) {
           }
         });
       } catch (error) {
-        console.error("Error fetching HiPeople assessment:", error);
-        return res.status(500).json({ message: "Failed to fetch assessment", error: error.message });
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error("Error fetching HiPeople assessment:", errorMessage);
+        return res.status(500).json({ message: "Failed to fetch assessment", error: errorMessage });
       }
     } catch (error) {
       handleApiError(error, res);

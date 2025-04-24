@@ -35,9 +35,7 @@ export function setupAuth(app: Express) {
     secret: process.env.SESSION_SECRET || "hireos-development-secret",
     resave: false,
     saveUninitialized: false,
-    store: new MemoryStore({
-      checkPeriod: 86400000, // prune expired entries every 24h
-    }),
+    store: storage.sessionStore,
     cookie: {
       secure: process.env.NODE_ENV === "production",
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
@@ -104,11 +102,11 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/login", (req, res, next) => {
-    passport.authenticate("local", (err, user, info) => {
+    passport.authenticate("local", (err: Error | null, user: SelectUser | false, info: { message: string } | undefined) => {
       if (err) return next(err);
-      if (!user) return res.status(401).json({ message: info.message || "Authentication failed" });
+      if (!user) return res.status(401).json({ message: info?.message || "Authentication failed" });
 
-      req.login(user, (err) => {
+      req.login(user, (err: Error | null) => {
         if (err) return next(err);
         // Remove password from response
         const { password, ...userWithoutPassword } = user;
