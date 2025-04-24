@@ -23,10 +23,14 @@ export interface HiPeopleResult {
 
 /**
  * Scrapes HiPeople assessment results from the given URL
- * @param assessmentUrl HiPeople assessment URL to scrape
+ * @param assessmentUrl HiPeople assessment URL to scrape or the scraper service URL
+ * @param testData Optional test data with applicant information
  * @returns Array of HiPeople assessment results
  */
-export async function scrapeHipeople(assessmentUrl?: string): Promise<HiPeopleResult[]> {
+export async function scrapeHipeople(
+  assessmentUrl?: string, 
+  testData?: { applicant_name: string; applicant_email: string }
+): Promise<HiPeopleResult[]> {
   try {
     // If this is a direct call to the scraper service, we don't need to pass a URL
     const isDirect = assessmentUrl === HIPEOPLE_SCRAPER_URL || !assessmentUrl;
@@ -44,7 +48,28 @@ export async function scrapeHipeople(assessmentUrl?: string): Promise<HiPeopleRe
     console.log(`Scraping HiPeople assessment${urlToUse ? ': ' + urlToUse : ' (direct access)'}`);
 
     // Set up the request payload
-    const payload = urlToUse ? { url: urlToUse } : {};
+    let payload: any = {};
+    
+    if (urlToUse) {
+      payload.url = urlToUse;
+    }
+    
+    // Add test data if provided
+    if (testData) {
+      payload = {
+        ...payload,
+        ...testData
+      };
+    } else if (isDirect) {
+      // Provide default test data if needed and we're using direct access
+      payload = {
+        ...payload,
+        applicant_name: "Sample Candidate",
+        applicant_email: "sample@example.com"
+      };
+    }
+    
+    console.log("HiPeople request payload:", payload);
     
     // Call the HiPeople scraper service
     const response = await axios.post(HIPEOPLE_SCRAPER_URL, payload, {

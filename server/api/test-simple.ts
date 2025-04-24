@@ -58,7 +58,7 @@ export function setupSimpleTestRoutes(app: Express) {
       
       // Request body
       const data = {
-        model: "gemini-1.5-flash-latest",
+        model: "openai/gpt-3.5-turbo", // Using a more cost-effective model
         messages: [
           {
             role: "system",
@@ -120,11 +120,17 @@ export function setupSimpleTestRoutes(app: Express) {
       // Use direct access to the HiPeople scraper service
       console.log("Using direct access to HiPeople scraper for testing...");
       
-      // Direct access to the scraper service
+      // Direct access to the scraper service with sample data
       const scraperUrl = "https://firmos-hipeople-scraper-899783477192.europe-west1.run.app/scrape_hipeople";
       
+      // Sample data for testing
+      const testPayload = {
+        applicant_name: "Test Candidate",
+        applicant_email: "test@example.com"
+      };
+      
       // This will provide sample demo data for testing
-      const results: HiPeopleResult[] = await scrapeHipeople(scraperUrl);
+      const results: HiPeopleResult[] = await scrapeHipeople(scraperUrl, testPayload);
       
       res.json({
         success: true,

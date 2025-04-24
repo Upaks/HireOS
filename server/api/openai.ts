@@ -65,7 +65,7 @@ export async function generateJobDescription(jobData: {
     
     // Request body
     const data = {
-      model: "anthropic/claude-3-haiku-20240307", // Using Claude Haiku to reduce costs
+      model: "openai/gpt-3.5-turbo", // Using a more cost-effective model
       messages: [
         {
           role: "system",
