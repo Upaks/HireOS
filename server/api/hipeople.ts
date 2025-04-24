@@ -71,8 +71,9 @@ export async function scrapeHipeople(
     
     console.log("HiPeople request payload:", payload);
     
-    // Call the HiPeople scraper service
-    const response = await axios.post(HIPEOPLE_SCRAPER_URL, payload, {
+    // Call the HiPeople scraper service with POST
+    const response = await axios.post(HIPEOPLE_SCRAPER_URL, null, {
+      params: payload,
       headers: {
         "Content-Type": "application/json",
       },
