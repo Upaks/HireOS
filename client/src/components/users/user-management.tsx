@@ -1,17 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import AppShell from "@/components/layout/app-shell";
-import TopBar from "@/components/layout/top-bar";
-import { User, UserRoles } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -19,7 +13,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Loader2, UserPlus, Pencil, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from "@/components/ui/dialog";
-import UserManagement from "@/components/users/user-management";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { User, UserRoles } from "@shared/schema";
 
 // Form schema for creating a new user
 const userFormSchema = z.object({
@@ -32,7 +27,7 @@ const userFormSchema = z.object({
 
 type UserFormData = z.infer<typeof userFormSchema>;
 
-export default function Settings() {
+export default function UserManagement() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [showNewUserDialog, setShowNewUserDialog] = useState(false);
@@ -208,90 +203,86 @@ export default function Settings() {
     return role === 'admin' || role === 'ceo' || role === 'coo';
   };
 
-  if (!canManageUsers) {
-    return (
-      <AppShell>
-        <TopBar title="Settings" />
-        <div className="bg-slate-50 p-4 sm:p-6 lg:p-8">
-          <div className="flex items-center justify-center min-h-[60vh] flex-col gap-4 text-center max-w-md mx-auto">
-            <div className="rounded-full bg-destructive/10 p-6 w-24 h-24 flex items-center justify-center">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-12 w-12 text-destructive"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 15v2m0 0v2m0-2h2m-2 0H10m10-6H4a2 2 0 01-2-2V7a2 2 0 012-2h16a2 2 0 012 2v4a2 2 0 01-2 2z"
-                />
-              </svg>
-            </div>
-            <h1 className="text-3xl font-bold text-destructive">Access Denied</h1>
-            <p className="text-muted-foreground mb-4">
-              Only administrators, CEOs, and COOs can access system settings.
-            </p>
-          </div>
-        </div>
-      </AppShell>
-    );
-  }
-  
   return (
-    <AppShell>
-      <TopBar title="System Settings" />
-      
-      <div className="bg-slate-50 p-4 sm:p-6 lg:p-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-slate-900">System Settings</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Manage users, permissions, and system configuration
-          </p>
-        </div>
-        
-        <Tabs defaultValue="users" className="w-full">
-          <TabsList className="mb-4">
-            <TabsTrigger value="users">User Management</TabsTrigger>
-            <TabsTrigger value="system">System Configuration</TabsTrigger>
-            <TabsTrigger value="integrations">Integrations</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="users">
-            <UserManagement />
-          </TabsContent>
-          
-          <TabsContent value="system">
-            <Card>
-              <CardHeader>
-                <CardTitle>System Configuration</CardTitle>
-                <CardDescription>Manage system-wide settings and preferences</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-center py-12 text-slate-500">
-                  System configuration settings coming soon
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          
-          <TabsContent value="integrations">
-            <Card>
-              <CardHeader>
-                <CardTitle>Integrations</CardTitle>
-                <CardDescription>Connect HireOS with external services and APIs</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-center py-12 text-slate-500">
-                  Integration settings coming soon
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>User Management</CardTitle>
+            <CardDescription>Manage user accounts and permissions</CardDescription>
+          </div>
+          <Button onClick={() => handleNewUserDialogChange(true)} className="flex items-center gap-1">
+            <UserPlus className="h-4 w-4" />
+            <span>Add User</span>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {isLoadingUsers ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead className="w-[100px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {users.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell>
+                      <div>
+                        <div className="font-medium">{user.fullName}</div>
+                        <div className="text-sm text-slate-500">{user.username}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>
+                      <div className={`px-2 py-1 inline-block rounded-full text-xs ${
+                        isAdminOrExecutive(user.role) 
+                          ? 'bg-primary/10 text-primary' 
+                          : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {formatRoleName(user.role)}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => handleEditUser(user)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => handleDeleteUser(user.id)}
+                          className="text-destructive hover:text-destructive/80 hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {users.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-8 text-slate-500">
+                      No users found
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
       
       {/* New User Dialog */}
       <Dialog open={showNewUserDialog} onOpenChange={handleNewUserDialogChange}>
@@ -528,6 +519,6 @@ export default function Settings() {
           </Form>
         </DialogContent>
       </Dialog>
-    </AppShell>
+    </>
   );
 }

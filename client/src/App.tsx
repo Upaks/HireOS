@@ -16,6 +16,7 @@ import InterviewGrading from "@/pages/interview-grading";
 import CooReview from "@/pages/coo-review";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
+import AdminPage from "@/pages/admin";
 import { ThemeProvider } from "next-themes";
 import { UserRoles } from "@shared/schema";
 
@@ -60,6 +61,13 @@ function Router() {
         path="/settings" 
         component={Settings}
         roles={[UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]}
+      />
+      
+      {/* Admin Telemetry Page for admins only */}
+      <ProtectedRoute 
+        path="/admin" 
+        component={AdminPage}
+        roles={[UserRoles.ADMIN]}
       />
       
       <Route path="/auth" component={AuthPage} />
