@@ -205,6 +205,7 @@ export type NotificationQueueItem = typeof notificationQueue.$inferSelect;
 // Role type
 export const UserRoles = {
   HIRING_MANAGER: 'hiringManager',
+  PROJECT_MANAGER: 'projectManager',
   COO: 'coo',
   ADMIN: 'admin',
 } as const;

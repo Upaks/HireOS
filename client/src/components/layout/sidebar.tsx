@@ -32,36 +32,39 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
     logoutMutation.mutate();
   };
   
+  // Define the type for role to fix TypeScript issues
+  type UserRoleValue = typeof UserRoles[keyof typeof UserRoles];
+  
   const navItems = [
     {
       title: "Dashboard",
       icon: <LayoutDashboard className="h-5 w-5 mr-3" />,
       href: "/",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.COO, UserRoles.ADMIN]
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN] as UserRoleValue[]
     },
     {
       title: "Job Postings",
       icon: <FileText className="h-5 w-5 mr-3" />,
       href: "/jobs",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.COO, UserRoles.ADMIN]
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN] as UserRoleValue[]
     },
     {
       title: "Candidates",
       icon: <Users className="h-5 w-5 mr-3" />,
       href: "/candidates",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.COO, UserRoles.ADMIN]
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN] as UserRoleValue[]
     },
     {
       title: "Interviews",
       icon: <Calendar className="h-5 w-5 mr-3" />,
       href: "/interviews",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.COO, UserRoles.ADMIN]
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN] as UserRoleValue[]
     },
     {
       title: "Analytics",
       icon: <BarChart3 className="h-5 w-5 mr-3" />,
       href: "/analytics",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.COO, UserRoles.ADMIN]
+      roles: [UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN] as UserRoleValue[]
     }
   ];
   
@@ -70,7 +73,7 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
       title: "Final Approvals",
       icon: <CheckCircle className="h-5 w-5 mr-3" />,
       href: "/reviews",
-      roles: [UserRoles.COO, UserRoles.ADMIN]
+      roles: [UserRoles.COO, UserRoles.ADMIN] as UserRoleValue[]
     }
   ];
   
@@ -79,27 +82,27 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
       title: "System Settings",
       icon: <Settings className="h-5 w-5 mr-3" />,
       href: "/settings",
-      roles: [UserRoles.ADMIN]
+      roles: [UserRoles.ADMIN] as UserRoleValue[]
     },
     {
       title: "Telemetry",
       icon: <Activity className="h-5 w-5 mr-3" />,
       href: "/admin",
-      roles: [UserRoles.ADMIN]
+      roles: [UserRoles.ADMIN] as UserRoleValue[]
     }
   ];
   
   // Filter navigation items by user role
   const filteredNavItems = navItems.filter(item => 
-    !item.roles || item.roles.includes(user?.role as UserRoles)
+    !item.roles || item.roles.includes(user?.role as string)
   );
   
   const filteredCooItems = cooItems.filter(item => 
-    !item.roles || item.roles.includes(user?.role as UserRoles)
+    !item.roles || item.roles.includes(user?.role as string)
   );
   
   const filteredAdminItems = adminItems.filter(item => 
-    !item.roles || item.roles.includes(user?.role as UserRoles)
+    !item.roles || item.roles.includes(user?.role as string)
   );
   
   const handleNavigation = () => {
@@ -194,9 +197,11 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
               <p className="text-xs text-sidebar-foreground/70">{
                 user.role === UserRoles.HIRING_MANAGER 
                   ? "Hiring Manager" 
-                  : user.role === UserRoles.COO 
-                    ? "Chief Operating Officer" 
-                    : "Administrator"
+                  : user.role === UserRoles.PROJECT_MANAGER
+                    ? "Project Manager"
+                    : user.role === UserRoles.COO 
+                      ? "Chief Operating Officer" 
+                      : "Administrator"
               }</p>
             </div>
             <Button 

@@ -19,15 +19,36 @@ import { UserRoles } from "@shared/schema";
 function Router() {
   return (
     <Switch>
+      {/* Dashboard is accessible to all authenticated users */}
       <ProtectedRoute path="/" component={Dashboard} />
-      <ProtectedRoute path="/candidates" component={CandidateScreener} />
-      <ProtectedRoute path="/interviews/:id" component={InterviewGrading} />
+      
+      {/* Candidate screening for HR and above */}
+      <ProtectedRoute 
+        path="/candidates" 
+        component={CandidateScreener} 
+        roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN]}
+      />
+      
+      {/* Interview grading for all authenticated users */}
+      <ProtectedRoute 
+        path="/interviews/:id" 
+        component={InterviewGrading}
+      />
+      
+      {/* Final reviews for COO and Admin only */}
       <ProtectedRoute 
         path="/reviews" 
         component={CooReview} 
         roles={[UserRoles.COO, UserRoles.ADMIN]} 
       />
-      <ProtectedRoute path="/analytics" component={Analytics} />
+      
+      {/* Analytics for Project Managers, COO and Admin only */}
+      <ProtectedRoute 
+        path="/analytics" 
+        component={Analytics}
+        roles={[UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN]}
+      />
+      
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>
