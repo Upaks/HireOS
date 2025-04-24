@@ -1,12 +1,7 @@
-import OpenAI from "openai";
-
-// initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+import axios from "axios";
 
 /**
- * Generates a job description using OpenAI GPT-4o
+ * Generates a job description using OpenRouter API with GPT-4o
  * @param jobData Job data containing title, type, skills, and team context
  * @returns Generated job description
  */
@@ -57,11 +52,20 @@ export async function generateJobDescription(jobData: {
     
     prompt += "Additionally, if you think the job title could be improved or modernized, suggest a better title in a separate suggestion at the end of your response using the format: SUGGESTED_TITLE: [your title suggestion].";
     
-    console.log("Sending job description prompt to OpenAI...");
+    console.log("Sending job description prompt to OpenRouter...");
     
-    // Call OpenAI API
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    // OpenRouter endpoint and configuration
+    const url = 'https://openrouter.ai/api/v1/chat/completions';
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+      'HTTP-Referer': 'https://replit.com',
+      'X-Title': 'HireOS Job Description Generator'
+    };
+    
+    // Request body
+    const data = {
+      model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024
       messages: [
         {
           role: "system",
@@ -74,9 +78,13 @@ export async function generateJobDescription(jobData: {
       ],
       temperature: 0.7,
       max_tokens: 1200
-    });
+    };
     
-    const content = response.choices[0].message.content || "";
+    // Make the API request directly with axios
+    const response = await axios.post(url, data, { headers });
+    
+    // Parse the response
+    const content = response.data.choices[0].message.content || "";
     
     // Check if there's a suggested title
     let suggestedTitle: string | undefined;
@@ -92,7 +100,13 @@ export async function generateJobDescription(jobData: {
     
     return { description, suggestedTitle };
   } catch (error) {
-    console.error("Error generating job description:", error);
-    throw error;
+    // Handle error response properly
+    const errorResponse = error.response?.data;
+    const errorMessage = errorResponse 
+      ? `${errorResponse.error?.message || JSON.stringify(errorResponse)}`
+      : (error instanceof Error ? error.message : String(error));
+    
+    console.error("Error generating job description:", errorMessage);
+    throw new Error(errorMessage);
   }
 }

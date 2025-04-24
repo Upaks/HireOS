@@ -1,5 +1,5 @@
 import { Express } from "express";
-import { generateJobDescription } from "./openai";
+import axios from "axios";
 import { scrapeHipeople, HiPeopleResult } from "./hipeople";
 
 // Test endpoints without authentication for development purposes
@@ -13,24 +13,98 @@ export function setupSimpleTestRoutes(app: Express) {
         return res.status(400).json({ message: "Job title is required" });
       }
       
-      console.log(`Generating job description for ${title} (non-authenticated test)`);
+      console.log(`Generating job description for ${title} (non-authenticated test with OpenRouter)`);
       
-      const result = await generateJobDescription({
-        title,
-        type,
-        skills,
-        teamContext,
-        department
-      });
+      // Create prompt based on available data
+      let prompt = `Please write a professional job description for a ${title} position`;
+      
+      if (type) {
+        prompt += ` (${type})`;
+      }
+      
+      if (department) {
+        prompt += ` in the ${department} department`;
+      }
+      
+      prompt += ".\n\n";
+      
+      prompt += "The job description should include the following sections:\n";
+      prompt += "1. About the Company (keep this generic and professional)\n";
+      prompt += "2. Job Overview\n";
+      prompt += "3. Responsibilities\n";
+      prompt += "4. Qualifications\n";
+      prompt += "5. Benefits (keep these standard and professional)\n\n";
+      
+      if (skills) {
+        prompt += `Required skills include: ${skills}.\n\n`;
+      }
+      
+      if (teamContext) {
+        prompt += `Team context: ${teamContext}.\n\n`;
+      }
+      
+      prompt += "Format the job description using markdown syntax. Keep the tone professional and approachable.\n\n";
+      
+      prompt += "Additionally, if you think the job title could be improved or modernized, suggest a better title in a separate suggestion at the end of your response using the format: SUGGESTED_TITLE: [your title suggestion].";
+      
+      // OpenRouter endpoint and configuration
+      const url = 'https://openrouter.ai/api/v1/chat/completions';
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'HTTP-Referer': 'https://replit.com',
+        'X-Title': 'HireOS Job Description Generator'
+      };
+      
+      // Request body
+      const data = {
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert HR professional who specializes in writing compelling job descriptions."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1200
+      };
+      
+      // Make the API request directly with axios
+      const response = await axios.post(url, data, { headers });
+      
+      // Parse the response
+      const content = response.data.choices[0].message.content || "";
+      
+      // Check if there's a suggested title
+      let suggestedTitle: string | undefined;
+      const suggestedTitleMatch = content.match(/SUGGESTED_TITLE:\s*(.+?)($|\n)/);
+      
+      let description = content;
+      
+      if (suggestedTitleMatch && suggestedTitleMatch[1]) {
+        suggestedTitle = suggestedTitleMatch[1].trim();
+        // Remove the suggestion from the description
+        description = content.replace(/SUGGESTED_TITLE:\s*(.+?)($|\n)/, "").trim();
+      }
       
       res.json({
         success: true,
-        description: result.description,
-        suggestedTitle: result.suggestedTitle
+        description: description,
+        suggestedTitle: suggestedTitle
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error testing OpenAI integration:", errorMessage);
+      // Handle error response properly
+      const errorResponse = error.response?.data;
+      const errorMessage = errorResponse 
+        ? `${errorResponse.error?.message || JSON.stringify(errorResponse)}`
+        : (error instanceof Error ? error.message : String(error));
+      
+      console.error("Error testing OpenRouter integration:", errorMessage);
+      
       res.status(500).json({ 
         success: false, 
         message: "Failed to generate job description", 

@@ -2,9 +2,14 @@
 
 import OpenAI from 'openai';
 
-// Initialize OpenAI client
+// Initialize OpenAI client with OpenRouter API configuration
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: "https://openrouter.ai/api/v1",
+  defaultHeaders: {
+    "HTTP-Referer": "https://replit.com", // The URL of your site
+    "X-Title": "HireOS Test"              // The title of your app
+  }
 });
 
 async function testOpenAI() {
