@@ -32,78 +32,83 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
     logoutMutation.mutate();
   };
   
-  // Define the type for role to fix TypeScript issues
+  // Type declarations for nav items and roles
   type UserRoleValue = typeof UserRoles[keyof typeof UserRoles];
   
-  const navItems = [
+  interface NavItem {
+    title: string;
+    icon: React.ReactNode;
+    href: string;
+    roles: UserRoleValue[];
+  }
+  
+  const navItems: NavItem[] = [
     {
       title: "Dashboard",
       icon: <LayoutDashboard className="h-5 w-5 mr-3" />,
       href: "/",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN] as UserRoleValue[]
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN]
     },
     {
       title: "Job Postings",
       icon: <FileText className="h-5 w-5 mr-3" />,
       href: "/jobs",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN] as UserRoleValue[]
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN]
     },
     {
       title: "Candidates",
       icon: <Users className="h-5 w-5 mr-3" />,
       href: "/candidates",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN] as UserRoleValue[]
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN]
     },
     {
       title: "Interviews",
       icon: <Calendar className="h-5 w-5 mr-3" />,
       href: "/interviews",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN] as UserRoleValue[]
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN]
     },
     {
       title: "Analytics",
       icon: <BarChart3 className="h-5 w-5 mr-3" />,
       href: "/analytics",
-      roles: [UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN] as UserRoleValue[]
+      roles: [UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.ADMIN]
     }
   ];
   
-  const cooItems = [
+  const cooItems: NavItem[] = [
     {
       title: "Final Approvals",
       icon: <CheckCircle className="h-5 w-5 mr-3" />,
       href: "/reviews",
-      roles: [UserRoles.COO, UserRoles.ADMIN] as UserRoleValue[]
+      roles: [UserRoles.COO, UserRoles.ADMIN]
     }
   ];
   
-  const adminItems = [
+  const adminItems: NavItem[] = [
     {
       title: "System Settings",
       icon: <Settings className="h-5 w-5 mr-3" />,
       href: "/settings",
-      roles: [UserRoles.ADMIN] as UserRoleValue[]
+      roles: [UserRoles.ADMIN]
     },
     {
       title: "Telemetry",
       icon: <Activity className="h-5 w-5 mr-3" />,
       href: "/admin",
-      roles: [UserRoles.ADMIN] as UserRoleValue[]
+      roles: [UserRoles.ADMIN]
     }
   ];
   
+  // Helper function to check if the user's role is allowed
+  const isRoleAllowed = (allowedRoles: UserRoleValue[]): boolean => {
+    if (!user?.role) return false;
+    return allowedRoles.includes(user.role as UserRoleValue);
+  };
+  
   // Filter navigation items by user role
-  const filteredNavItems = navItems.filter(item => 
-    !item.roles || item.roles.includes(user?.role as string)
-  );
-  
-  const filteredCooItems = cooItems.filter(item => 
-    !item.roles || item.roles.includes(user?.role as string)
-  );
-  
-  const filteredAdminItems = adminItems.filter(item => 
-    !item.roles || item.roles.includes(user?.role as string)
-  );
+  const filteredNavItems = navItems.filter(item => isRoleAllowed(item.roles));
+  const filteredCooItems = cooItems.filter(item => isRoleAllowed(item.roles));
+  const filteredAdminItems = adminItems.filter(item => isRoleAllowed(item.roles));
   
   const handleNavigation = () => {
     if (onCloseMobileMenu) {
