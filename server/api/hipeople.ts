@@ -1,11 +1,12 @@
 import { Express } from "express";
 import axios from "axios";
-import { z } from "zod";
 import { storage } from "../storage";
-import { handleApiError, validateRequest } from "./utils";
+import { handleApiError } from "./utils";
 
-const HI_PEOPLE_SCRAPER_URL = "https://firmos-hipeople-scraper-899783477192.europe-west1.run.app/scrape_hipeople";
+// HiPeople scraping service URL
+const HIPEOPLE_SCRAPER_URL = "https://firmos-hipeople-scraper-899783477192.europe-west1.run.app/scrape_hipeople";
 
+// Interface for HiPeople assessment results
 export interface HiPeopleResult {
   candidate_id: string;
   name: string;
@@ -20,47 +21,75 @@ export interface HiPeopleResult {
   }[];
 }
 
+/**
+ * Scrapes HiPeople assessment results from the given URL
+ * @param assessmentUrl HiPeople assessment URL to scrape
+ * @returns Array of HiPeople assessment results
+ */
 export async function scrapeHipeople(assessmentUrl: string): Promise<HiPeopleResult[]> {
   try {
-    // Call the HiPeople scraper API
-    console.log(`Fetching HiPeople assessments from ${assessmentUrl}`);
-    const response = await axios.post(HI_PEOPLE_SCRAPER_URL, { url: assessmentUrl });
-    
-    if (!response.data || !response.data.results) {
-      throw new Error("Invalid response format from HiPeople scraper");
+    // Request validation
+    if (!assessmentUrl) {
+      throw new Error("Assessment URL is required");
     }
-    
-    console.log(`Found ${response.data.results.length} assessment results`);
-    return response.data.results;
+
+    if (!assessmentUrl.includes("hipeople.io")) {
+      throw new Error("Invalid HiPeople URL");
+    }
+
+    console.log(`Scraping HiPeople assessment: ${assessmentUrl}`);
+
+    // Call the HiPeople scraper service
+    const response = await axios.post(HIPEOPLE_SCRAPER_URL, {
+      url: assessmentUrl
+    }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+      timeout: 30000 // 30 second timeout for the scraping operation
+    });
+
+    // Validate response
+    if (!response.data || !Array.isArray(response.data)) {
+      throw new Error("Invalid response from HiPeople scraper");
+    }
+
+    const results: HiPeopleResult[] = response.data;
+    console.log(`Found ${results.length} candidate results`);
+
+    return results;
   } catch (error) {
+    console.error("HiPeople scraping error:", error);
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : "Unknown error occurred during scraping";
+    
     if (axios.isAxiosError(error)) {
-      // Handle axios-specific errors
-      const message = error.response?.data?.message || error.message;
-      console.error(`HiPeople API error (${error.code}): ${message}`);
-      throw new Error(`HiPeople scraper API error: ${message}`);
-    } else {
-      // Handle other errors
-      console.error("Error calling HiPeople scraper:", error);
-      throw new Error(error instanceof Error ? error.message : "Failed to fetch HiPeople assessment results");
+      if (error.response) {
+        throw new Error(`HiPeople scraper error: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+      } else if (error.request) {
+        throw new Error("HiPeople scraper service is not responding. Please try again later.");
+      }
     }
+    
+    throw new Error(`Failed to scrape HiPeople assessment: ${errorMessage}`);
   }
 }
 
 export function setupHiPeopleRoutes(app: Express) {
-  // Update candidates with HiPeople assessment results
-  app.post("/api/hipeople/update-assessments", validateRequest(
-    z.object({
-      jobId: z.number()
-    })
-  ), async (req, res) => {
+  // Route to update candidate assessments from HiPeople
+  app.post("/api/jobs/:id/update-assessments", async (req, res) => {
     try {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
-
-      const jobId = req.body.jobId;
-      const job = await storage.getJob(jobId);
       
+      const jobId = parseInt(req.params.id);
+      if (isNaN(jobId)) {
+        return res.status(400).json({ message: "Invalid job ID" });
+      }
+      
+      const job = await storage.getJob(jobId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
@@ -68,44 +97,32 @@ export function setupHiPeopleRoutes(app: Express) {
       if (!job.hiPeopleLink) {
         return res.status(400).json({ message: "No HiPeople link found for this job" });
       }
-
+      
+      // Get all candidates for this job
+      const candidates = await storage.getCandidates({ jobId });
+      
+      if (!candidates.length) {
+        return res.status(400).json({ message: "No candidates found for this job" });
+      }
+      
       try {
-        // Get candidates for this job who need assessment results
-        const candidates = await storage.getCandidates({
-          jobId,
-          status: "assessment_sent"
-        });
+        // Call the HiPeople scraper
+        const hiPeopleResults = await scrapeHipeople(job.hiPeopleLink);
         
-        if (candidates.length === 0) {
-          return res.json({
-            message: "No candidates found with assessment_sent status",
-            updatedCandidates: 0,
-            results: []
-          });
-        }
-
-        // Call the HiPeople scraper API 
-        let hiPeopleResults: HiPeopleResult[] = [];
-        try {
-          hiPeopleResults = await scrapeHipeople(job.hiPeopleLink);
-        } catch (error) {
-          console.error("Error scraping HiPeople:", error);
-          return res.status(500).json({ 
-            message: "Failed to scrape HiPeople assessment results", 
-            error: error instanceof Error ? error.message : "Unknown error" 
-          });
+        if (!hiPeopleResults.length) {
+          return res.status(404).json({ message: "No assessment results found" });
         }
         
-        // Match results to candidates by email
+        // Update candidates with assessment results
         let updatedCount = 0;
+        
         for (const candidate of candidates) {
-          // Find matching result by email (case insensitive)
+          // Find matching result by email
           const result = hiPeopleResults.find(r => 
             r.email.toLowerCase() === candidate.email.toLowerCase()
           );
           
           if (result) {
-            // Update candidate with assessment results
             await storage.updateCandidate(candidate.id, {
               hiPeopleScore: result.score,
               hiPeoplePercentile: result.percentile,
@@ -115,23 +132,23 @@ export function setupHiPeopleRoutes(app: Express) {
               skills: result.feedback.map(f => f.category)
             });
             
-            // Log activity
-            await storage.createActivityLog({
-              userId: req.user?.id,
-              action: "Updated candidate assessment",
-              entityType: "candidate",
-              entityId: candidate.id,
-              details: { 
-                candidateName: candidate.name,
-                hiPeopleScore: result.score,
-                hiPeoplePercentile: result.percentile
-              },
-              timestamp: new Date()
-            });
-            
             updatedCount++;
           }
         }
+        
+        // Log activity
+        await storage.createActivityLog({
+          userId: req.user?.id,
+          action: "Updated candidate assessments",
+          entityType: "job",
+          entityId: job.id,
+          details: { 
+            jobTitle: job.title,
+            candidatesUpdated: updatedCount,
+            totalCandidates: candidates.length
+          },
+          timestamp: new Date()
+        });
         
         res.json({
           message: "HiPeople assessments updated",

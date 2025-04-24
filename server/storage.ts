@@ -325,7 +325,9 @@ export class MemStorage implements IStorage {
       id,
       processAttempts: 0,
       status: notification.status || 'pending',
-      createdAt: now
+      createdAt: now,
+      lastAttemptAt: null,
+      error: null
     };
     
     this.notifications.set(id, newNotification);

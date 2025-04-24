@@ -6,6 +6,7 @@ import { setupCandidateRoutes } from "./api/candidate";
 import { setupInterviewRoutes } from "./api/interview";
 import { setupAnalyticsRoutes } from "./api/analytics";
 import { setupHiPeopleRoutes } from "./api/hipeople";
+import { setupTestIntegrationRoutes } from "./api/test-integration";
 import { storage } from "./storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -18,6 +19,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupInterviewRoutes(app);
   setupAnalyticsRoutes(app);
   setupHiPeopleRoutes(app);
+  setupTestIntegrationRoutes(app);
 
   // Seed admin user if none exists
   const adminUser = await storage.getUserByUsername("admin");

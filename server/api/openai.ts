@@ -1,8 +1,9 @@
 import OpenAI from "openai";
-import { Job } from "@shared/schema";
 
-// Initialize the OpenAI client
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 /**
  * Generates a job description using OpenAI GPT-4o
@@ -15,64 +16,83 @@ export async function generateJobDescription(jobData: {
   skills?: string;
   teamContext?: string;
   department?: string;
-}): Promise<{ description: string; suggestedTitle: string | null }> {
+}): Promise<{ description: string; suggestedTitle?: string }> {
   try {
-    const roleType = jobData.type || "Full-time";
+    // Validate API key
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OpenAI API key is not configured");
+    }
     
-    // Create a detailed prompt for the AI
-    const prompt = `
-Please create a professional job description for the following position:
-
-Job Title: ${jobData.title}
-Type: ${roleType}
-${jobData.department ? `Department: ${jobData.department}` : ''}
-${jobData.skills ? `Required Skills: ${jobData.skills}` : ''}
-${jobData.teamContext ? `Team Context: ${jobData.teamContext}` : ''}
-
-The job description should include:
-1. A concise title (starting with #)
-2. A brief overview of the role (starting with ## About the Role)
-3. Key responsibilities (starting with ## Responsibilities, using bullet points)
-4. Required qualifications (starting with ## Requirements, using bullet points)
-5. Benefits and perks (starting with ## Benefits, using bullet points)
-
-Format the output in Markdown.
-`;
-
-    // Request a job description from GPT-4o
-    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const { title, type, skills, teamContext, department } = jobData;
+    
+    // Create prompt based on available data
+    let prompt = `Please write a professional job description for a ${title} position`;
+    
+    if (type) {
+      prompt += ` (${type})`;
+    }
+    
+    if (department) {
+      prompt += ` in the ${department} department`;
+    }
+    
+    prompt += ".\n\n";
+    
+    prompt += "The job description should include the following sections:\n";
+    prompt += "1. About the Company (keep this generic and professional)\n";
+    prompt += "2. Job Overview\n";
+    prompt += "3. Responsibilities\n";
+    prompt += "4. Qualifications\n";
+    prompt += "5. Benefits (keep these standard and professional)\n\n";
+    
+    if (skills) {
+      prompt += `Required skills include: ${skills}.\n\n`;
+    }
+    
+    if (teamContext) {
+      prompt += `Team context: ${teamContext}.\n\n`;
+    }
+    
+    prompt += "Format the job description using markdown syntax. Keep the tone professional and approachable.\n\n";
+    
+    prompt += "Additionally, if you think the job title could be improved or modernized, suggest a better title in a separate suggestion at the end of your response using the format: SUGGESTED_TITLE: [your title suggestion].";
+    
+    console.log("Sending job description prompt to OpenAI...");
+    
+    // Call OpenAI API
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
       messages: [
-        { role: "system", content: "You are an expert recruiter who creates professional job descriptions that are engaging and informative." },
-        { role: "user", content: prompt }
+        {
+          role: "system",
+          content: "You are an expert HR professional who specializes in writing compelling job descriptions."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
       ],
       temperature: 0.7,
-      max_tokens: 1500,
+      max_tokens: 1200
     });
-
-    // Extract the generated text
-    const generatedDescription = response.choices[0].message.content || "";
-
-    // Check if there's a suggested alternative title
-    let suggestedTitle = null;
-    if (generatedDescription.includes("Suggested alternative title:")) {
-      const match = generatedDescription.match(/Suggested alternative title:\s*([^\n]+)/);
-      if (match && match[1]) {
-        suggestedTitle = match[1].trim();
-      }
+    
+    const content = response.choices[0].message.content || "";
+    
+    // Check if there's a suggested title
+    let suggestedTitle: string | undefined;
+    const suggestedTitleMatch = content.match(/SUGGESTED_TITLE:\s*(.+?)($|\n)/);
+    
+    let description = content;
+    
+    if (suggestedTitleMatch && suggestedTitleMatch[1]) {
+      suggestedTitle = suggestedTitleMatch[1].trim();
+      // Remove the suggestion from the description
+      description = content.replace(/SUGGESTED_TITLE:\s*(.+?)($|\n)/, "").trim();
     }
-
-    return {
-      description: generatedDescription,
-      suggestedTitle
-    };
+    
+    return { description, suggestedTitle };
   } catch (error) {
-    console.error("Error generating job description with OpenAI:", error);
-    throw new Error(
-      error instanceof Error 
-        ? `Failed to generate job description: ${error.message}` 
-        : "Failed to generate job description"
-    );
+    console.error("Error generating job description:", error);
+    throw error;
   }
 }
