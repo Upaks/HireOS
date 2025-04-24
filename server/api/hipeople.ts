@@ -155,17 +155,38 @@ export function setupHiPeopleRoutes(app: Express) {
       }
 
       try {
-        // Mock HiPeople data for development
-        // In production, this would call the actual HiPeople API
-        const score = Math.floor(Math.random() * 100) + 1;
-        const percentile = Math.floor(Math.random() * 100) + 1;
+        // Call the HiPeople scraper API
+        let hiPeopleResults: HiPeopleResult[] = [];
+        try {
+          hiPeopleResults = await scrapeHipeople(job.hiPeopleLink);
+        } catch (error) {
+          console.error("Error scraping HiPeople:", error);
+          return res.status(500).json({ 
+            message: "Failed to scrape HiPeople assessment results", 
+            error: error instanceof Error ? error.message : "Unknown error" 
+          });
+        }
+        
+        // Find matching result by email
+        const result = hiPeopleResults.find(r => 
+          r.email.toLowerCase() === candidate.email.toLowerCase()
+        );
+        
+        if (!result) {
+          return res.status(404).json({ 
+            message: "No assessment results found for this candidate", 
+            candidateEmail: candidate.email 
+          });
+        }
         
         // Update candidate with assessment results
         const updatedCandidate = await storage.updateCandidate(candidateId, {
-          hiPeopleScore: score,
-          hiPeoplePercentile: percentile,
-          hiPeopleCompletedAt: new Date(),
-          status: "assessment_completed"
+          hiPeopleScore: result.score,
+          hiPeoplePercentile: result.percentile,
+          hiPeopleCompletedAt: new Date(result.completed_at),
+          status: "assessment_completed",
+          // Store skills from the feedback
+          skills: result.feedback.map(f => f.category)
         });
         
         // Log activity
@@ -176,8 +197,8 @@ export function setupHiPeopleRoutes(app: Express) {
           entityId: candidate.id,
           details: { 
             candidateName: candidate.name,
-            hiPeopleScore: score,
-            hiPeoplePercentile: percentile
+            hiPeopleScore: result.score,
+            hiPeoplePercentile: result.percentile
           },
           timestamp: new Date()
         });
@@ -186,21 +207,10 @@ export function setupHiPeopleRoutes(app: Express) {
           message: "Assessment results fetched successfully",
           candidate: updatedCandidate,
           assessmentResults: {
-            score,
-            percentile,
-            completedAt: new Date().toISOString(),
-            feedback: [
-              {
-                category: "Technical Skills",
-                score: Math.floor(Math.random() * 5) + 1,
-                feedback: "Good understanding of core concepts."
-              },
-              {
-                category: "Problem Solving",
-                score: Math.floor(Math.random() * 5) + 1,
-                feedback: "Shows effective problem-solving approach."
-              }
-            ]
+            score: result.score,
+            percentile: result.percentile,
+            completedAt: result.completed_at,
+            feedback: result.feedback
           }
         });
       } catch (error) {
