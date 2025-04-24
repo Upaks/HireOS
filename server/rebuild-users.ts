@@ -25,10 +25,10 @@ const init = async () => {
           id SERIAL PRIMARY KEY,
           username VARCHAR(255) NOT NULL UNIQUE,
           password VARCHAR(255) NOT NULL,
-          "fullName" VARCHAR(255) NOT NULL,
+          full_name VARCHAR(255) NOT NULL,
           email VARCHAR(255) NOT NULL UNIQUE,
           role VARCHAR(255) NOT NULL,
-          "createdAt" TIMESTAMP NOT NULL DEFAULT NOW()
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
         )
       `);
       
@@ -37,31 +37,31 @@ const init = async () => {
       
       // CEO
       await client.query(`
-        INSERT INTO users (username, password, "fullName", email, role)
+        INSERT INTO users (username, password, full_name, email, role)
         VALUES ('ceo', $1, 'CEO User', 'ceo@firmos.ai', 'ceo')
       `, [hashedPassword]);
       
       // COO
       await client.query(`
-        INSERT INTO users (username, password, "fullName", email, role)
+        INSERT INTO users (username, password, full_name, email, role)
         VALUES ('coo', $1, 'COO User', 'coo@firmos.ai', 'coo')
       `, [hashedPassword]);
       
       // Hiring Manager
       await client.query(`
-        INSERT INTO users (username, password, "fullName", email, role)
+        INSERT INTO users (username, password, full_name, email, role)
         VALUES ('hiringmanager', $1, 'Hiring Manager', 'hiring@firmos.ai', 'hiringManager')
       `, [hashedPassword]);
       
       // Project Manager
       await client.query(`
-        INSERT INTO users (username, password, "fullName", email, role)
+        INSERT INTO users (username, password, full_name, email, role)
         VALUES ('projectmanager', $1, 'Project Manager', 'project@firmos.ai', 'projectManager')
       `, [hashedPassword]);
       
       // Admin (keeping the admin role for backward compatibility)
       await client.query(`
-        INSERT INTO users (username, password, "fullName", email, role)
+        INSERT INTO users (username, password, full_name, email, role)
         VALUES ('admin', $1, 'Admin User', 'admin@firmos.ai', 'admin')
       `, [hashedPassword]);
       
