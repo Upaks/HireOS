@@ -45,8 +45,8 @@ export function setupJobRoutes(app: Express) {
         generatedDescription = `# ${req.body.title}\n\nWe are looking for a talented ${req.body.title} to join our team.`;
       }
 
-      // Generate HiPeople assessment link
-      // This would be generated using the HiPeople API in production
+      // For demo purposes, we're creating a placeholder HiPeople assessment link
+      // In production, this would connect to the HiPeople API to create a real assessment
       const hiPeopleLink = `https://app.hipeople.io/assessment/${Math.random().toString(36).substring(2, 10)}`;
 
       const jobData = {
@@ -172,15 +172,15 @@ export function setupJobRoutes(app: Express) {
       });
 
       // Post job to platforms
-      // This is where you'd integrate with LinkedIn, onlinejobs.ph APIs
-      // For now, just create mock platform records
+      // In production, this would connect to the LinkedIn and onlinejobs.ph APIs
+      // For demonstration, we're creating platform records in the database
       const platforms = ["LinkedIn", "onlinejobs.ph"];
       for (const platform of platforms) {
         await storage.createJobPlatform({
           jobId,
           platform,
-          platformJobId: `${platform}-${Math.random().toString(36).substring(2, 10)}`,
-          postUrl: `https://${platform.toLowerCase()}.com/jobs/${Math.random().toString(36).substring(2, 10)}`,
+          platformJobId: `${platform}-${Math.random().toString(36).substring(2, 12)}`,
+          postUrl: `https://${platform.toLowerCase().replace('.', '')}.com/jobs/${Math.random().toString(36).substring(2, 10)}`,
           status: "posted"
         });
       }

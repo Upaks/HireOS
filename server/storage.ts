@@ -1,5 +1,6 @@
 import { 
-  users, 
+  users, jobs, jobPlatforms, candidates, interviews, activityLogs, notificationQueue,
+  UserRoles,
   type User, 
   type InsertUser,
   type Job,
@@ -14,12 +15,12 @@ import {
   type NotificationQueueItem
 } from "@shared/schema";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import connectPg from "connect-pg-simple";
+import { db, pool } from "./db";
+import { and, eq } from "drizzle-orm";
 
-const MemoryStore = createMemoryStore(session);
-
-// modify the interface with any CRUD methods
-// you might need
+// Database session store configuration
+const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
   // Session store
@@ -57,310 +58,283 @@ export interface IStorage {
   createNotification(notification: Omit<NotificationQueueItem, 'id' | 'createdAt' | 'processAttempts' | 'lastAttemptAt' | 'error'>): Promise<NotificationQueueItem>;
 }
 
-export class MemStorage implements IStorage {
-  // Session store
+export class DatabaseStorage implements IStorage {
   sessionStore: any;
-  
-  // In-memory storage maps
-  private users: Map<number, User>;
-  private jobs: Map<number, Job>;
-  private jobPlatforms: Map<number, JobPlatform>;
-  private candidates: Map<number, Candidate>;
-  private interviews: Map<number, Interview>;
-  private activityLogs: Map<number, ActivityLog>;
-  private notifications: Map<number, NotificationQueueItem>;
-  
-  // ID counters for each entity
-  private userIdCounter: number;
-  private jobIdCounter: number;
-  private jobPlatformIdCounter: number;
-  private candidateIdCounter: number;
-  private interviewIdCounter: number;
-  private activityLogIdCounter: number;
-  private notificationIdCounter: number;
 
   constructor() {
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000 // prune expired entries every 24h
+    this.sessionStore = new PostgresSessionStore({ 
+      pool,
+      createTableIfMissing: true 
     });
     
-    // Initialize maps
-    this.users = new Map();
-    this.jobs = new Map();
-    this.jobPlatforms = new Map();
-    this.candidates = new Map();
-    this.interviews = new Map();
-    this.activityLogs = new Map();
-    this.notifications = new Map();
-    
-    // Initialize ID counters
-    this.userIdCounter = 1;
-    this.jobIdCounter = 1;
-    this.jobPlatformIdCounter = 1;
-    this.candidateIdCounter = 1;
-    this.interviewIdCounter = 1;
-    this.activityLogIdCounter = 1;
-    this.notificationIdCounter = 1;
-    
-    console.log("Admin user created");
-    
-    // Create default admin user
-    this.createUser({
-      username: "admin",
-      password: "$2b$10$dJUaPuKxGyKu2.Ep40mvVuxhvlJ5vtCKbifYoN8m5qpQPrYH3QnLu", // "password"
-      fullName: "Admin User",
-      email: "admin@example.com",
-      role: "admin"
-    });
+    // Create admin user if it doesn't exist
+    this.initializeAdminUser();
+  }
+
+  private async initializeAdminUser() {
+    try {
+      // Check if admin user exists
+      const adminUser = await this.getUserByUsername("admin");
+      if (!adminUser) {
+        // Create default admin user
+        await this.createUser({
+          username: "admin",
+          password: "$2b$10$dJUaPuKxGyKu2.Ep40mvVuxhvlJ5vtCKbifYoN8m5qpQPrYH3QnLu", // "password"
+          fullName: "Admin User",
+          email: "admin@example.com",
+          role: "admin"
+        });
+        console.log("Admin user created");
+      }
+    } catch (error) {
+      console.error("Error initializing admin user:", error);
+    }
   }
 
   // User operations
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.userIdCounter++;
-    const createdAt = new Date();
-    // Ensure role is not undefined
-    const role = insertUser.role || 'hiring_manager';
-    const user: User = { ...insertUser, id, createdAt, role };
-    this.users.set(id, user);
+    // Default to hiringManager if no role specified
+    const role = insertUser.role || UserRoles.HIRING_MANAGER;
+    
+    const [user] = await db
+      .insert(users)
+      .values({ ...insertUser, role, createdAt: new Date() })
+      .returning();
+    
     return user;
   }
-  
+
   // Job operations
-  async createJob(job: InsertJob & { description: string; hiPeopleLink?: string; suggestedTitle?: string }): Promise<Job> {
-    const id = this.jobIdCounter++;
-    const now = new Date();
-    // Create the job object with required fields and appropriate null values
-    const newJob: Job = {
-      title: job.title,
-      type: job.type,
-      description: job.description,
-      id,
-      status: "draft",  // Set a default status
-      createdAt: now,
-      updatedAt: now,
-      postedDate: null,
-      department: job.department ?? null,
-      urgency: job.urgency ?? null,
-      skills: job.skills ?? null,
-      teamContext: job.teamContext ?? null,
-      hiPeopleLink: job.hiPeopleLink ?? null,
-      suggestedTitle: job.suggestedTitle ?? null,
-      expressReview: job.expressReview === true ? true : null,
-      submitterId: job.submitterId ?? null,
-      candidateCount: 0
-    };
-    this.jobs.set(id, newJob);
+  async createJob(job: InsertJob & { description: string, hiPeopleLink?: string, suggestedTitle?: string }): Promise<Job> {
+    const [newJob] = await db
+      .insert(jobs)
+      .values({
+        ...job,
+        status: 'draft',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        postedDate: null,
+        hiPeopleLink: job.hiPeopleLink || null,
+        suggestedTitle: job.suggestedTitle || null,
+        expressReview: job.expressReview || null,
+        candidateCount: 0
+      })
+      .returning();
+    
     return newJob;
   }
-  
+
   async getJob(id: number): Promise<Job | undefined> {
-    return this.jobs.get(id);
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+    return job || undefined;
   }
-  
+
   async getJobs(status?: string): Promise<Job[]> {
-    let jobs = Array.from(this.jobs.values());
-    if (status && status !== "all") {
-      jobs = jobs.filter(job => job.status === status);
+    if (status && status !== 'all') {
+      return await db.select().from(jobs).where(eq(jobs.status, status));
     }
-    return jobs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return await db.select().from(jobs);
   }
-  
+
   async updateJob(id: number, data: Partial<Job>): Promise<Job> {
-    const job = this.jobs.get(id);
-    if (!job) {
-      throw new Error(`Job with ID ${id} not found`);
-    }
+    const [updatedJob] = await db
+      .update(jobs)
+      .set({
+        ...data,
+        updatedAt: new Date()
+      })
+      .where(eq(jobs.id, id))
+      .returning();
     
-    const updatedJob: Job = {
-      ...job,
-      ...data,
-      updatedAt: new Date()
-    };
-    
-    this.jobs.set(id, updatedJob);
     return updatedJob;
   }
-  
+
   // Job platform operations
   async createJobPlatform(platform: Partial<JobPlatform>): Promise<JobPlatform> {
-    const id = this.jobPlatformIdCounter++;
-    const now = new Date();
-    const newPlatform: JobPlatform = {
-      id,
-      jobId: platform.jobId!,
-      platform: platform.platform!,
-      platformJobId: platform.platformJobId || '',
-      postUrl: platform.postUrl || '',
-      status: platform.status || 'pending',
-      errorMessage: platform.errorMessage || '',
-      createdAt: now,
-      updatedAt: now
-    };
+    const [newPlatform] = await db
+      .insert(jobPlatforms)
+      .values({
+        jobId: platform.jobId!,
+        platform: platform.platform!,
+        platformJobId: platform.platformJobId || '',
+        postUrl: platform.postUrl || '',
+        status: platform.status || 'pending',
+        errorMessage: platform.errorMessage || '',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .returning();
     
-    this.jobPlatforms.set(id, newPlatform);
     return newPlatform;
   }
-  
+
   async getJobPlatforms(jobId: number): Promise<JobPlatform[]> {
-    return Array.from(this.jobPlatforms.values())
-      .filter(platform => platform.jobId === jobId)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return await db
+      .select()
+      .from(jobPlatforms)
+      .where(eq(jobPlatforms.jobId, jobId));
   }
-  
+
   // Candidate operations
   async createCandidate(candidate: InsertCandidate): Promise<Candidate> {
-    const id = this.candidateIdCounter++;
-    const now = new Date();
-    const newCandidate: Candidate = {
-      ...candidate,
-      id,
-      createdAt: now,
-      updatedAt: now,
-      status: candidate.status || "new",
-      skills: candidate.skills || [],
-      phone: candidate.phone ?? null,
-      location: candidate.location ?? null,
-      resumeUrl: candidate.resumeUrl ?? null,
-      source: candidate.source ?? null,
-      hiPeopleScore: candidate.hiPeopleScore ?? null,
-      hiPeoplePercentile: candidate.hiPeoplePercentile ?? null,
-      hiPeopleCompletedAt: candidate.hiPeopleCompletedAt ?? null,
-      experienceYears: candidate.experienceYears ?? null,
-      expectedSalary: candidate.expectedSalary ?? null,
-      notes: candidate.notes ?? null,
-      job: null
-    };
+    const [newCandidate] = await db
+      .insert(candidates)
+      .values({
+        ...candidate,
+        status: candidate.status || 'new',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .returning();
     
-    this.candidates.set(id, newCandidate);
-    return newCandidate;
+    // Get the job data to enrich the candidate
+    const job = await this.getJob(newCandidate.jobId);
+    return { ...newCandidate, job: job || null };
   }
-  
+
   async getCandidate(id: number): Promise<Candidate | undefined> {
-    const candidate = this.candidates.get(id);
-    if (candidate) {
-      // Enrich with job data if available
-      const job = this.jobs.get(candidate.jobId);
-      if (job) {
-        return { ...candidate, job };
-      }
-    }
-    return candidate;
+    const [candidate] = await db
+      .select()
+      .from(candidates)
+      .where(eq(candidates.id, id));
+    
+    if (!candidate) return undefined;
+    
+    // Enrich with job data
+    const job = await this.getJob(candidate.jobId);
+    return { ...candidate, job: job || null };
   }
-  
-  async getCandidates(filters: { jobId?: number; status?: string }): Promise<Candidate[]> {
-    let candidates = Array.from(this.candidates.values());
+
+  async getCandidates(filters: { jobId?: number, status?: string }): Promise<Candidate[]> {
+    const conditions = [];
     
-    if (filters.jobId) {
-      candidates = candidates.filter(c => c.jobId === filters.jobId);
+    if (filters.jobId !== undefined) {
+      conditions.push(eq(candidates.jobId, filters.jobId));
     }
     
-    if (filters.status && filters.status !== "all") {
-      candidates = candidates.filter(c => c.status === filters.status);
+    if (filters.status && filters.status !== 'all') {
+      conditions.push(eq(candidates.status, filters.status));
     }
     
-    // Enrich candidates with job data
-    return candidates.map(candidate => {
-      const job = this.jobs.get(candidate.jobId);
-      return job ? { ...candidate, job } : candidate;
-    }).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  }
-  
-  async updateCandidate(id: number, data: Partial<Candidate>): Promise<Candidate> {
-    const candidate = this.candidates.get(id);
-    if (!candidate) {
-      throw new Error(`Candidate with ID ${id} not found`);
+    let candidatesList;
+    if (conditions.length > 0) {
+      candidatesList = await db
+        .select()
+        .from(candidates)
+        .where(and(...conditions));
+    } else {
+      candidatesList = await db.select().from(candidates);
     }
     
-    const updatedCandidate: Candidate = {
+    // Enrich candidates with job data - use array instead of Set for compatibility
+    const jobIdsArray = candidatesList.map(c => c.jobId);
+    const uniqueJobIds = jobIdsArray.filter((id, index) => jobIdsArray.indexOf(id) === index);
+    const jobsMap = new Map();
+    
+    if (uniqueJobIds.length > 0) {
+      const jobsList = await Promise.all(
+        uniqueJobIds.map(id => this.getJob(id))
+      );
+      
+      jobsList.forEach(job => {
+        if (job) {
+          jobsMap.set(job.id, job);
+        }
+      });
+    }
+    
+    return candidatesList.map(candidate => ({
       ...candidate,
-      ...data,
-      updatedAt: new Date()
-    };
-    
-    this.candidates.set(id, updatedCandidate);
-    
-    // Return with job data if available
-    const job = this.jobs.get(updatedCandidate.jobId);
-    return job ? { ...updatedCandidate, job } : updatedCandidate;
+      job: jobsMap.get(candidate.jobId) || null
+    }));
   }
-  
+
+  async updateCandidate(id: number, data: Partial<Candidate>): Promise<Candidate> {
+    const [updatedCandidate] = await db
+      .update(candidates)
+      .set({
+        ...data,
+        updatedAt: new Date()
+      })
+      .where(eq(candidates.id, id))
+      .returning();
+    
+    // Enrich with job data
+    const job = await this.getJob(updatedCandidate.jobId);
+    return { ...updatedCandidate, job: job || null };
+  }
+
   // Interview operations
   async createInterview(interviewData: Partial<Interview>): Promise<Interview> {
-    const id = this.interviewIdCounter++;
-    const now = new Date();
-    const interview: Interview = {
-      id,
-      candidateId: interviewData.candidateId!,
-      type: interviewData.type || 'video',
-      status: interviewData.status || 'scheduled',
-      scheduledDate: interviewData.scheduledDate || null,
-      conductedDate: interviewData.conductedDate || null,
-      interviewerId: interviewData.interviewerId || null,
-      videoUrl: interviewData.videoUrl || null,
-      notes: interviewData.notes || null,
-      createdAt: now,
-      updatedAt: now
-    };
+    const [interview] = await db
+      .insert(interviews)
+      .values({
+        candidateId: interviewData.candidateId!,
+        type: interviewData.type || 'video',
+        status: interviewData.status || 'scheduled',
+        scheduledDate: interviewData.scheduledDate || null,
+        conductedDate: interviewData.conductedDate || null,
+        interviewerId: interviewData.interviewerId || null,
+        videoUrl: interviewData.videoUrl || null,
+        notes: interviewData.notes || null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .returning();
     
-    this.interviews.set(id, interview);
     return interview;
   }
-  
+
   async getInterview(id: number): Promise<Interview | undefined> {
-    const interview = this.interviews.get(id);
-    if (!interview) return undefined;
+    const [interview] = await db
+      .select()
+      .from(interviews)
+      .where(eq(interviews.id, id));
     
-    // Enrich with candidate and interviewer data
-    const candidate = this.candidates.get(interview.candidateId);
-    const interviewer = interview.interviewerId ? this.users.get(interview.interviewerId) : undefined;
-    
-    const enrichedInterview: any = { ...interview };
-    if (candidate) enrichedInterview.candidate = candidate;
-    if (interviewer) enrichedInterview.interviewer = interviewer;
-    
-    return enrichedInterview;
+    return interview || undefined;
   }
-  
+
   // Activity logs
   async createActivityLog(log: Omit<ActivityLog, 'id'>): Promise<ActivityLog> {
-    const id = this.activityLogIdCounter++;
-    const activityLog: ActivityLog = {
-      ...log,
-      id,
-      timestamp: log.timestamp || new Date()
-    };
+    const [activityLog] = await db
+      .insert(activityLogs)
+      .values({
+        ...log,
+        timestamp: log.timestamp || new Date()
+      })
+      .returning();
     
-    this.activityLogs.set(id, activityLog);
     return activityLog;
   }
-  
+
   // Notifications
   async createNotification(notification: Omit<NotificationQueueItem, 'id' | 'createdAt' | 'processAttempts' | 'lastAttemptAt' | 'error'>): Promise<NotificationQueueItem> {
-    const id = this.notificationIdCounter++;
-    const now = new Date();
-    const newNotification: NotificationQueueItem = {
-      ...notification,
-      id,
-      processAttempts: 0,
-      status: notification.status || 'pending',
-      createdAt: now,
-      lastAttemptAt: null,
-      error: null
-    };
+    const [newNotification] = await db
+      .insert(notificationQueue)
+      .values({
+        type: notification.type,
+        status: notification.status || 'pending',
+        payload: notification.payload,
+        processAfter: notification.processAfter || new Date(),
+        createdAt: new Date(),
+        processAttempts: 0,
+        lastAttemptAt: null,
+        error: null
+      })
+      .returning();
     
-    this.notifications.set(id, newNotification);
     return newNotification;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

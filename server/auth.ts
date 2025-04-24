@@ -4,7 +4,6 @@ import { Express } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
-import createMemoryStore from "memorystore";
 import { storage } from "./storage";
 import { User as SelectUser, UserRoles } from "@shared/schema";
 
@@ -15,7 +14,6 @@ declare global {
 }
 
 const scryptAsync = promisify(scrypt);
-const MemoryStore = createMemoryStore(session);
 
 async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
