@@ -96,9 +96,10 @@ export function setupSimpleTestRoutes(app: Express) {
         description: description,
         suggestedTitle: suggestedTitle
       });
-    } catch (error) {
+    } catch (error: unknown) {
       // Handle error response properly
-      const errorResponse = error.response?.data;
+      const axiosError = error as any; // Type assertion for axios error
+      const errorResponse = axiosError.response?.data;
       const errorMessage = errorResponse 
         ? `${errorResponse.error?.message || JSON.stringify(errorResponse)}`
         : (error instanceof Error ? error.message : String(error));
@@ -131,7 +132,7 @@ export function setupSimpleTestRoutes(app: Express) {
         results,
         note: "Used direct access to the scraper service which returns sample data."
       });
-    } catch (error) {
+    } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("Error testing HiPeople integration:", errorMessage);
       res.status(500).json({ 

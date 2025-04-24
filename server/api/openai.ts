@@ -99,9 +99,10 @@ export async function generateJobDescription(jobData: {
     }
     
     return { description, suggestedTitle };
-  } catch (error) {
+  } catch (error: unknown) {
     // Handle error response properly
-    const errorResponse = error.response?.data;
+    const axiosError = error as any; // Type assertion for axios error
+    const errorResponse = axiosError.response?.data;
     const errorMessage = errorResponse 
       ? `${errorResponse.error?.message || JSON.stringify(errorResponse)}`
       : (error instanceof Error ? error.message : String(error));

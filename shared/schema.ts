@@ -38,7 +38,8 @@ export const jobs = pgTable("jobs", {
   submitterId: integer("submitter_id").references(() => users.id),
   postedDate: timestamp("posted_date"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull()
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  candidateCount: integer("candidate_count") // Virtual field for memory storage
 });
 
 export const insertJobSchema = createInsertSchema(jobs).pick({
@@ -85,7 +86,8 @@ export const candidates = pgTable("candidates", {
   expectedSalary: text("expected_salary"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull()
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  job: jsonb("job") // Virtual field for memory storage - job relation
 });
 
 export const insertCandidateSchema = createInsertSchema(candidates).omit({
