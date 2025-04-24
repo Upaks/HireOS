@@ -42,17 +42,22 @@ export const jobs = pgTable("jobs", {
   candidateCount: integer("candidate_count") // Virtual field for memory storage
 });
 
-export const insertJobSchema = createInsertSchema(jobs).pick({
-  title: true,
-  description: true,
-  type: true,
-  department: true,
-  urgency: true,
-  skills: true,
-  teamContext: true,
-  expressReview: true,
-  submitterId: true
-});
+export const insertJobSchema = createInsertSchema(jobs)
+  .pick({
+    title: true,
+    type: true,
+    department: true,
+    urgency: true,
+    skills: true,
+    teamContext: true,
+    expressReview: true,
+    submitterId: true,
+    status: true
+  })
+  .extend({
+    // Adding status field with default value of 'draft'
+    status: z.enum(['draft', 'review', 'active', 'closed']).default('draft')
+  });
 
 // Job Posting Platforms
 export const jobPlatforms = pgTable("job_platforms", {

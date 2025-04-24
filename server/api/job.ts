@@ -8,7 +8,7 @@ import { generateJobDescription } from "./openai";
 
 export function setupJobRoutes(app: Express) {
   // Create a new job draft
-  app.post("/api/jobs", validateRequest(insertJobSchema), async (req, res) => {
+  app.post("/api/jobs", validateRequest(insertJobSchema.omit({ description: true })), async (req, res) => {
     try {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
