@@ -197,7 +197,7 @@ export function setupCandidateRoutes(app: Express) {
 
       // Update candidate status
       const updatedCandidate = await storage.updateCandidate(candidateId, {
-        status: "interview_scheduled"
+        status: "45_1st_interview_sent"
       });
 
       // Get job details
@@ -255,7 +255,7 @@ export function setupCandidateRoutes(app: Express) {
 
       // Update candidate status
       const updatedCandidate = await storage.updateCandidate(candidateId, {
-        status: "talent_pool"
+        status: "90_talent_pool"
       });
 
       // Get job details
@@ -312,7 +312,7 @@ export function setupCandidateRoutes(app: Express) {
 
       // Update candidate status
       const updatedCandidate = await storage.updateCandidate(candidateId, {
-        status: "rejected"
+        status: "200_rejected"
       });
 
       // Get job details
@@ -376,7 +376,7 @@ export function setupCandidateRoutes(app: Express) {
 
       // Update candidate status
       const updatedCandidate = await storage.updateCandidate(candidateId, {
-        status: "offer_sent"
+        status: "95_offer_sent"
       });
 
       // Create offer record
@@ -459,7 +459,7 @@ export function setupCandidateRoutes(app: Express) {
 
       // Update candidate status
       const updatedCandidate = await storage.updateCandidate(candidateId, {
-        status: "hired"
+        status: "100_offer_accepted"
       });
 
       // Update offer status
