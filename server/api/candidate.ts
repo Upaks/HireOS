@@ -120,9 +120,29 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
+      // Check permissions for evaluation criteria updates
+      const hasEvaluationFields = 
+        req.body.technicalProficiency !== undefined ||
+        req.body.leadershipInitiative !== undefined ||
+        req.body.problemSolving !== undefined ||
+        req.body.communicationSkills !== undefined ||
+        req.body.culturalFit !== undefined ||
+        req.body.hiPeopleScore !== undefined ||
+        req.body.hiPeoplePercentile !== undefined;
+
+      // Only CEO or COO can update evaluation criteria
+      if (hasEvaluationFields && 
+          req.user?.role !== 'ceo' && 
+          req.user?.role !== 'coo' && 
+          req.user?.role !== 'admin') {
+        return res.status(403).json({ 
+          message: "Only CEO or COO can update candidate evaluation criteria" 
+        });
+      }
+
       const updatedCandidate = await storage.updateCandidate(candidateId, req.body);
       
-      // Log activity
+      // Log status change activity
       if (req.body.status && req.body.status !== candidate.status) {
         await storage.createActivityLog({
           userId: req.user?.id,
@@ -130,6 +150,24 @@ export function setupCandidateRoutes(app: Express) {
           entityType: "candidate",
           entityId: candidate.id,
           details: { candidateName: candidate.name, previousStatus: candidate.status, newStatus: req.body.status },
+          timestamp: new Date()
+        });
+      }
+
+      // Log evaluation update activity
+      if (hasEvaluationFields) {
+        await storage.createActivityLog({
+          userId: req.user?.id,
+          action: "Updated candidate evaluation",
+          entityType: "candidate",
+          entityId: candidate.id,
+          details: { 
+            candidateName: candidate.name,
+            updates: Object.keys(req.body).filter(key => 
+              ['technicalProficiency', 'leadershipInitiative', 'problemSolving', 
+               'communicationSkills', 'culturalFit', 'hiPeopleScore', 'hiPeoplePercentile'].includes(key)
+            )
+          },
           timestamp: new Date()
         });
       }
