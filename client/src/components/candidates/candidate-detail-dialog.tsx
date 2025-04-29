@@ -206,7 +206,7 @@ export default function CandidateDetailDialog({
                     <div className="flex justify-between">
                       <Label htmlFor="technical">Technical Proficiency</Label>
                       <span className="text-sm text-muted-foreground">
-                        {technicalProficiency !== undefined ? `${technicalProficiency}/5` : 'Not rated'}
+                        {technicalProficiency !== undefined ? `${technicalProficiency}/5` : '0/5 (Not rated)'}
                       </span>
                     </div>
                     <StarRating 
@@ -220,7 +220,7 @@ export default function CandidateDetailDialog({
                     <div className="flex justify-between">
                       <Label htmlFor="leadership">Leadership & Initiative</Label>
                       <span className="text-sm text-muted-foreground">
-                        {leadershipInitiative !== undefined ? `${leadershipInitiative}/5` : 'Not rated'}
+                        {leadershipInitiative !== undefined ? `${leadershipInitiative}/5` : '0/5 (Not rated)'}
                       </span>
                     </div>
                     <StarRating 
@@ -234,7 +234,7 @@ export default function CandidateDetailDialog({
                     <div className="flex justify-between">
                       <Label htmlFor="problem">Problem Solving</Label>
                       <span className="text-sm text-muted-foreground">
-                        {problemSolving !== undefined ? `${problemSolving}/5` : 'Not rated'}
+                        {problemSolving !== undefined ? `${problemSolving}/5` : '0/5 (Not rated)'}
                       </span>
                     </div>
                     <StarRating 
@@ -248,7 +248,7 @@ export default function CandidateDetailDialog({
                     <div className="flex justify-between">
                       <Label htmlFor="communication">Communication Skills</Label>
                       <span className="text-sm text-muted-foreground">
-                        {communicationSkills !== undefined ? `${communicationSkills}/5` : 'Not rated'}
+                        {communicationSkills !== undefined ? `${communicationSkills}/5` : '0/5 (Not rated)'}
                       </span>
                     </div>
                     <StarRating 
@@ -262,7 +262,7 @@ export default function CandidateDetailDialog({
                     <div className="flex justify-between">
                       <Label htmlFor="cultural">Cultural Fit</Label>
                       <span className="text-sm text-muted-foreground">
-                        {culturalFit !== undefined ? `${culturalFit}/5` : 'Not rated'}
+                        {culturalFit !== undefined ? `${culturalFit}/5` : '0/5 (Not rated)'}
                       </span>
                     </div>
                     <StarRating 
