@@ -52,6 +52,12 @@ export interface Candidate {
   hiPeopleScore?: number;
   hiPeoplePercentile?: number;
   hiPeopleCompletedAt?: string;
+  // Evaluation criteria scores (0-5)
+  technicalProficiency?: number;
+  leadershipInitiative?: number;
+  problemSolving?: number;
+  communicationSkills?: number;
+  culturalFit?: number;
   skills?: any;
   experienceYears?: number;
   expectedSalary?: string;

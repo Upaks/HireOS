@@ -165,3 +165,27 @@ export function setupSimpleTestRoutes(app: Express) {
     }
   });
 }
+
+export function setupTestRoutes(app: Express) {
+  app.post("/api/test/scrape-hipeople", async (req, res) => {
+      try {
+          // Retrieve test data from request body
+          const { applicant_name, applicant_email } = req.body || {
+              applicant_name: "John Doe", // default name
+              applicant_email: "johndoe@example.com" // default email
+          };
+          const assessmentUrl = "https://firmos-hipeople-scraper-899783477192.europe-west1.run.app/scrape_hipeople"; // Use your actual URL
+          console.log("Testing HiPeople scraping...");
+          const results = await scrapeHipeople(assessmentUrl, { applicant_name, applicant_email });
+          console.log("Scraping results:", results);
+          res.json({
+              success: true,
+              count: results.length,
+              results,
+          });
+      } catch (error) {
+          console.error("Error testing HiPeople scraping:", error);
+          res.status(500).json({ success: false, message: "Failed to test scraping" });
+      }
+  });
+}
