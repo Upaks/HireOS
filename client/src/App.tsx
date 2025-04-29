@@ -35,6 +35,11 @@ function Router() {
         component={CandidateScreener} 
         roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]}
       />
+      <ProtectedRoute 
+        path="/candidate-screener" 
+        component={CandidateScreener} 
+        roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]}
+      />
       
       {/* Interviews page - accessible to all authenticated users */}
       <ProtectedRoute path="/interviews" component={Interviews} />
