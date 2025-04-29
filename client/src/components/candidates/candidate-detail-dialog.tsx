@@ -17,8 +17,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Candidate } from "@/types";
-import { Loader2 } from "lucide-react";
+import { Loader2, ExternalLink } from "lucide-react";
 import StarRating from "../ui/star-rating";
+import { getStatusDisplay, getStatusesForFilter } from "@/lib/candidate-status";
 
 interface CandidateDetailDialogProps {
   candidate: Candidate | null;
@@ -157,14 +158,11 @@ export default function CandidateDetailDialog({
                         <SelectValue placeholder="Select status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="new">New</SelectItem>
-                        <SelectItem value="assessment_sent">Assessment Sent</SelectItem>
-                        <SelectItem value="assessment_completed">Assessment Completed</SelectItem>
-                        <SelectItem value="interview_scheduled">Interview Scheduled</SelectItem>
-                        <SelectItem value="talent_pool">Talent Pool</SelectItem>
-                        <SelectItem value="rejected">Rejected</SelectItem>
-                        <SelectItem value="offer_sent">Offer Sent</SelectItem>
-                        <SelectItem value="hired">Hired</SelectItem>
+                        {getStatusesForFilter().map(status => (
+                          <SelectItem key={status.value} value={status.value}>
+                            {status.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -332,13 +330,37 @@ export default function CandidateDetailDialog({
                       href={candidate.resumeUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-primary hover:underline flex items-center"
+                      className="text-primary hover:underline flex items-center space-x-1"
                     >
-                      View Resume
+                      <span>View Resume</span>
+                      <ExternalLink size={14} />
                     </a>
                   </div>
                 </div>
               )}
+              
+              <div className="bg-blue-50 rounded-md p-4 border border-blue-100">
+                <h4 className="font-medium text-blue-800 flex items-center gap-2 mb-2">
+                  <span>Resume URL</span>
+                </h4>
+                <div className="flex items-center">
+                  <Input 
+                    value={candidate.resumeUrl || ""} 
+                    readOnly 
+                    className="bg-white mr-2"
+                  />
+                  {candidate.resumeUrl && (
+                    <a 
+                      href={candidate.resumeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-md flex items-center"
+                    >
+                      <ExternalLink size={18} />
+                    </a>
+                  )}
+                </div>
+              </div>
             </div>
           </TabsContent>
 

@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import CandidateDetailDialog from "./candidate-detail-dialog";
+import { getStatusDisplay } from "@/lib/candidate-status";
 
 interface CandidateCardProps {
   candidate: Candidate;
@@ -81,26 +82,8 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
   });
   
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'new':
-        return <Badge className="bg-blue-100 text-blue-800">New</Badge>;
-      case 'assessment_sent':
-        return <Badge className="bg-yellow-100 text-yellow-800">Assessment Sent</Badge>;
-      case 'assessment_completed':
-        return <Badge className="bg-green-100 text-green-800">Assessment Completed</Badge>;
-      case 'interview_scheduled':
-        return <Badge className="bg-purple-100 text-purple-800">Interview Scheduled</Badge>;
-      case 'talent_pool':
-        return <Badge className="bg-indigo-100 text-indigo-800">Talent Pool</Badge>;
-      case 'rejected':
-        return <Badge className="bg-red-100 text-red-800">Rejected</Badge>;
-      case 'offer_sent':
-        return <Badge className="bg-teal-100 text-teal-800">Offer Sent</Badge>;
-      case 'hired':
-        return <Badge className="bg-emerald-100 text-emerald-800">Hired</Badge>;
-      default:
-        return <Badge>{status}</Badge>;
-    }
+    const { code, label, bgColor, textColor } = getStatusDisplay(status);
+    return <Badge className={`${bgColor} ${textColor}`}>{code} {label}</Badge>;
   };
   
   const handleInviteToInterview = () => {
