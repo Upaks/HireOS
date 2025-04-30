@@ -1,3 +1,4 @@
+import React from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,61 +49,74 @@ export default function JobViewModal({
   onClose 
 }: JobViewModalProps) {
   const { toast } = useToast();
-  const modalTimer = logger.timeOperation("Job view modal rendering");
   
-  // Validate the job data with Zod
-  const validationResult = jobViewSchema.safeParse(job);
-  if (!validationResult.success) {
-    logger.error("Job validation failed", { 
-      errors: validationResult.error.errors,
-      jobId: job.id 
-    });
-    toast({
-      title: "Data validation error",
-      description: "Some required job information is missing",
-      variant: "destructive",
-    });
-  } else {
-    logger.info("Job data validated successfully", { jobId: job.id });
-  }
+  // Use useRef to track if we've already logged things
+  const loggingState = React.useRef({
+    validationLogged: false,
+    submitterLogged: false,
+    candidatesLogged: false,
+    renderingLogged: false
+  });
+  
+  // Validate the job data with Zod - only do this once
+  React.useEffect(() => {
+    if (loggingState.current.validationLogged) return;
+    
+    const modalTimer = logger.timeOperation("Job view modal rendering");
+    const validationResult = jobViewSchema.safeParse(job);
+    
+    if (!validationResult.success) {
+      logger.error("Job validation failed", { 
+        errors: validationResult.error.errors,
+        jobId: job.id 
+      });
+      
+      toast({
+        title: "Data validation error",
+        description: "Some required job information is missing",
+        variant: "destructive",
+      });
+    } else {
+      logger.info("Job data validated successfully", { jobId: job.id });
+    }
+    
+    modalTimer.end("success", { jobId: job.id });
+    loggingState.current.validationLogged = true;
+    loggingState.current.renderingLogged = true;
+  }, [job.id, toast]);
   
   // Fetch submitter details if available
-  const submitterTimer = logger.timeOperation("Fetch submitter data");
   const { data: submitterData } = useQuery<any>({
     queryKey: ['/api/user', job.submitterId],
     enabled: !!job.submitterId
   });
   
-  // Log submitter data fetching manually since we can't use callbacks
-  if (submitterData && job.submitterId) {
-    submitterTimer.end("success", { submitterId: job.submitterId });
-  } else if (job.submitterId) {
-    // Only log an error if we expected data but didn't get it
-    logger.error("Failed to fetch submitter data", { submitterId: job.submitterId });
-    submitterTimer.end("failure");
-  }
+  // Log submitter data fetching - in an effect to avoid re-renders
+  React.useEffect(() => {
+    if (submitterData && job.submitterId && !loggingState.current.submitterLogged) {
+      const submitterTimer = logger.timeOperation("Fetch submitter data");
+      submitterTimer.end("success", { submitterId: job.submitterId });
+      loggingState.current.submitterLogged = true;
+    }
+  }, [submitterData, job.submitterId]);
   
   // Fetch candidates for this job
-  const candidatesTimer = logger.timeOperation("Fetch job candidates");
   const { data: candidatesData } = useQuery<any[]>({
     queryKey: ['/api/candidates', { jobId: job.id }],
     enabled: open // Only fetch when modal is open
   });
   
-  // Log candidates data fetching manually
-  if (candidatesData && Array.isArray(candidatesData)) {
-    candidatesTimer.end("success", { 
-      count: candidatesData.length,
-      jobId: job.id 
-    });
-  } else if (open) {
-    // Only log if we expected data but didn't get it
-    logger.error("Failed to fetch job candidates", { jobId: job.id });
-    candidatesTimer.end("failure");
-  }
-  
-  // Overall modal rendering timing
-  modalTimer.end("success", { jobId: job.id });
+  // Log candidates data fetching - in an effect to avoid re-renders
+  React.useEffect(() => {
+    if (candidatesData && Array.isArray(candidatesData) && !loggingState.current.candidatesLogged) {
+      const candidatesTimer = logger.timeOperation("Fetch job candidates");
+      candidatesTimer.end("success", { 
+        count: candidatesData.length,
+        jobId: job.id 
+      });
+      loggingState.current.candidatesLogged = true;
+    }
+  }, [candidatesData, job.id]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
