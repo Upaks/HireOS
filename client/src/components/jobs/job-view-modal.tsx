@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import ReactMarkdown from "react-markdown";
+import { logger } from "@/lib/logger";
 
 // Zod schema for job validation - ensures all required fields exist
 const jobViewSchema = z.object({
@@ -47,33 +48,61 @@ export default function JobViewModal({
   onClose 
 }: JobViewModalProps) {
   const { toast } = useToast();
-  const startTime = performance.now();
+  const modalTimer = logger.timeOperation("Job view modal rendering");
   
   // Validate the job data with Zod
   const validationResult = jobViewSchema.safeParse(job);
   if (!validationResult.success) {
-    console.error("Job validation failed:", validationResult.error);
+    logger.error("Job validation failed", { 
+      errors: validationResult.error.errors,
+      jobId: job.id 
+    });
     toast({
       title: "Data validation error",
       description: "Some required job information is missing",
       variant: "destructive",
     });
+  } else {
+    logger.info("Job data validated successfully", { jobId: job.id });
   }
   
   // Fetch submitter details if available
+  const submitterTimer = logger.timeOperation("Fetch submitter data");
   const { data: submitterData } = useQuery<any>({
     queryKey: ['/api/user', job.submitterId],
-    enabled: !!job.submitterId,
+    enabled: !!job.submitterId
   });
+  
+  // Log submitter data fetching manually since we can't use callbacks
+  if (submitterData && job.submitterId) {
+    submitterTimer.end("success", { submitterId: job.submitterId });
+  } else if (job.submitterId) {
+    // Only log an error if we expected data but didn't get it
+    logger.error("Failed to fetch submitter data", { submitterId: job.submitterId });
+    submitterTimer.end("failure");
+  }
   
   // Fetch candidates for this job
+  const candidatesTimer = logger.timeOperation("Fetch job candidates");
   const { data: candidatesData } = useQuery<any[]>({
     queryKey: ['/api/candidates', { jobId: job.id }],
-    enabled: open, // Only fetch when modal is open
+    enabled: open // Only fetch when modal is open
   });
   
-  const endTime = performance.now();
-  console.log(`JobViewModal data prepared in ${endTime - startTime}ms`);
+  // Log candidates data fetching manually
+  if (candidatesData && Array.isArray(candidatesData)) {
+    candidatesTimer.end("success", { 
+      count: candidatesData.length,
+      jobId: job.id 
+    });
+  } else if (open) {
+    // Only log if we expected data but didn't get it
+    logger.error("Failed to fetch job candidates", { jobId: job.id });
+    candidatesTimer.end("failure");
+  }
+  
+  // Overall modal rendering timing
+  modalTimer.end("success", { jobId: job.id });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -169,11 +198,17 @@ export default function JobViewModal({
         )}
         
         <DialogFooter className="mt-6">
-          <Button variant="outline" onClick={onClose}>
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              logger.info("Closing job view modal", { jobId: job.id });
+              onClose();
+            }}
+          >
             Close
           </Button>
           <Link href={`/jobs/${job.id}/edit`}>
-            <Button>
+            <Button onClick={() => logger.info("Navigating to edit job", { jobId: job.id })}>
               Edit Job
             </Button>
           </Link>

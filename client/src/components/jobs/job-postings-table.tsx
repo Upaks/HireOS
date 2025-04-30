@@ -13,27 +13,37 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Job } from "@/types";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
-import JobViewModal from "./job-view-modal";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from "@/lib/logger";
+// Direct relative path import for the view modal
+import JobViewModal from "./job-view-modal.tsx";
 
 export default function JobPostingsTable() {
   const { toast } = useToast();
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   
-  const { data: jobs, isLoading, error } = useQuery<Job[]>({
-    queryKey: ['/api/jobs'],
+  // Use timed operation logger for job data fetching
+  const fetchTimer = logger.timeOperation("Fetch jobs data");
+  
+  const { data: jobs, isLoading, error } = useQuery<Job[], Error>({
+    queryKey: ['/api/jobs']
   });
-
-  // Log performance metrics
-  console.log(`Jobs data fetched in ${performance.now()}ms`);
+  
+  // Log timing on component render after data is loaded
+  if (jobs && !isLoading) {
+    fetchTimer.end("success", { count: jobs.length });
+  } else if (error) {
+    fetchTimer.end("failure", { message: error.message });
+  }
 
   if (isLoading) {
+    logger.info("Loading job postings");
     return <JobPostingsTableSkeleton />;
   }
 
   if (error) {
-    console.error("Error loading jobs:", error);
+    logger.error("Failed to load jobs", { error: error.message });
     toast({
       title: "Error loading jobs",
       description: error.message,
@@ -56,14 +66,18 @@ export default function JobPostingsTable() {
   }
 
   const handleViewJob = (job: Job) => {
-    console.log(`Viewing job: ${job.title} (ID: ${job.id})`);
-    const startTime = performance.now();
+    const viewTimer = logger.timeOperation("Open job view modal");
+    
+    logger.info(`Viewing job details`, { 
+      jobId: job.id, 
+      title: job.title,
+      status: job.status
+    });
     
     setSelectedJob(job);
     setViewModalOpen(true);
     
-    const endTime = performance.now();
-    console.log(`Job view modal opened in ${endTime - startTime}ms`);
+    viewTimer.end("success", { jobId: job.id });
   };
 
   const getStatusBadgeColor = (status: string) => {
