@@ -271,5 +271,4 @@ export function setupJobRoutes(app: Express) {
     } catch (error) {
       handleApiError(error, res);
     }
-  });
-}
+  });}

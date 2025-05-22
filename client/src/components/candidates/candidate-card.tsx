@@ -17,7 +17,7 @@ interface CandidateCardProps {
 export default function CandidateCard({ candidate }: CandidateCardProps) {
   const { toast } = useToast();
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  
+
   const inviteToInterviewMutation = useMutation({
     mutationFn: async (candidateId: number) => {
       const res = await apiRequest("POST", `/api/candidates/${candidateId}/invite-to-interview`, {});
@@ -38,7 +38,7 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
       });
     }
   });
-  
+
   const addToTalentPoolMutation = useMutation({
     mutationFn: async (candidateId: number) => {
       const res = await apiRequest("POST", `/api/candidates/${candidateId}/talent-pool`, {});
@@ -59,7 +59,7 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
       });
     }
   });
-  
+
   const rejectCandidateMutation = useMutation({
     mutationFn: async (candidateId: number) => {
       const res = await apiRequest("POST", `/api/candidates/${candidateId}/reject`, {});
@@ -80,27 +80,27 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
       });
     }
   });
-  
+
   const getStatusBadge = (status: string) => {
     const { code, label, bgColor, textColor } = getStatusDisplay(status);
     return <Badge className={`${bgColor} ${textColor}`}>{code} {label}</Badge>;
   };
-  
+
   const handleInviteToInterview = () => {
     inviteToInterviewMutation.mutate(candidate.id);
   };
-  
+
   const handleAddToTalentPool = () => {
     addToTalentPoolMutation.mutate(candidate.id);
   };
-  
+
   const handleReject = () => {
     rejectCandidateMutation.mutate(candidate.id);
   };
-  
+
   // Only show action buttons for candidates who have completed assessment and are awaiting review
   const showActions = candidate.status === 'assessment_completed';
-  
+
   return (
     <>
       <Card className="overflow-hidden">
@@ -113,7 +113,7 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
             {getStatusBadge(candidate.status)}
           </div>
         </CardHeader>
-        
+
         <CardContent className="px-6 py-5">
           <div className="flex items-center mb-4">
             <div className="flex-shrink-0">
@@ -126,7 +126,7 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
               <div className="text-sm text-slate-500">{candidate.location || 'Location not specified'}</div>
             </div>
           </div>
-          
+
           {candidate.hiPeoplePercentile !== undefined && (
             <div className="mb-4">
               <h4 className="text-sm font-medium text-slate-900 mb-1">HiPeople Assessment</h4>
@@ -146,7 +146,7 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
               )}
             </div>
           )}
-          
+
           {/* Show evaluation criteria */}
           <div className="mb-4">
             <h4 className="text-sm font-medium text-slate-900 mb-1">Evaluation</h4>
@@ -223,7 +223,7 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
               </div>
             </div>
           </div>
-          
+
           {candidate.skills && (
             <div className="mb-4">
               <h4 className="text-sm font-medium text-slate-900 mb-1">Key Skills</h4>
@@ -245,7 +245,7 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
               </div>
             </div>
           )}
-          
+
           <div className="flex justify-between space-x-3 mt-6">
             <Button
               variant="outline"
@@ -254,7 +254,7 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
             >
               View Details
             </Button>
-            
+
             {showActions && (
               <>
                 <Button
@@ -274,7 +274,7 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
               </>
             )}
           </div>
-          
+
           {showActions && (
             <div className="flex justify-between space-x-3 mt-3">
               <Button
@@ -311,7 +311,7 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
           )}
         </CardContent>
       </Card>
-      
+
       <CandidateDetailDialog
         candidate={candidate}
         isOpen={isDetailOpen}
@@ -320,3 +320,5 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
     </>
   );
 }
+
+

@@ -269,19 +269,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateCandidate(id: number, data: Partial<Candidate>): Promise<Candidate> {
+    const updateData = {
+      ...data,
+      updatedAt: new Date()
+    };
+    console.log("Updating candidate with data:", data);
+    console.log("DB Update Payload:", updateData);
+
     const [updatedCandidate] = await db
       .update(candidates)
-      .set({
-        ...data,
-        updatedAt: new Date()
-      })
+      .set(updateData)
       .where(eq(candidates.id, id))
       .returning();
-    
+
     // Enrich with job data
     const job = await this.getJob(updatedCandidate.jobId);
     return { ...updatedCandidate, job: job || null };
   }
+
 
   // Interview operations
   async createInterview(interviewData: Partial<Interview>): Promise<Interview> {

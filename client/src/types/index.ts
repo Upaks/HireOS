@@ -49,6 +49,7 @@ export interface Candidate {
   resumeUrl?: string;
   source?: string;
   status: string;
+  finalDecisionStatus?: "pending" | "offer_sent" | "rejected" | "talent_pool";
   hiPeopleScore?: number;
   hiPeoplePercentile?: number;
   hiPeopleCompletedAt?: string;
@@ -64,6 +65,7 @@ export interface Candidate {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+
   job?: Job;
 }
 

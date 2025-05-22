@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
+import { uploadResume } from "@/lib/supabase"; // <- at the top with other imports
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +21,9 @@ import { Candidate } from "@/types";
 import { Loader2, ExternalLink } from "lucide-react";
 import StarRating from "../ui/star-rating";
 import { getStatusDisplay, getStatusesForFilter } from "@/lib/candidate-status";
+import PDFViewerModal from "./pdf-viewer-modal"; // <- Add this import
+
+
 
 interface CandidateDetailDialogProps {
   candidate: Candidate | null;
@@ -34,6 +38,7 @@ export default function CandidateDetailDialog({
 }: CandidateDetailDialogProps) {
   const { toast } = useToast();
   const { user } = useAuth();
+  const [isPdfOpen, setIsPdfOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [candidateStatus, setCandidateStatus] = useState("");
   const [hiPeopleScore, setHiPeopleScore] = useState<number | undefined>(undefined);
@@ -43,6 +48,12 @@ export default function CandidateDetailDialog({
   const [problemSolving, setProblemSolving] = useState<number | undefined>(undefined);
   const [communicationSkills, setCommunicationSkills] = useState<number | undefined>(undefined);
   const [culturalFit, setCulturalFit] = useState<number | undefined>(undefined);
+  const [finalDecisionStatus, setFinalDecisionStatus] = useState<
+    "pending" | "offer_sent" | "rejected" | "talent_pool"
+  >(candidate?.finalDecisionStatus || "pending");
+
+
+
   
   // Check if user has permission to edit (CEO or COO)
   const canEdit = user?.role === 'ceo' || user?.role === 'coo' || user?.role === 'admin';
@@ -59,6 +70,8 @@ export default function CandidateDetailDialog({
       setProblemSolving(candidate.problemSolving);
       setCommunicationSkills(candidate.communicationSkills);
       setCulturalFit(candidate.culturalFit);
+      setFinalDecisionStatus(candidate.finalDecisionStatus || "pending");
+
     }
   }, [candidate]);
 
@@ -89,6 +102,47 @@ export default function CandidateDetailDialog({
       });
     },
   });
+  const handleQuickStatusUpdate = async (action: "reject" | "talent-pool" | "interview" | "offer") => {
+    if (!candidate) return;
+
+    const actionMap: Record<string, { endpoint: string; newStatus: string }> = {
+      "reject": { endpoint: "reject", newStatus: "200_rejected" },
+      "talent-pool": { endpoint: "talent-pool", newStatus: "90_talent_pool" },
+      "interview": { endpoint: "invite-to-interview", newStatus: "45_1st_interview_sent" },
+      "offer": { endpoint: "send-offer", newStatus: "95_offer_sent" }
+    };
+
+    const selected = actionMap[action];
+
+    try {
+      const response = await apiRequest("POST", `/api/candidates/${candidate.id}/${selected.endpoint}`, 
+        action === "offer"
+          ? {
+              offerType: "Standard",
+              compensation: candidate.expectedSalary || "TBD",
+            }
+          : undefined
+      );
+
+      const updated = await response.json();
+      setCandidateStatus(selected.newStatus);
+
+      toast({
+        title: "Candidate status updated",
+        description: `Set to ${selected.newStatus.replace(/^\d+_/, "").replace(/_/g, " ")}`,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['/api/candidates'] });
+      onClose(); // ✅ close modal after success
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update status.",
+        variant: "destructive",
+      });
+    }
+  };
+
 
   const handleSubmit = () => {
     if (!candidate) return;
@@ -102,7 +156,9 @@ export default function CandidateDetailDialog({
       leadershipInitiative,
       problemSolving,
       communicationSkills,
+      finalDecisionStatus, // ✅ Required to persist to backend
       culturalFit
+      
     });
   };
 
@@ -166,6 +222,25 @@ export default function CandidateDetailDialog({
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div className="mt-4">
+                  <Label>Final Decision Status</Label>
+                  <Select
+                    disabled={!canEdit}
+                    value={finalDecisionStatus}
+                    onValueChange={(value) => setFinalDecisionStatus(value as "pending" | "offer_sent" | "rejected" | "talent_pool")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="offer_sent">Offer Sent</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                      <SelectItem value="talent_pool">Talent Pool</SelectItem>
+                    </SelectContent>
+                  </Select>
+
                 </div>
 
                 <div>
@@ -322,45 +397,56 @@ export default function CandidateDetailDialog({
                 </div>
               </div>
               
-              {candidate.resumeUrl && (
+             <div className="space-y-2">
+                <Label>Upload Resume</Label>
+               <Input
+                 type="file"
+                 accept="application/pdf"
+                 onChange={async (e) => {
+                   const file = e.target.files?.[0];
+                   if (!file || !candidate?.id) return;
+
+                   // 🛑 Block non-PDFs
+                   if (!file.name.endsWith('.pdf')) {
+                     toast({
+                       title: "Only PDF files are supported right now.",
+                       description: "Please upload a .pdf file for viewing in the resume modal.",
+                       variant: "destructive"
+                     });
+                     return;
+                   }
+
+                   try {
+                     await uploadResume(file, candidate.id);
+                     toast({ title: "Resume uploaded successfully." });
+                   } catch (err) {
+                     toast({
+                       title: "Upload failed",
+                       description: String(err),
+                       variant: "destructive",
+                     });
+                   }
+                 }}
+               />
+              </div>
+
+              {/* View Resume Button */}
+              {candidate?.id && (
                 <div>
-                  <Label htmlFor="resume">Resume</Label>
-                  <div className="flex items-center mt-1">
-                    <a 
-                      href={candidate.resumeUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline flex items-center space-x-1"
-                    >
-                      <span>View Resume</span>
-                      <ExternalLink size={14} />
-                    </a>
-                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsPdfOpen(true)}
+                  >
+                    View Uploaded Resume
+                  </Button>
+
+                  <PDFViewerModal
+                    isOpen={isPdfOpen}
+                    onClose={() => setIsPdfOpen(false)}
+                    resumeUrl={`https://xrzblucvpnyknupragco.supabase.co/storage/v1/object/public/resumes/candidate-${candidate.id}.pdf`}
+                  />
                 </div>
               )}
-              
-              <div className="bg-blue-50 rounded-md p-4 border border-blue-100">
-                <h4 className="font-medium text-blue-800 flex items-center gap-2 mb-2">
-                  <span>Resume URL</span>
-                </h4>
-                <div className="flex items-center">
-                  <Input 
-                    value={candidate.resumeUrl || ""} 
-                    readOnly 
-                    className="bg-white mr-2"
-                  />
-                  {candidate.resumeUrl && (
-                    <a 
-                      href={candidate.resumeUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-md flex items-center"
-                    >
-                      <ExternalLink size={18} />
-                    </a>
-                  )}
-                </div>
-              </div>
             </div>
           </TabsContent>
 
@@ -382,27 +468,65 @@ export default function CandidateDetailDialog({
           </TabsContent>
         </Tabs>
 
-        <DialogFooter className="mt-6">
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          
-          {canEdit && (
-            <Button 
-              onClick={handleSubmit}
-              disabled={updateCandidateMutation.isPending}
-            >
-              {updateCandidateMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                "Save Changes"
-              )}
+        <DialogFooter className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0 md:space-x-4">
+          <div className="flex flex-wrap gap-2">
+            {canEdit && (
+              <>
+                <Button
+                  className="bg-red-100 text-red-800 border border-transparent hover:border-red-400 hover:bg-red-100 hover:scale-105 transition-transform"
+                  size="sm"
+                  onClick={() => handleQuickStatusUpdate("reject")}
+                >
+                  Reject
+                </Button>
+
+                <Button
+                  className="bg-purple-100 text-purple-800 border border-transparent hover:border-purple-400 hover:bg-purple-100 hover:scale-105 transition-transform"
+                  size="sm"
+                  onClick={() => handleQuickStatusUpdate("talent-pool")}
+                >
+                  Talent Pool
+                </Button>
+
+                <Button
+                  className="bg-orange-100 text-orange-800 border border-transparent hover:border-orange-400 hover:bg-orange-100 hover:scale-105 transition-transform"
+                  size="sm"
+                  onClick={() => handleQuickStatusUpdate("interview")}
+                >
+                  Interview
+                </Button>
+
+                <Button
+                  className="bg-yellow-100 text-yellow-800 border border-transparent hover:border-yellow-400 hover:bg-yellow-100 hover:scale-105 transition-transform"
+                  size="sm"
+                  onClick={() => handleQuickStatusUpdate("offer")}
+                >
+                  Offer
+                </Button>
+
+              </>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
             </Button>
-          )}
+            {canEdit && (
+              <Button onClick={handleSubmit} disabled={updateCandidateMutation.isPending}>
+                {updateCandidateMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
+              </Button>
+            )}
+          </div>
         </DialogFooter>
+
       </DialogContent>
     </Dialog>
   );

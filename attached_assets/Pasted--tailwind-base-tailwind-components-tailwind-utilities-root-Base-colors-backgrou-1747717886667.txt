@@ -60,7 +60,10 @@
   --sidebar-border: 215 28% 17%;
   --sidebar-ring: 216 34% 17%;
 }
-
+.button-class:hover {
+  background-color: transparent; /* Prevent background color change */
+  border-color: currentColor; /* Show border color on hover */
+}
 
 /* Add this class to your buttons */
 .dark {
@@ -91,11 +94,6 @@
   --destructive-foreground: 0 0% 98%;
   
   --ring: 217.2 32.6% 17.5%;
-}
-
-.button-class:hover {
-  background-color: transparent; /* Prevent background color change */
-  border-color: currentColor; /* Show border color on hover */
 }
 
 @layer base {

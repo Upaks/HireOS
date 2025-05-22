@@ -141,6 +141,45 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       const updatedCandidate = await storage.updateCandidate(candidateId, req.body);
+
+      // If status was changed to "interview sent", queue interview invitation email
+      if (
+        req.body.status &&
+        req.body.status === "45_1st_interview_sent" &&
+        req.body.status !== candidate.status
+      ) {
+        const job = await storage.getJob(candidate.jobId);
+
+        if (job) {
+          await storage.createNotification({
+            type: "email",
+            payload: {
+              recipientEmail: candidate.email,
+              subject: `${candidate.name}, Let's Discuss Your Fit for Our ${job?.title} Position`,
+              template: "custom",
+              context: {
+                body: `
+                Hi ${candidate.name},<br><br>
+
+                It's Aaron Ready from Ready CPA. I came across your profile and would like to chat about your background and how you might fit in our <b>${job?.title}</b> position.<br><br>
+
+                Feel free to grab a time on my calendar when you're available:<br>
+                <a href="https://www.calendar.com/aaronready/client-meeting">Schedule your interview here</a><br><br>
+
+                Looking forward to connecting!<br><br>
+
+                Thanks,<br>
+                Aaron Ready, CPA<br>
+                Ready CPA
+                `.trim()
+              }
+              },
+              processAfter: new Date(),
+              status: "pending"
+              });
+        }
+      }
+
       
       // Log status change activity
       if (req.body.status && req.body.status !== candidate.status) {
@@ -215,20 +254,31 @@ export function setupCandidateRoutes(app: Express) {
 
       // Queue interview invitation email
       await storage.createNotification({
-        type: "email",
-        payload: {
-          recipientEmail: candidate.email,
-          subject: `Interview Invitation for ${job?.title}`,
-          template: "interview-invitation",
-          context: {
-            candidateName: candidate.name,
-            jobTitle: job?.title,
-            schedulingLink: "https://calendly.com/firmos-interviews/candidate-interview"
-          }
+      type: "email",
+      payload: {
+        recipientEmail: candidate.email,
+        subject: `${candidate.name}, Let's Discuss Your Fit for Our ${job?.title} Position`,
+        template: "custom",
+        context: {
+          body: `
+          Hi ${candidate.name},<br><br>
+
+          It's Aaron Ready from Ready CPA. I came across your profile and would like to chat about your background and how you might fit in our <b>${job?.title}</b> position.<br><br>
+
+          Feel free to grab a time on my calendar when you're available:<br>
+          <a href="https://www.calendar.com/aaronready/client-meeting">Schedule your interview here</a><br><br>
+
+          Looking forward to connecting!<br><br>
+
+          Thanks,<br>
+          Aaron Ready, CPA<br>
+          Ready CPA
+          `.trim()
+        }
         },
         processAfter: new Date(),
         status: "pending"
-      });
+        });
 
       res.json(updatedCandidate);
     } catch (error) {

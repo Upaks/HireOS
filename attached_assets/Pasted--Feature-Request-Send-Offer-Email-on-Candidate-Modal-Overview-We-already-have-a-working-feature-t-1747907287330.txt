@@ -1,0 +1,60 @@
+📨 Feature Request: Send Offer Email on Candidate Modal
+Overview
+We already have a working feature that sends an interview email when the “Interview” button is pressed and the candidate's Current Status is set to “45 1st Interview Sent”. I want to replicate this pattern for sending offer emails — with a few important differences.
+
+✅ New Feature: Send Offer Email
+Trigger Conditions
+The email should be triggered instantly (no delay) when any of the following three elements are interacted with:
+
+The Current Status dropdown is set to Offer.
+
+The Final Decision Status dropdown is set to Offer.
+
+The yellow Offer button is pressed.
+
+⚠️ Regardless of which one is used, the same logic applies.
+
+What Should Happen
+Immediately send the offer email to the candidate’s email address (from the database).
+
+Update the candidate’s status in the system to offersent.
+
+DO NOT log this email into the notification_queue table.
+
+The email should send asynchronously and instantly (without waiting for the modal to close or Save button).
+
+📧 Email Format
+Subject Line:
+Excited to Offer You the Developer Position
+
+Email Body:
+
+pgsql
+Copy
+Edit
+Hi [Candidate Name],
+
+Great news — we’d love to bring you on board for the Developer position at Ready CPA. After reviewing your experience, we’re confident you’ll make a strong impact on our team.
+
+Here’s the link to your engagement contract: https://talent.firmos.app/web-manager-contract453986
+
+To kick things off, please schedule your onboarding call here: https://www.firmos.ai/
+
+If anything’s unclear or you’d like to chat, don’t hesitate to reach out.
+
+Welcome aboard — we’re excited to get started!
+
+Best regards,  
+Aaron Ready, CPA  
+Ready CPA
+Replace [Candidate Name] with the actual full name from the candidate record.
+
+You may hardcode the subject and body format, just make [Candidate Name] dynamic.
+
+💡 Notes
+Follow the same architecture used in the current “Interview” email feature.
+
+You can reuse the email-sending utility if one exists, just make sure not to queue it.
+
+Ensure there's no delay — pressing any of the triggers should immediately fire off the email.
+
