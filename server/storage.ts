@@ -444,8 +444,21 @@ export class DatabaseStorage implements IStorage {
           sentAt: new Date(),
           createdAt: new Date()
         });
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ Error sending direct email:', error);
+      
+      // Check if this is an email address not found error
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isNonExistentEmailError = 
+        errorMessage.includes("User doesn't exist") || 
+        errorMessage.includes("User unknown") || 
+        errorMessage.includes("550") ||
+        errorMessage.includes("No such user") ||
+        errorMessage.includes("recipient rejected") || 
+        errorMessage.includes("Invalid recipient");
+      
+      const errorType = isNonExistentEmailError ? 'non_existent_email' : 'email_error';
+      const formattedError = isNonExistentEmailError ? 'Candidate email does not exist' : errorMessage;
 
       // Log the failure in email_logs
       await db
@@ -456,11 +469,16 @@ export class DatabaseStorage implements IStorage {
           template: 'direct',
           context: { body },
           status: 'failed', // Mark as failed
-          error: error.message, // Log the error message
+          error: formattedError, // Use standardized error message if applicable
           createdAt: new Date()
         });
 
-      throw error; // Rethrow error after logging
+      // Create a custom error with additional metadata
+      const enhancedError = new Error(formattedError);
+      (enhancedError as any).isNonExistentEmailError = isNonExistentEmailError;
+      (enhancedError as any).originalError = errorMessage;
+      
+      throw enhancedError; // Rethrow enhanced error after logging
     }
   }
 }
