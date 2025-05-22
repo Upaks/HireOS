@@ -40,6 +40,14 @@ export function handleApiError(error: any, res: Response) {
   
   // Handle specific error types
   if (error instanceof Error) {
+    // Check for our special email error (added for non-existent email detection)
+    if (error.message === 'Candidate email does not exist' || (error as any).isNonExistentEmailError) {
+      return res.status(422).json({ 
+        message: "Candidate email does not exist",
+        errorType: "non_existent_email"
+      });
+    }
+    
     // Check for specific error messages that indicate certain HTTP status codes
     if (error.message.includes("not found") || error.message.includes("doesn't exist")) {
       return res.status(404).json({ message: error.message });

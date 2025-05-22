@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ErrorModal } from "@/components/ui/error-modal";
 import { Candidate } from "@/types";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -34,6 +35,7 @@ export default function OfferForm({
   const [compensation, setCompensation] = useState("");
   const [startDate, setStartDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [emailErrorModalOpen, setEmailErrorModalOpen] = useState(false);
   
   const sendOfferMutation = useMutation({
     mutationFn: async (offerData: {
@@ -43,6 +45,17 @@ export default function OfferForm({
       notes?: string;
     }) => {
       const res = await apiRequest("POST", `/api/candidates/${candidate.id}/send-offer`, offerData);
+      
+      // Check if the response is ok before parsing JSON
+      if (!res.ok) {
+        const errorData = await res.json();
+        // Check if this is our special email error type
+        if (errorData.errorType === "non_existent_email") {
+          throw new Error("non_existent_email");
+        }
+        throw new Error(errorData.message || "Failed to send offer");
+      }
+      
       return await res.json();
     },
     onSuccess: () => {
@@ -56,6 +69,13 @@ export default function OfferForm({
       onOpenChange(false);
     },
     onError: (error: Error) => {
+      // Handle the special email error
+      if (error.message === "non_existent_email") {
+        setEmailErrorModalOpen(true);
+        return;
+      }
+      
+      // Handle other errors with toast
       toast({
         title: "Failed to send offer",
         description: error.message,
@@ -85,97 +105,108 @@ export default function OfferForm({
   };
   
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Send Offer</DialogTitle>
-          <DialogDescription>
-            Create and send an offer to {candidate.name} for the {candidate.job?.title} position.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="offer-type">Offer Type</Label>
-            <Select 
-              value={offerType} 
-              onValueChange={setOfferType}
-            >
-              <SelectTrigger id="offer-type">
-                <SelectValue placeholder="Select offer type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Full-time">Full-time</SelectItem>
-                <SelectItem value="Part-time">Part-time</SelectItem>
-                <SelectItem value="Contract">Contract</SelectItem>
-                <SelectItem value="Internship">Internship</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send Offer</DialogTitle>
+            <DialogDescription>
+              Create and send an offer to {candidate.name} for the {candidate.job?.title} position.
+            </DialogDescription>
+          </DialogHeader>
           
-          <div className="space-y-2">
-            <Label htmlFor="compensation">Compensation</Label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <span className="text-gray-500 sm:text-sm">$</span>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="offer-type">Offer Type</Label>
+              <Select 
+                value={offerType} 
+                onValueChange={setOfferType}
+              >
+                <SelectTrigger id="offer-type">
+                  <SelectValue placeholder="Select offer type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Full-time">Full-time</SelectItem>
+                  <SelectItem value="Part-time">Part-time</SelectItem>
+                  <SelectItem value="Contract">Contract</SelectItem>
+                  <SelectItem value="Internship">Internship</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="compensation">Compensation</Label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span className="text-gray-500 sm:text-sm">$</span>
+                </div>
+                <Input
+                  id="compensation"
+                  type="text"
+                  className="pl-7 pr-12"
+                  placeholder="0.00"
+                  value={compensation}
+                  onChange={(e) => setCompensation(e.target.value)}
+                />
+                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                  <span className="text-gray-500 sm:text-sm">USD</span>
+                </div>
               </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="start-date">Start Date</Label>
               <Input
-                id="compensation"
-                type="text"
-                className="pl-7 pr-12"
-                placeholder="0.00"
-                value={compensation}
-                onChange={(e) => setCompensation(e.target.value)}
+                id="start-date"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
               />
-              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                <span className="text-gray-500 sm:text-sm">USD</span>
-              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes for Offer Letter</Label>
+              <Textarea
+                id="notes"
+                placeholder="Any special terms or notes to include..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
             </div>
           </div>
           
-          <div className="space-y-2">
-            <Label htmlFor="start-date">Start Date</Label>
-            <Input
-              id="start-date"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes for Offer Letter</Label>
-            <Textarea
-              id="notes"
-              placeholder="Any special terms or notes to include..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </div>
-        </div>
-        
-        <DialogFooter>
-          <Button 
-            variant="outline" 
-            onClick={() => onOpenChange(false)}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={sendOfferMutation.isPending}
-          >
-            {sendOfferMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sending...
-              </>
-            ) : (
-              "Send Offer"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => onOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={sendOfferMutation.isPending}
+            >
+              {sendOfferMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                "Send Offer"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Email Error Modal */}
+      <ErrorModal
+        open={emailErrorModalOpen}
+        onOpenChange={setEmailErrorModalOpen}
+        title="Email Error"
+        description={`Candidate email does not exist. Please verify ${candidate.email} is correct and try again.`}
+        buttonText="Okay"
+      />
+    </>
   );
 }
