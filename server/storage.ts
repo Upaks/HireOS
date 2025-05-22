@@ -233,7 +233,7 @@ export class DatabaseStorage implements IStorage {
     return { ...candidate, job: job || null };
   }
 
-  async getCandidates(filters: { jobId?: number, status?: string }): Promise<Candidate[]> {
+  async getCandidates(filters: { jobId?: number, status?: string, hiPeoplePercentile?: number }): Promise<Candidate[]> {
     const conditions = [];
     
     if (filters.jobId !== undefined) {
@@ -242,6 +242,12 @@ export class DatabaseStorage implements IStorage {
     
     if (filters.status && filters.status !== 'all') {
       conditions.push(eq(candidates.status, filters.status));
+    }
+    
+    // Add hiPeoplePercentile filter if provided
+    if (filters.hiPeoplePercentile !== undefined) {
+      // This would need proper implementation if used for filtering
+      // conditions.push(gte(candidates.hiPeoplePercentile, filters.hiPeoplePercentile));
     }
     
     let candidatesList;
@@ -407,35 +413,41 @@ export class DatabaseStorage implements IStorage {
   async sendDirectEmail(to: string, subject: string, body: string): Promise<void> {
     const nodemailer = await import('nodemailer');
     
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: "earyljames.capitle18@gmail.com",
-        pass: "fkjl gklg tamh vugj"
-      }
-    });
-
-    const mailOptions = {
-      from: "earyljames.capitle18@gmail.com",
-      to,
-      subject,
-      html: body
-    };
-
-    await transporter.sendMail(mailOptions);
-
-    // Log the email but don't add to queue
-    await db
-      .insert(emailLogs)
-      .values({
-        recipientEmail: to,
-        subject: subject,
-        template: 'direct',
-        context: { body },
-        status: 'sent',
-        sentAt: new Date(),
-        createdAt: new Date()
+    try {
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: "earyljames.capitle18@gmail.com",
+          pass: "fkjl gklg tamh vugj"
+        }
       });
+  
+      const mailOptions = {
+        from: "earyljames.capitle18@gmail.com",
+        to,
+        subject,
+        html: body
+      };
+  
+      await transporter.sendMail(mailOptions);
+      console.log(`✅ Direct email sent to ${to} with subject: ${subject}`);
+  
+      // Log the email but don't add to queue
+      await db
+        .insert(emailLogs)
+        .values({
+          recipientEmail: to,
+          subject: subject,
+          template: 'direct',
+          context: { body },
+          status: 'sent',
+          sentAt: new Date(),
+          createdAt: new Date()
+        });
+    } catch (error) {
+      console.error('❌ Error sending direct email:', error);
+      throw error;
+    }
   }
 }
 

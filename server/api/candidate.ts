@@ -180,6 +180,62 @@ export function setupCandidateRoutes(app: Express) {
         }
       }
 
+      // If status changed to offer_sent OR final decision changed to offer, send offer email
+      if ((req.body.status === "95_offer_sent" && candidate.status !== "95_offer_sent") || 
+          (req.body.finalDecisionStatus === "offer" && candidate.finalDecisionStatus !== "offer")) {
+        
+        // Get job details
+        const job = await storage.getJob(candidate.jobId);
+        
+        // Create offer record if none exists
+        let offer = await storage.getOfferByCandidate(candidateId);
+        if (!offer) {
+          offer = await storage.createOffer({
+            candidateId,
+            offerType: "Full-time", // Default value
+            compensation: "Competitive", // Default value
+            status: "sent",
+            sentDate: new Date(),
+            approvedById: req.user?.id,
+            contractUrl: `https://talent.firmos.app/web-manager-contract453986`
+          });
+        }
+
+        // Log activity
+        await storage.createActivityLog({
+          userId: req.user?.id,
+          action: "Sent offer to candidate",
+          entityType: "candidate",
+          entityId: candidate.id,
+          details: { 
+            candidateName: candidate.name, 
+            jobTitle: job?.title
+          },
+          timestamp: new Date()
+        });
+
+        // Send direct offer email (immediate, no queue)
+        const emailSubject = `Excited to Offer You the ${job?.title} Position`;
+        const emailBody = `
+        <p>Hi ${candidate.name},</p>
+        
+        <p>Great news — we'd love to bring you on board for the ${job?.title} position at Ready CPA. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
+        
+        <p>Here's the link to your engagement contract: <a href="https://talent.firmos.app/web-manager-contract453986">https://talent.firmos.app/web-manager-contract453986</a></p>
+        
+        <p>To kick things off, please schedule your onboarding call here: <a href="https://www.firmos.ai/">https://www.firmos.ai/</a></p>
+        
+        <p>If anything's unclear or you'd like to chat, don't hesitate to reach out.</p>
+        
+        <p>Welcome aboard — we're excited to get started!</p>
+        
+        <p>Best regards,<br>
+        Aaron Ready, CPA<br>
+        Ready CPA</p>
+        `;
+        
+        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
+      }
       
       // Log status change activity
       if (req.body.status && req.body.status !== candidate.status) {
