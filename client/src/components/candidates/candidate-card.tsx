@@ -9,6 +9,7 @@ import { Loader2, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import CandidateDetailDialog from "./candidate-detail-dialog";
 import { getStatusDisplay } from "@/lib/candidate-status";
+import { ErrorModal } from "@/components/ui/error-modal";
 
 interface CandidateCardProps {
   candidate: Candidate;
@@ -17,10 +18,22 @@ interface CandidateCardProps {
 export default function CandidateCard({ candidate }: CandidateCardProps) {
   const { toast } = useToast();
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [emailErrorModalOpen, setEmailErrorModalOpen] = useState(false);
 
   const inviteToInterviewMutation = useMutation({
     mutationFn: async (candidateId: number) => {
       const res = await apiRequest("POST", `/api/candidates/${candidateId}/invite-to-interview`, {});
+      
+      // Check if the response is ok before parsing JSON
+      if (!res.ok) {
+        const errorData = await res.json();
+        // Check if this is our special email error type
+        if (errorData.errorType === "non_existent_email") {
+          throw new Error("non_existent_email");
+        }
+        throw new Error(errorData.message || "Failed to invite candidate");
+      }
+      
       return await res.json();
     },
     onSuccess: () => {
@@ -31,6 +44,13 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
       });
     },
     onError: (error: Error) => {
+      // Handle the special email error
+      if (error.message === "non_existent_email") {
+        setEmailErrorModalOpen(true);
+        return;
+      }
+      
+      // Handle other errors with toast
       toast({
         title: "Failed to invite candidate",
         description: error.message,
@@ -316,6 +336,15 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
         candidate={candidate}
         isOpen={isDetailOpen}
         onClose={() => setIsDetailOpen(false)}
+      />
+      
+      {/* Email Error Modal */}
+      <ErrorModal
+        open={emailErrorModalOpen}
+        onOpenChange={setEmailErrorModalOpen}
+        title="Email Error"
+        description={`Candidate email does not exist. Please verify ${candidate.email} is correct and try again.`}
+        buttonText="Okay"
       />
     </>
   );

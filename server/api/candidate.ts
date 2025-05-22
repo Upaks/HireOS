@@ -308,33 +308,25 @@ export function setupCandidateRoutes(app: Express) {
         timestamp: new Date()
       });
 
-      // Queue interview invitation email
-      await storage.createNotification({
-      type: "email",
-      payload: {
-        recipientEmail: candidate.email,
-        subject: `${candidate.name}, Let's Discuss Your Fit for Our ${job?.title} Position`,
-        template: "custom",
-        context: {
-          body: `
-          Hi ${candidate.name},<br><br>
-
-          It's Aaron Ready from Ready CPA. I came across your profile and would like to chat about your background and how you might fit in our <b>${job?.title}</b> position.<br><br>
-
-          Feel free to grab a time on my calendar when you're available:<br>
-          <a href="https://www.calendar.com/aaronready/client-meeting">Schedule your interview here</a><br><br>
-
-          Looking forward to connecting!<br><br>
-
-          Thanks,<br>
-          Aaron Ready, CPA<br>
-          Ready CPA
-          `.trim()
-        }
-        },
-        processAfter: new Date(),
-        status: "pending"
-        });
+      // Send direct interview invitation email (immediate, no queue)
+      const emailSubject = `${candidate.name}, Let's Discuss Your Fit for Our ${job?.title} Position`;
+      const emailBody = `
+      <p>Hi ${candidate.name},</p>
+      
+      <p>It's Aaron Ready from Ready CPA. I came across your profile and would like to chat about your background and how you might fit in our <b>${job?.title}</b> position.</p>
+      
+      <p>Feel free to grab a time on my calendar when you're available:<br>
+      <a href="https://www.calendar.com/aaronready/client-meeting">Schedule your interview here</a></p>
+      
+      <p>Looking forward to connecting!</p>
+      
+      <p>Thanks,<br>
+      Aaron Ready, CPA<br>
+      Ready CPA</p>
+      `;
+      
+      // Use direct email sending to leverage our error handling
+      await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
 
       res.json(updatedCandidate);
     } catch (error) {
