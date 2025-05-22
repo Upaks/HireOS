@@ -338,13 +338,12 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
         onClose={() => setIsDetailOpen(false)}
       />
       
-      {/* Email Error Modal */}
+      {/* Email Error Modal - User-friendly version */}
       <ErrorModal
         open={emailErrorModalOpen}
         onOpenChange={setEmailErrorModalOpen}
-        title="Email Error"
-        description={`Candidate email does not exist. Please verify ${candidate.email} is correct and try again.`}
-        buttonText="Okay"
+        buttonText="Close"
+        isEmailError={true}
       />
     </>
   );
