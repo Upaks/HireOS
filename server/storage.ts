@@ -412,26 +412,26 @@ export class DatabaseStorage implements IStorage {
   // Direct email sending (bypasses notification queue)
   async sendDirectEmail(to: string, subject: string, body: string): Promise<void> {
     const nodemailer = await import('nodemailer');
-    
+
     try {
       const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {
           user: "earyljames.capitle18@gmail.com",
-          pass: "fkjl gklg tamh vugj"
+          pass: "fkjl gklg tamh vugj" // It’s better to store sensitive information in environment variables.
         }
       });
-  
+
       const mailOptions = {
         from: "earyljames.capitle18@gmail.com",
         to,
         subject,
         html: body
       };
-  
+
       await transporter.sendMail(mailOptions);
       console.log(`✅ Direct email sent to ${to} with subject: ${subject}`);
-  
+
       // Log the email but don't add to queue
       await db
         .insert(emailLogs)
@@ -446,7 +446,21 @@ export class DatabaseStorage implements IStorage {
         });
     } catch (error) {
       console.error('❌ Error sending direct email:', error);
-      throw error;
+
+      // Log the failure in email_logs
+      await db
+        .insert(emailLogs)
+        .values({
+          recipientEmail: to,
+          subject,
+          template: 'direct',
+          context: { body },
+          status: 'failed', // Mark as failed
+          error: error.message, // Log the error message
+          createdAt: new Date()
+        });
+
+      throw error; // Rethrow error after logging
     }
   }
 }
