@@ -199,12 +199,13 @@ export default function OfferForm({
         </DialogContent>
       </Dialog>
       
-      {/* Email Error Modal - Now with user-friendly design */}
+      {/* Email Error Modal */}
       <ErrorModal
         open={emailErrorModalOpen}
         onOpenChange={setEmailErrorModalOpen}
-        buttonText="Close"
-        isEmailError={true}
+        title="Email Error"
+        description={`Candidate email does not exist. Please verify ${candidate.email} is correct and try again.`}
+        buttonText="Okay"
       />
     </>
   );
