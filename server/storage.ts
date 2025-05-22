@@ -1,5 +1,6 @@
 import { 
   users, jobs, jobPlatforms, candidates, interviews, activityLogs, notificationQueue,
+  offers, emailLogs,
   UserRoles,
   type User, 
   type InsertUser,
@@ -54,11 +55,19 @@ export interface IStorage {
   createInterview(interview: Partial<Interview>): Promise<Interview>;
   getInterview(id: number): Promise<Interview | undefined>;
   
+  // Offer operations
+  createOffer(offer: Partial<Offer>): Promise<Offer>;
+  getOfferByCandidate(candidateId: number): Promise<Offer | undefined>;
+  updateOffer(id: number, data: Partial<Offer>): Promise<Offer>;
+  
   // Activity logs
   createActivityLog(log: Omit<ActivityLog, 'id'>): Promise<ActivityLog>;
   
   // Notifications
   createNotification(notification: Omit<NotificationQueueItem, 'id' | 'createdAt' | 'processAttempts' | 'lastAttemptAt' | 'error'>): Promise<NotificationQueueItem>;
+  
+  // Direct email sending (bypasses notification queue)
+  sendDirectEmail(to: string, subject: string, body: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -348,6 +357,85 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     return newNotification;
+  }
+
+  // Offer operations
+  async createOffer(offerData: Partial<Offer>): Promise<Offer> {
+    const [offer] = await db
+      .insert(offers)
+      .values({
+        candidateId: offerData.candidateId!,
+        offerType: offerData.offerType!,
+        compensation: offerData.compensation!,
+        startDate: offerData.startDate || null,
+        notes: offerData.notes || null,
+        status: offerData.status || 'draft',
+        sentDate: offerData.sentDate || null,
+        contractUrl: offerData.contractUrl || null,
+        approvedById: offerData.approvedById || null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .returning();
+    
+    return offer;
+  }
+
+  async getOfferByCandidate(candidateId: number): Promise<Offer | undefined> {
+    const [offer] = await db
+      .select()
+      .from(offers)
+      .where(eq(offers.candidateId, candidateId));
+    
+    return offer || undefined;
+  }
+
+  async updateOffer(id: number, data: Partial<Offer>): Promise<Offer> {
+    const [updatedOffer] = await db
+      .update(offers)
+      .set({
+        ...data,
+        updatedAt: new Date()
+      })
+      .where(eq(offers.id, id))
+      .returning();
+    
+    return updatedOffer;
+  }
+
+  // Direct email sending (bypasses notification queue)
+  async sendDirectEmail(to: string, subject: string, body: string): Promise<void> {
+    const nodemailer = await import('nodemailer');
+    
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "earyljames.capitle18@gmail.com",
+        pass: "fkjl gklg tamh vugj"
+      }
+    });
+
+    const mailOptions = {
+      from: "earyljames.capitle18@gmail.com",
+      to,
+      subject,
+      html: body
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    // Log the email but don't add to queue
+    await db
+      .insert(emailLogs)
+      .values({
+        recipientEmail: to,
+        subject: subject,
+        template: 'direct',
+        context: { body },
+        status: 'sent',
+        sentAt: new Date(),
+        createdAt: new Date()
+      });
   }
 }
 
