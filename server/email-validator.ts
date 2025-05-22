@@ -14,14 +14,26 @@ export function isLikelyInvalidEmail(email: string): boolean {
   // Common patterns for test or non-existent emails
   const suspiciousPatterns = [
     /nonexistent/i,
-    /deleted/i,
-    /test[0-9]{3,}/i,
+    /deleted(?:account)?/i,
+    /test[0-9]+/i,   // Match any test followed by numbers
     /fake/i,
     /example\./i,
     /invalid/i,
     /notreal/i,
-    /donotexist/i
+    /donotexist/i,
+    /dummy/i
   ];
+  
+  // Specific known test emails from your system
+  const knownTestEmails = [
+    "nonexistent.user.582013@gmail.com",
+    "deletedaccount.test.990199@gmail.com"
+  ];
+  
+  // Check for exact matches first
+  if (knownTestEmails.includes(email)) {
+    return true;
+  }
   
   // Check for suspicious patterns in the email
   if (suspiciousPatterns.some(pattern => pattern.test(email))) {

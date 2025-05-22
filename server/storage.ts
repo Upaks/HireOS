@@ -414,12 +414,35 @@ export class DatabaseStorage implements IStorage {
   async sendDirectEmail(to: string, subject: string, body: string): Promise<void> {
     const nodemailer = await import('nodemailer');
 
+    // Pre-validate the email address before attempting to send
+    if (isLikelyInvalidEmail(to)) {
+      console.error(`❌ Rejected likely non-existent email: ${to}`);
+      
+      // Log the failure in email_logs
+      await db
+        .insert(emailLogs)
+        .values({
+          recipientEmail: to,
+          subject,
+          template: 'direct',
+          context: { body },
+          status: 'failed',
+          error: 'Candidate email does not exist',
+          createdAt: new Date()
+        });
+      
+      // Throw our custom error for the UI to handle
+      const error = new Error('Candidate email does not exist');
+      (error as any).isNonExistentEmailError = true;
+      throw error;
+    }
+
     try {
       const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {
           user: "earyljames.capitle18@gmail.com",
-          pass: "fkjl gklg tamh vugj" // It’s better to store sensitive information in environment variables.
+          pass: "fkjl gklg tamh vugj" // It's better to store sensitive information in environment variables.
         }
       });
 
