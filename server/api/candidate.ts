@@ -410,9 +410,10 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
-      // Update candidate status
+      // Update candidate status and final decision status
       const updatedCandidate = await storage.updateCandidate(candidateId, {
-        status: "200_rejected"
+        status: "200_rejected",
+        finalDecisionStatus: "rejected"
       });
 
       // Get job details
@@ -428,21 +429,26 @@ export function setupCandidateRoutes(app: Express) {
         timestamp: new Date()
       });
 
-      // Queue rejection email (with 2-hour delay)
-      await storage.createNotification({
-        type: "email",
-        payload: {
-          recipientEmail: candidate.email,
-          subject: `Update on your application to ${job?.title}`,
-          template: "rejection",
-          context: {
-            candidateName: candidate.name,
-            jobTitle: job?.title
-          }
-        },
-        processAfter: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours later
-        status: "pending"
-      });
+      // Send direct rejection email (immediate, no queue)
+      const emailSubject = `Update on Your ${job?.title} Application`;
+      const emailBody = `
+      <p>Hi ${candidate.name},</p>
+      
+      <p>Thank you for taking the time to apply for the ${job?.title} position at Ready CPA. We truly appreciate your interest in joining our team and the effort you put into your application.</p>
+      
+      <p>After careful consideration, we've decided to move forward with other candidates whose experience more closely matches the needs of the role at this time.</p>
+      
+      <p>We wish you all the best in your job search and future endeavors. We're confident the right opportunity is just around the corner for you.</p>
+      
+      <p>Thank you again for your interest in Ready CPA.</p>
+      
+      <p>Best regards,<br>
+      Aaron Ready, CPA<br>
+      Ready CPA</p>
+      `;
+      
+      // Use direct email sending to leverage our error handling
+      await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
 
       res.json(updatedCandidate);
     } catch (error) {

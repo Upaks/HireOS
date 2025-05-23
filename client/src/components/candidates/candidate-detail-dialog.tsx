@@ -55,8 +55,14 @@ export default function CandidateDetailDialog({
 
 
   
+  // Check if the candidate is rejected (status 200_rejected or finalDecisionStatus is rejected)
+  const isRejected = 
+    candidate?.status === "200_rejected" || 
+    candidate?.finalDecisionStatus === "rejected";
+  
   // Check if user has permission to edit (CEO or COO)
-  const canEdit = user?.role === 'ceo' || user?.role === 'coo' || user?.role === 'admin';
+  // Candidate cannot be edited if rejected, unless by admin/CEO/COO
+  const canEdit = (user?.role === 'ceo' || user?.role === 'coo' || user?.role === 'admin') && !isRejected;
 
   // Update form fields when candidate changes
   useEffect(() => {
@@ -470,7 +476,7 @@ export default function CandidateDetailDialog({
 
         <DialogFooter className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0 md:space-x-4">
           <div className="flex flex-wrap gap-2">
-            {canEdit && (
+            {!isRejected && user && (user.role === 'ceo' || user.role === 'coo' || user.role === 'admin') && (
               <>
                 <Button
                   className="bg-red-100 text-red-800 border border-transparent hover:border-red-400 hover:bg-red-100 hover:scale-105 transition-transform"
@@ -503,17 +509,21 @@ export default function CandidateDetailDialog({
                 >
                   Offer
                 </Button>
-
               </>
+            )}
+            {isRejected && (
+              <div className="text-sm text-red-600 italic">
+                This candidate has been rejected. No further actions are available.
+              </div>
             )}
           </div>
 
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>
-              Cancel
+              {isRejected ? "Close" : "Cancel"}
             </Button>
             {canEdit && (
-              <Button onClick={handleSubmit} disabled={updateCandidateMutation.isPending}>
+              <Button onClick={handleSubmit} disabled={updateCandidateMutation.isPending || isRejected}>
                 {updateCandidateMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

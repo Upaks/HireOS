@@ -83,16 +83,34 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
   const rejectCandidateMutation = useMutation({
     mutationFn: async (candidateId: number) => {
       const res = await apiRequest("POST", `/api/candidates/${candidateId}/reject`, {});
+      
+      // Check if the response is ok before parsing JSON
+      if (!res.ok) {
+        const errorData = await res.json();
+        // Check if this is our special email error type
+        if (errorData.message?.includes("Candidate email does not exist")) {
+          throw new Error("non_existent_email");
+        }
+        throw new Error(errorData.message || "Failed to reject candidate");
+      }
+      
       return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/candidates'] });
       toast({
         title: "Candidate rejected",
-        description: `${candidate.name} has been rejected.`
+        description: `${candidate.name} has been rejected and notification email has been sent.`
       });
     },
     onError: (error: Error) => {
+      // Handle the special email error
+      if (error.message === "non_existent_email") {
+        setEmailErrorModalOpen(true);
+        return;
+      }
+      
+      // Handle other errors with toast
       toast({
         title: "Failed to reject candidate",
         description: error.message,
