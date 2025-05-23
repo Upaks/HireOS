@@ -143,10 +143,10 @@ export default function CandidateDetailDialog({
             setFinalDecisionStatus(selected.finalDecisionStatus as any);
           }
           
-          // Show error but still invalidate queries
+          // Show user-friendly error message but still invalidate queries
           toast({
-            title: "Email Error",
-            description: "Candidate status updated, but email could not be sent because the email address appears to be invalid.",
+            title: "Unable to Send Email",
+            description: "We've updated the candidate's status, but couldn't send the notification email because the email address appears to be invalid.",
             variant: "destructive",
           });
           
