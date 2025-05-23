@@ -294,7 +294,7 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
-      // Get job details first
+      // Get job details first (needed for email and logging)
       const job = await storage.getJob(candidate.jobId);
       
       // Check for valid email before sending interview invite
@@ -323,7 +323,7 @@ export function setupCandidateRoutes(app: Express) {
         status: "45_1st_interview_sent"
       });
       
-      // Log activity
+      // Log activity 
       await storage.createActivityLog({
         userId: req.user?.id,
         action: "Invited candidate to interview",

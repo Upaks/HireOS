@@ -25,26 +25,13 @@ export function ErrorModal({
   description,
   buttonText = "Okay"
 }: ErrorModalProps) {
-  // ALWAYS show user-friendly messages regardless of input
-  // Default message for any technical error
-  let friendlyDescription = "There was a problem with your request. Please try again.";
+  // Force friendly message ALWAYS - never show raw errors to users
+  let friendlyDescription = "We couldn't complete this operation. The candidate's email address may be invalid.";
   
-  // If we have any error description at all, replace it with user-friendly messaging
-  if (description) {
-    // For email-related errors (most common case)
-    if (typeof description === 'string' && (
-        description.toLowerCase().includes('email') || 
-        description.includes('non_existent_email'))) {
-      friendlyDescription = "We couldn't send an email to this candidate because the email address appears to be invalid or doesn't exist. Please verify the email address is correct before trying again.";
-    }
-    
-    // ALWAYS replace JSON or error code formats with friendly messaging
-    if (description.toString().includes('{') || 
-        description.toString().includes('}') ||
-        description.toString().includes('422') ||
-        description.toString().includes('message')) {
-      friendlyDescription = "We encountered a problem with this operation. Please verify the candidate's email address is valid and try again.";
-    }
+  // Even simplify further - don't try to parse anything, just use fixed messages
+  if (description && (description.toString().toLowerCase().includes('email') || 
+                      description.toString().includes('invalid'))) {
+    friendlyDescription = "We couldn't send an email to this candidate because the email address appears to be invalid or doesn't exist. Please verify the email address is correct before trying again.";
   }
   
   return (

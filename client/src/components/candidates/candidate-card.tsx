@@ -369,7 +369,7 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
         open={emailErrorModalOpen}
         onOpenChange={setEmailErrorModalOpen}
         title="Unable to Send Email"
-        description={`We couldn't send an email to this candidate. The email address (${candidate.email}) appears to be invalid or doesn't exist. Please verify the email address is correct before trying again.`}
+        description="Email invalid" 
         buttonText="Got it"
       />
     </>
