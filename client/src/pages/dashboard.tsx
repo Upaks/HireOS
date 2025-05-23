@@ -18,14 +18,22 @@ import {
 export default function Dashboard() {
   const [hiringFormOpen, setHiringFormOpen] = useState(false);
   
-  // Fetch dashboard stats
   const { data: dashboardData, isLoading: isLoadingStats } = useQuery<{
     stats: DashboardStats;
     recentActivity: ActivityLog[];
   }>({
     queryKey: ['/api/analytics/dashboard'],
+    queryFn: async () => {
+    const res = await fetch('/api/analytics/dashboard', { cache: "no-store" });
+      if (!res.ok) throw new Error('Failed to fetch dashboard data');
+      return res.json();
+    },
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 3000,
   });
-  
+
+
   // Handle new hiring request button click
   const handleNewHiring = () => {
     setHiringFormOpen(true);
@@ -48,7 +56,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               title="Active Jobs"
-              value={dashboardData?.stats.activeJobs || 0}
+              value={dashboardData?.stats.activeJobs ?? 0}
               icon={<Briefcase />}
               linkText="View all jobs"
               linkHref="/jobs"
@@ -56,7 +64,7 @@ export default function Dashboard() {
             
             <StatCard
               title="Total Candidates"
-              value={dashboardData?.stats.totalCandidates || 0}
+              value={dashboardData?.stats.totalCandidates ?? 0}
               icon={<Users />}
               linkText="View all candidates"
               linkHref="/candidates"
@@ -66,7 +74,7 @@ export default function Dashboard() {
             
             <StatCard
               title="Scheduled Interviews"
-              value={dashboardData?.stats.scheduledInterviews || 0}
+              value={dashboardData?.stats.scheduledInterviews ?? 0}
               icon={<Calendar />}
               linkText="See schedule"
               linkHref="/interviews"
@@ -76,7 +84,7 @@ export default function Dashboard() {
             
             <StatCard
               title="Offers Sent"
-              value={dashboardData?.stats.offersSent || 0}
+              value={dashboardData?.stats.offersSent ?? 0}
               icon={<CheckCircle />}
               linkText="View offers"
               linkHref="/reviews"

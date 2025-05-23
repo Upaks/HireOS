@@ -1,0 +1,49 @@
+✨ Feature: Add Candidate Button & Form
+
+📍 Where to Place the Button
+- Location: Top-right of the Candidate Screener page.
+- Label: + Add Candidate
+- Action: Opens a modal form for manual candidate entry.
+
+📝 Candidate Form Inputs
+
+| Field Label                   | Form Input Type  | DB Column               | Notes                                        |
+|------------------------------|------------------|-------------------------|----------------------------------------------|
+| Job Role                     | Dropdown         | job_id                  | Values: 6 (Audit Senior), 7 (Executive Assistant) |
+| Full Name                    | Text             | name                    |                                              |
+| Email                        | Text             | email                   |                                              |
+| Phone                        | Text             | phone                   |                                              |
+| Location                     | Text             | location                |                                              |
+| Resume (PDF only)            | File Upload      | resume_url              | Store URL to uploaded PDF                    |
+| Source                       | Text             | source                  |                                              |
+| Assessment Completion Date   | Date Picker      | hi_people_completed_at  | Optional                                     |
+| HiPeople Score               | Number (Integer) | hi_people_score         | Optional                                     |
+| HiPeople Percentile          | Number (Integer) | hi_people_percentile    | Optional                                     |
+| Experience (Years)           | Number (Integer) | experience_years        |                                              |
+| Expected Salary              | Text             | expected_salary         |                                              |
+| Skills                       | Multi-Select     | skills (JSON)           | Max: 3 entries                               |
+
+⚙️ Backend Behavior
+
+Auto-set Fields (No user input required):
+
+| Field               | DB Column               | Value              |
+|--------------------|-------------------------|--------------------|
+| Status             | status                  | "new"              |
+| Created At         | created_at              | Current timestamp  |
+| Updated At         | updated_at              | Current timestamp  |
+| Evaluation Scores  | (all below set to 0)    | Default values     |
+| - Technical        | technical_proficiency   | 0                  |
+| - Leadership       | leadership_initiative   | 0                  |
+| - Problem Solving  | problem_solving         | 0                  |
+| - Communication    | communication_skills    | 0                  |
+| - Cultural Fit     | cultural_fit            | 0                  |
+
+🔄 Validation Rules
+- Resume must be a PDF file.
+- Skills max limit: 3 selections.
+- Job ID must be one of the predefined roles (6 or 7).
+
+✅ Outcome
+- After submission, candidate data is inserted into the database using the mapped schema.
+- The candidate card appears immediately in the candidate screener, under the appropriate job category.

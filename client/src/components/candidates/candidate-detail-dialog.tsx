@@ -536,19 +536,17 @@ export default function CandidateDetailDialog({
             {!isRejected && user && (user.role === 'ceo' || user.role === 'coo' || user.role === 'admin') && (
               <>
                 <Button
-                  className="bg-red-100 text-red-800 border border-transparent hover:border-red-400 hover:bg-red-100 hover:scale-105 transition-transform"
+                  className="bg-green-100 text-green-800 border border-transparent hover:border-green-400 hover:bg-green-100 hover:scale-105 transition-transform"
                   size="sm"
-                  onClick={() => handleQuickStatusUpdate("reject")}
+                  onClick={() => {
+                    toast({
+                      title: "Assessment started",
+                      description: "You clicked the Assessment button. Add your logic here.",
+                    });
+                    // Optionally: hook this to an API or status update
+                  }}
                 >
-                  Reject
-                </Button>
-
-                <Button
-                  className="bg-purple-100 text-purple-800 border border-transparent hover:border-purple-400 hover:bg-purple-100 hover:scale-105 transition-transform"
-                  size="sm"
-                  onClick={() => handleQuickStatusUpdate("talent-pool")}
-                >
-                  Talent Pool
+                  Assessment
                 </Button>
 
                 <Button
@@ -566,8 +564,25 @@ export default function CandidateDetailDialog({
                 >
                   Offer
                 </Button>
+
+                <Button
+                  className="bg-purple-100 text-purple-800 border border-transparent hover:border-purple-400 hover:bg-purple-100 hover:scale-105 transition-transform"
+                  size="sm"
+                  onClick={() => handleQuickStatusUpdate("talent-pool")}
+                >
+                  Talent Pool
+                </Button>
+
+                <Button
+                  className="bg-red-100 text-red-800 border border-transparent hover:border-red-400 hover:bg-red-100 hover:scale-105 transition-transform"
+                  size="sm"
+                  onClick={() => handleQuickStatusUpdate("reject")}
+                >
+                  Reject
+                </Button>
               </>
             )}
+
             {isRejected && (
               <div className="text-sm text-red-600 italic">
                 This candidate has been rejected. No further actions are available.
@@ -593,7 +608,6 @@ export default function CandidateDetailDialog({
             )}
           </div>
         </DialogFooter>
-
       </DialogContent>
     </Dialog>
   );
