@@ -218,17 +218,19 @@ export function setupCandidateRoutes(app: Express) {
         const emailSubject = `Excited to Offer You the ${job?.title} Position`;
         const emailBody = `
         <p>Hi ${candidate.name},</p>
-        
+
         <p>Great news — we'd love to bring you on board for the ${job?.title} position at Ready CPA. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
-        
-        <p>Here's the link to your engagement contract: <a href="https://talent.firmos.app/web-manager-contract453986">https://talent.firmos.app/web-manager-contract453986</a></p>
-        
-        <p>To kick things off, please schedule your onboarding call here: <a href="https://www.firmos.ai/">https://www.firmos.ai/</a></p>
-        
+
+        <p>Here's the link to your engagement contract:
+        <a href="https://talent.firmos.app/web-manager-contract453986">[Contract Link]</a></p>
+
+        <p>To kick things off, please schedule your onboarding call here:
+        <a href="https://www.calendar.com/aaronready/client-meeting">[Onboarding Calendar Link]</a></p>
+
         <p>If anything's unclear or you'd like to chat, don't hesitate to reach out.</p>
-        
+
         <p>Welcome aboard — we're excited to get started!</p>
-        
+
         <p>Best regards,<br>
         Aaron Ready, CPA<br>
         Ready CPA</p>
@@ -513,17 +515,18 @@ export function setupCandidateRoutes(app: Express) {
       const emailSubject = `Excited to Offer You the ${job?.title} Position`;
       const emailBody = `
       <p>Hi ${candidate.name},</p>
-      
+
       <p>Great news — we'd love to bring you on board for the ${job?.title} position at Ready CPA. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
-      
-      <p>Here's the link to your engagement contract: <a href="${offer.contractUrl}">https://talent.firmos.app/web-manager-contract453986</a></p>
-      
-      <p>To kick things off, please schedule your onboarding call here: <a href="https://www.firmos.ai/">https://www.firmos.ai/</a></p>
-      
+
+      <p>Here's the link to your engagement contract:
+      <a href=https://talent.firmos.app/web-manager-contract453986">[Contract Link]</a></p>
+
+      <p>To kick things off, please schedule your onboarding call here:  <a href="https://www.calendar.com/aaronready/client-meeting">[Onboarding Calendar Link]</a></p>
+
       <p>If anything's unclear or you'd like to chat, don't hesitate to reach out.</p>
-      
+
       <p>Welcome aboard — we're excited to get started!</p>
-      
+
       <p>Best regards,<br>
       Aaron Ready, CPA<br>
       Ready CPA</p>
