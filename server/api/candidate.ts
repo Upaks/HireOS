@@ -294,13 +294,34 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
-      // Update candidate status
+      // Get job details first
+      const job = await storage.getJob(candidate.jobId);
+      
+      // Check for valid email before sending interview invite
+      if (isLikelyInvalidEmail(candidate.email)) {
+        console.error(`❌ Rejected likely non-existent email: ${candidate.email}`);
+        
+        // Log activity about the failed interview invite
+        await storage.createActivityLog({
+          userId: req.user?.id,
+          action: "Interview invite failed - invalid email",
+          entityType: "candidate",
+          entityId: candidate.id,
+          details: { candidateName: candidate.name, jobTitle: job?.title, email: candidate.email },
+          timestamp: new Date()
+        });
+        
+        // Return a simple error message
+        return res.status(422).json({
+          message: "Email invalid",
+          errorType: "non_existent_email"
+        });
+      }
+      
+      // Only update candidate status if email is valid
       const updatedCandidate = await storage.updateCandidate(candidateId, {
         status: "45_1st_interview_sent"
       });
-
-      // Get job details
-      const job = await storage.getJob(candidate.jobId);
       
       // Log activity
       await storage.createActivityLog({
@@ -355,13 +376,35 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
-      // Update candidate status
-      const updatedCandidate = await storage.updateCandidate(candidateId, {
-        status: "90_talent_pool"
-      });
-
-      // Get job details
+      // Get job details first
       const job = await storage.getJob(candidate.jobId);
+      
+      // Check for valid email before adding to talent pool
+      if (isLikelyInvalidEmail(candidate.email)) {
+        console.error(`❌ Rejected likely non-existent email: ${candidate.email}`);
+        
+        // Log activity about the failed talent pool add
+        await storage.createActivityLog({
+          userId: req.user?.id,
+          action: "Talent pool add failed - invalid email",
+          entityType: "candidate",
+          entityId: candidate.id,
+          details: { candidateName: candidate.name, jobTitle: job?.title, email: candidate.email },
+          timestamp: new Date()
+        });
+        
+        // Return a simple error message
+        return res.status(422).json({
+          message: "Email invalid",
+          errorType: "non_existent_email"
+        });
+      }
+      
+      // Only update candidate status if email is valid
+      const updatedCandidate = await storage.updateCandidate(candidateId, {
+        status: "90_talent_pool",
+        finalDecisionStatus: "talent_pool" // Also keep final decision status in sync
+      });
       
       // Log activity
       await storage.createActivityLog({

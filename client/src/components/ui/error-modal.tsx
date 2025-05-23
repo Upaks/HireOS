@@ -25,26 +25,26 @@ export function ErrorModal({
   description,
   buttonText = "Okay"
 }: ErrorModalProps) {
-  // Always use a friendly message, never show raw JSON or technical errors
+  // ALWAYS show user-friendly messages regardless of input
+  // Default message for any technical error
   let friendlyDescription = "There was a problem with your request. Please try again.";
   
-  // Check for email-related errors first (most common case)
-  if (typeof description === 'string') {
-    if (description.toLowerCase().includes('email') || 
-        description.includes('non_existent_email')) {
+  // If we have any error description at all, replace it with user-friendly messaging
+  if (description) {
+    // For email-related errors (most common case)
+    if (typeof description === 'string' && (
+        description.toLowerCase().includes('email') || 
+        description.includes('non_existent_email'))) {
       friendlyDescription = "We couldn't send an email to this candidate because the email address appears to be invalid or doesn't exist. Please verify the email address is correct before trying again.";
     }
-  }
-  
-  // Force a user-friendly message for any technical-looking message
-  // This ensures we NEVER show raw JSON to users
-  if (typeof description === 'string' && 
-      (description.startsWith("{") || 
-       description.includes('"message"') || 
-       description.includes('422:') ||
-       description.match(/\d{3}/))) {
-    // Keep using our default friendly message
-    friendlyDescription = "We encountered a problem sending the email. Please verify the email address and try again.";
+    
+    // ALWAYS replace JSON or error code formats with friendly messaging
+    if (description.toString().includes('{') || 
+        description.toString().includes('}') ||
+        description.toString().includes('422') ||
+        description.toString().includes('message')) {
+      friendlyDescription = "We encountered a problem with this operation. Please verify the candidate's email address is valid and try again.";
+    }
   }
   
   return (
