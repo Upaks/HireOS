@@ -187,17 +187,28 @@ export default function CandidateDetailDialog({
   const handleSubmit = () => {
     if (!candidate) return;
     
-    // Synchronize finalDecisionStatus with status for rejected status
+    // IMPORTANT: Keep both status fields synchronized
     let updatedFinalDecisionStatus = finalDecisionStatus;
+    let updatedStatus = candidateStatus;
     
-    // If current status is rejected, make sure final decision status is also rejected
+    // If current status is rejected, make sure final decision status matches
     if (candidateStatus === "200_rejected" && finalDecisionStatus !== "rejected") {
       updatedFinalDecisionStatus = "rejected";
     }
+    // If current status is offer sent, make sure final decision status matches
+    else if (candidateStatus === "95_offer_sent" && finalDecisionStatus !== "offer_sent") {
+      updatedFinalDecisionStatus = "offer_sent";
+    }
     
-    // If final decision status is rejected, make sure status is also rejected
+    // The other direction - if final decision status changes, update current status
     if (finalDecisionStatus === "rejected" && candidateStatus !== "200_rejected") {
+      updatedStatus = "200_rejected"; 
       setCandidateStatus("200_rejected");
+    }
+    // If final decision status is offer sent, update current status
+    else if (finalDecisionStatus === "offer_sent" && candidateStatus !== "95_offer_sent") {
+      updatedStatus = "95_offer_sent";
+      setCandidateStatus("95_offer_sent");
     }
     
     updateCandidateMutation.mutate({

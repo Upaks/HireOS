@@ -25,31 +25,26 @@ export function ErrorModal({
   description,
   buttonText = "Okay"
 }: ErrorModalProps) {
-  // Parse error messages from API responses
-  let friendlyDescription = description;
+  // Always use a friendly message, never show raw JSON or technical errors
+  let friendlyDescription = "There was a problem with your request. Please try again.";
   
-  // Check if we have a JSON error message with specific error types
-  if (description.includes("Candidate email does not exist") || 
-      description.includes("non_existent_email")) {
-    friendlyDescription = "We couldn't send an email to this candidate because the email address appears to be invalid or doesn't exist. Please verify the email address or update it before trying again.";
-  }
-  
-  // More aggressive approach to handle any JSON or technical-looking error messages
-  if (description.startsWith("{") || 
-      description.includes('{"') || 
-      description.includes('message') || 
-      description.includes('422:') ||
-      description.includes('error') ||
-      description.match(/\d{3}[:]/)) { // Matches HTTP error codes like 422:
-    
-    // Use a universal friendly message for invalid email errors
+  // Check for email-related errors first (most common case)
+  if (typeof description === 'string') {
     if (description.toLowerCase().includes('email') || 
         description.includes('non_existent_email')) {
       friendlyDescription = "We couldn't send an email to this candidate because the email address appears to be invalid or doesn't exist. Please verify the email address is correct before trying again.";
-    } else {
-      // Generic user-friendly message for other errors
-      friendlyDescription = "There was a problem processing your request. Please try again or contact support if this issue persists.";
     }
+  }
+  
+  // Force a user-friendly message for any technical-looking message
+  // This ensures we NEVER show raw JSON to users
+  if (typeof description === 'string' && 
+      (description.startsWith("{") || 
+       description.includes('"message"') || 
+       description.includes('422:') ||
+       description.match(/\d{3}/))) {
+    // Keep using our default friendly message
+    friendlyDescription = "We encountered a problem sending the email. Please verify the email address and try again.";
   }
   
   return (
