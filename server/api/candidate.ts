@@ -1,8 +1,10 @@
 import { Express } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
-import { insertCandidateSchema } from "@shared/schema";
+import { insertCandidateSchema, emailLogs } from "@shared/schema";
 import { handleApiError, validateRequest } from "./utils";
+import { isLikelyInvalidEmail } from "../email-validator";
+import { db } from "../db";
 
 export function setupCandidateRoutes(app: Express) {
   // Create a new candidate
@@ -410,14 +412,46 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
-      // Update candidate status and final decision status
+      // Get job details first (needed for email)
+      const job = await storage.getJob(candidate.jobId);
+      
+      // IMPORTANT: First check if email exists before updating candidate status
+      // Use the same email validation as in sendDirectEmail
+      const nodemailer = await import('nodemailer');
+      
+      // First check if the email is likely invalid
+      if (isLikelyInvalidEmail(candidate.email)) {
+        console.error(`❌ Rejected likely non-existent email: ${candidate.email}`);
+        
+        // Still update the candidate status
+        const updatedCandidate = await storage.updateCandidate(candidateId, {
+          status: "200_rejected",
+          finalDecisionStatus: "rejected"
+        });
+        
+        // Log activity
+        await storage.createActivityLog({
+          userId: req.user?.id,
+          action: "Rejected candidate (email invalid)",
+          entityType: "candidate",
+          entityId: candidate.id,
+          details: { candidateName: candidate.name, jobTitle: job?.title },
+          timestamp: new Date()
+        });
+        
+        // Return the error with the updated candidate
+        return res.status(422).json({
+          message: "Candidate email does not exist",
+          errorType: "non_existent_email",
+          candidate: updatedCandidate
+        });
+      }
+      
+      // Email appears valid, proceed with updating the status
       const updatedCandidate = await storage.updateCandidate(candidateId, {
         status: "200_rejected",
         finalDecisionStatus: "rejected"
       });
-
-      // Get job details
-      const job = await storage.getJob(candidate.jobId);
       
       // Log activity
       await storage.createActivityLog({
@@ -429,45 +463,84 @@ export function setupCandidateRoutes(app: Express) {
         timestamp: new Date()
       });
 
-      try {
-        // Send direct rejection email (immediate, no queue)
-        const emailSubject = `Update on Your ${job?.title} Application`;
-        const emailBody = `
-        <p>Hi ${candidate.name},</p>
-        
-        <p>Thank you for taking the time to apply for the ${job?.title} position at Ready CPA. We truly appreciate your interest in joining our team and the effort you put into your application.</p>
-        
-        <p>After careful consideration, we've decided to move forward with other candidates whose experience more closely matches the needs of the role at this time.</p>
-        
-        <p>We wish you all the best in your job search and future endeavors. We're confident the right opportunity is just around the corner for you.</p>
-        
-        <p>Thank you again for your interest in Ready CPA.</p>
-        
-        <p>Best regards,<br>
-        Aaron Ready, CPA<br>
-        Ready CPA</p>
-        `;
-        
-        // Use direct email sending to leverage our error handling
-        // Follow the same pattern as the sendOffer endpoint which works
-        try {
-          await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
-        } catch (emailError: any) {
-          // If it's a non-existent email, handle it gracefully
-          if (emailError.isNonExistentEmailError) {
-            return res.status(422).json({
-              message: "Candidate email does not exist",
-              errorType: "non_existent_email",
-              candidate: updatedCandidate
-            });
-          }
-          // Re-throw other email errors
-          throw emailError;
+      // Send the email directly (not using sendDirectEmail to avoid error throwing)
+      const emailSubject = `Update on Your ${job?.title} Application`;
+      const emailBody = `
+      <p>Hi ${candidate.name},</p>
+      
+      <p>Thank you for taking the time to apply for the ${job?.title} position at Ready CPA. We truly appreciate your interest in joining our team and the effort you put into your application.</p>
+      
+      <p>After careful consideration, we've decided to move forward with other candidates whose experience more closely matches the needs of the role at this time.</p>
+      
+      <p>We wish you all the best in your job search and future endeavors. We're confident the right opportunity is just around the corner for you.</p>
+      
+      <p>Thank you again for your interest in Ready CPA.</p>
+      
+      <p>Best regards,<br>
+      Aaron Ready, CPA<br>
+      Ready CPA</p>
+      `;
+      
+      // Create a transporter for sending email - same as the working one in offer and interview
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: "earyljames.capitle18@gmail.com",
+          pass: "fkjl gklg tamh vugj"
         }
+      });
+
+      const mailOptions = {
+        from: "earyljames.capitle18@gmail.com",
+        to: candidate.email,
+        subject: emailSubject,
+        html: emailBody
+      };
+
+      try {
+        await transporter.sendMail(mailOptions);
         
+        // Log a successful email send
+        console.log(`✅ Rejection email sent to ${candidate.email} for job: ${job?.title}`);
+        
+        // Log the email in the database
+        await db
+          .insert(emailLogs)
+          .values({
+            recipientEmail: candidate.email,
+            subject: emailSubject,
+            template: 'rejection',
+            context: { body: emailBody },
+            status: 'sent',
+            sentAt: new Date(),
+            createdAt: new Date()
+          });
+        
+        // Return success with updated candidate
         res.json(updatedCandidate);
-      } catch (error: any) {
-        handleApiError(error, res);
+      } catch (emailError: any) {
+        console.error('❌ Error sending rejection email:', emailError);
+        
+        // Log the failure in email_logs
+        await db
+          .insert(emailLogs)
+          .values({
+            recipientEmail: candidate.email,
+            subject: emailSubject,
+            template: 'rejection',
+            context: { body: emailBody },
+            status: 'failed',
+            error: String(emailError),
+            createdAt: new Date()
+          });
+        
+        // Return a success with the updated candidate but note the email failure
+        // We don't want to prevent rejection just because email failed
+        res.status(200).json({
+          message: "Candidate rejected but email failed to send",
+          emailError: String(emailError),
+          candidate: updatedCandidate
+        });
       }
     } catch (error) {
       handleApiError(error, res);
