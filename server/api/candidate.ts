@@ -429,28 +429,46 @@ export function setupCandidateRoutes(app: Express) {
         timestamp: new Date()
       });
 
-      // Send direct rejection email (immediate, no queue)
-      const emailSubject = `Update on Your ${job?.title} Application`;
-      const emailBody = `
-      <p>Hi ${candidate.name},</p>
-      
-      <p>Thank you for taking the time to apply for the ${job?.title} position at Ready CPA. We truly appreciate your interest in joining our team and the effort you put into your application.</p>
-      
-      <p>After careful consideration, we've decided to move forward with other candidates whose experience more closely matches the needs of the role at this time.</p>
-      
-      <p>We wish you all the best in your job search and future endeavors. We're confident the right opportunity is just around the corner for you.</p>
-      
-      <p>Thank you again for your interest in Ready CPA.</p>
-      
-      <p>Best regards,<br>
-      Aaron Ready, CPA<br>
-      Ready CPA</p>
-      `;
-      
-      // Use direct email sending to leverage our error handling
-      await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
-
-      res.json(updatedCandidate);
+      try {
+        // Send direct rejection email (immediate, no queue)
+        const emailSubject = `Update on Your ${job?.title} Application`;
+        const emailBody = `
+        <p>Hi ${candidate.name},</p>
+        
+        <p>Thank you for taking the time to apply for the ${job?.title} position at Ready CPA. We truly appreciate your interest in joining our team and the effort you put into your application.</p>
+        
+        <p>After careful consideration, we've decided to move forward with other candidates whose experience more closely matches the needs of the role at this time.</p>
+        
+        <p>We wish you all the best in your job search and future endeavors. We're confident the right opportunity is just around the corner for you.</p>
+        
+        <p>Thank you again for your interest in Ready CPA.</p>
+        
+        <p>Best regards,<br>
+        Aaron Ready, CPA<br>
+        Ready CPA</p>
+        `;
+        
+        // Use direct email sending to leverage our error handling
+        // Follow the same pattern as the sendOffer endpoint which works
+        try {
+          await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
+        } catch (emailError: any) {
+          // If it's a non-existent email, handle it gracefully
+          if (emailError.isNonExistentEmailError) {
+            return res.status(422).json({
+              message: "Candidate email does not exist",
+              errorType: "non_existent_email",
+              candidate: updatedCandidate
+            });
+          }
+          // Re-throw other email errors
+          throw emailError;
+        }
+        
+        res.json(updatedCandidate);
+      } catch (error: any) {
+        handleApiError(error, res);
+      }
     } catch (error) {
       handleApiError(error, res);
     }

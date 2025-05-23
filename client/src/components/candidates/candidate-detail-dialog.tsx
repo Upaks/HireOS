@@ -111,11 +111,11 @@ export default function CandidateDetailDialog({
   const handleQuickStatusUpdate = async (action: "reject" | "talent-pool" | "interview" | "offer") => {
     if (!candidate) return;
 
-    const actionMap: Record<string, { endpoint: string; newStatus: string }> = {
-      "reject": { endpoint: "reject", newStatus: "200_rejected" },
-      "talent-pool": { endpoint: "talent-pool", newStatus: "90_talent_pool" },
+    const actionMap: Record<string, { endpoint: string; newStatus: string; finalDecisionStatus?: string }> = {
+      "reject": { endpoint: "reject", newStatus: "200_rejected", finalDecisionStatus: "rejected" },
+      "talent-pool": { endpoint: "talent-pool", newStatus: "90_talent_pool", finalDecisionStatus: "talent_pool" },
       "interview": { endpoint: "invite-to-interview", newStatus: "45_1st_interview_sent" },
-      "offer": { endpoint: "send-offer", newStatus: "95_offer_sent" }
+      "offer": { endpoint: "send-offer", newStatus: "95_offer_sent", finalDecisionStatus: "offer_sent" }
     };
 
     const selected = actionMap[action];
@@ -130,8 +130,42 @@ export default function CandidateDetailDialog({
           : undefined
       );
 
+      // Check if the response is OK
+      if (!response.ok) {
+        const errorData = await response.json();
+        
+        // Special handling for email errors
+        if (errorData.errorType === "non_existent_email") {
+          // Even with email error, the status was still updated on the server
+          // Update local state to match
+          setCandidateStatus(selected.newStatus);
+          if (selected.finalDecisionStatus) {
+            setFinalDecisionStatus(selected.finalDecisionStatus as any);
+          }
+          
+          // Show error but still invalidate queries
+          toast({
+            title: "Email Error",
+            description: "Candidate status updated, but email could not be sent because the email address appears to be invalid.",
+            variant: "destructive",
+          });
+          
+          queryClient.invalidateQueries({ queryKey: ['/api/candidates'] });
+          onClose();
+          return;
+        }
+        
+        // Handle other errors
+        throw new Error(errorData.message || "Failed to update status");
+      }
+
       const updated = await response.json();
       setCandidateStatus(selected.newStatus);
+      
+      // Update final decision status if applicable
+      if (selected.finalDecisionStatus) {
+        setFinalDecisionStatus(selected.finalDecisionStatus as any);
+      }
 
       toast({
         title: "Candidate status updated",
@@ -153,6 +187,19 @@ export default function CandidateDetailDialog({
   const handleSubmit = () => {
     if (!candidate) return;
     
+    // Synchronize finalDecisionStatus with status for rejected status
+    let updatedFinalDecisionStatus = finalDecisionStatus;
+    
+    // If current status is rejected, make sure final decision status is also rejected
+    if (candidateStatus === "200_rejected" && finalDecisionStatus !== "rejected") {
+      updatedFinalDecisionStatus = "rejected";
+    }
+    
+    // If final decision status is rejected, make sure status is also rejected
+    if (finalDecisionStatus === "rejected" && candidateStatus !== "200_rejected") {
+      setCandidateStatus("200_rejected");
+    }
+    
     updateCandidateMutation.mutate({
       status: candidateStatus,
       notes,
@@ -162,9 +209,8 @@ export default function CandidateDetailDialog({
       leadershipInitiative,
       problemSolving,
       communicationSkills,
-      finalDecisionStatus, // ✅ Required to persist to backend
+      finalDecisionStatus: updatedFinalDecisionStatus, // Synchronized value
       culturalFit
-      
     });
   };
 
