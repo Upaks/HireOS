@@ -212,7 +212,7 @@ export default function CandidateDetailDialog({
     }
     
     updateCandidateMutation.mutate({
-      status: candidateStatus,
+      status: updatedStatus, // Use synchronized value
       notes,
       hiPeopleScore,
       hiPeoplePercentile,
