@@ -423,27 +423,23 @@ export function setupCandidateRoutes(app: Express) {
       if (isLikelyInvalidEmail(candidate.email)) {
         console.error(`❌ Rejected likely non-existent email: ${candidate.email}`);
         
-        // Still update the candidate status
-        const updatedCandidate = await storage.updateCandidate(candidateId, {
-          status: "200_rejected",
-          finalDecisionStatus: "rejected"
-        });
+        // Do NOT update the candidate status for invalid emails
         
         // Log activity
         await storage.createActivityLog({
           userId: req.user?.id,
-          action: "Rejected candidate (email invalid)",
+          action: "Rejection failed - invalid email",
           entityType: "candidate",
           entityId: candidate.id,
-          details: { candidateName: candidate.name, jobTitle: job?.title },
+          details: { candidateName: candidate.name, jobTitle: job?.title, email: candidate.email },
           timestamp: new Date()
         });
         
-        // Return the error with the updated candidate
+        // Return the error without updating the candidate
         return res.status(422).json({
           message: "Candidate email does not exist",
           errorType: "non_existent_email",
-          candidate: updatedCandidate
+          candidate // Return the original candidate without updates
         });
       }
       
