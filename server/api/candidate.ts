@@ -567,70 +567,120 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
-      // Update candidate status
-      const updatedCandidate = await storage.updateCandidate(candidateId, {
-        status: "95_offer_sent"
-      });
-
-      // Create offer record
-      const startDate = req.body.startDate ? new Date(req.body.startDate) : undefined;
-      const offer = await storage.createOffer({
-        candidateId,
-        offerType: req.body.offerType,
-        compensation: req.body.compensation,
-        startDate,
-        notes: req.body.notes,
-        status: "sent",
-        sentDate: new Date(),
-        approvedById: req.user?.id,
-        contractUrl: `https://firmos.ai/contracts/${candidateId}-${Date.now()}.pdf`
-      });
-
-      // Get job details
+      // Get job details first (needed for email template)
       const job = await storage.getJob(candidate.jobId);
-      
-      // Log activity
-      await storage.createActivityLog({
-        userId: req.user?.id,
-        action: "Sent offer to candidate",
-        entityType: "candidate",
-        entityId: candidate.id,
-        details: { 
-          candidateName: candidate.name, 
-          jobTitle: job?.title,
+
+      // First check if email is valid, similar to how reject works
+      // Validate email exists before updating status
+      try {
+        if (isLikelyInvalidEmail(candidate.email)) {
+          console.log(`❌ Rejected likely non-existent email: ${candidate.email}`);
+          
+          // Do not update candidate status or create offer for invalid email
+          
+          // Log failed attempt
+          await storage.createActivityLog({
+            userId: req.user?.id,
+            action: "Offer send failed - invalid email",
+            entityType: "candidate",
+            entityId: candidate.id,
+            details: { 
+              candidateName: candidate.name, 
+              jobTitle: job?.title,
+              email: candidate.email,
+              error: "Invalid or non-existent email address"
+            },
+            timestamp: new Date()
+          });
+          
+          // Return error with original candidate
+          return res.status(422).json({
+            message: "Candidate email does not exist",
+            errorType: "non_existent_email",
+            candidate // Return the original candidate without updates
+          });
+        }
+        
+        // Email appears valid, proceed with updating the status
+        const updatedCandidate = await storage.updateCandidate(candidateId, {
+          status: "95_offer_sent",
+          finalDecisionStatus: "offer_sent"  // Also update final decision status
+        });
+  
+        // Create offer record
+        const startDate = req.body.startDate ? new Date(req.body.startDate) : undefined;
+        const offer = await storage.createOffer({
+          candidateId,
           offerType: req.body.offerType,
-          compensation: req.body.compensation 
-        },
-        timestamp: new Date()
-      });
-
-      // Send direct offer email (immediate, no queue)
-      const emailSubject = `Excited to Offer You the ${job?.title} Position`;
-      const emailBody = `
-      <p>Hi ${candidate.name},</p>
-
-      <p>Great news — we'd love to bring you on board for the ${job?.title} position at Ready CPA. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
-
-      <p>Here's the link to your engagement contract:
-      <a href=https://talent.firmos.app/web-manager-contract453986">[Contract Link]</a></p>
-
-      <p>To kick things off, please schedule your onboarding call here:  <a href="https://www.calendar.com/aaronready/client-meeting">[Onboarding Calendar Link]</a></p>
-
-      <p>If anything's unclear or you'd like to chat, don't hesitate to reach out.</p>
-
-      <p>Welcome aboard — we're excited to get started!</p>
-
-      <p>Best regards,<br>
-      Aaron Ready, CPA<br>
-      Ready CPA</p>
-      `;
-      
-      await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
-
-      res.json({
-        candidate: updatedCandidate,
-        offer
-      });
+          compensation: req.body.compensation,
+          startDate,
+          notes: req.body.notes,
+          status: "sent",
+          sentDate: new Date(),
+          approvedById: req.user?.id,
+          contractUrl: `https://firmos.ai/contracts/${candidateId}-${Date.now()}.pdf`
+        });
+        
+        // Log activity for successful offer creation
+        await storage.createActivityLog({
+          userId: req.user?.id,
+          action: "Sent offer to candidate",
+          entityType: "candidate",
+          entityId: candidate.id,
+          details: { 
+            candidateName: candidate.name, 
+            jobTitle: job?.title,
+            offerType: req.body.offerType,
+            compensation: req.body.compensation 
+          },
+          timestamp: new Date()
+        });
+  
+        // Send direct offer email (immediate, no queue)
+        const emailSubject = `Excited to Offer You the ${job?.title} Position`;
+        const emailBody = `
+        <p>Hi ${candidate.name},</p>
+  
+        <p>Great news — we'd love to bring you on board for the ${job?.title} position at Ready CPA. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
+  
+        <p>Here's the link to your engagement contract:
+        <a href="https://talent.firmos.app/web-manager-contract453986">[Contract Link]</a></p>
+  
+        <p>To kick things off, please schedule your onboarding call here:  <a href="https://www.calendar.com/aaronready/client-meeting">[Onboarding Calendar Link]</a></p>
+  
+        <p>If anything's unclear or you'd like to chat, don't hesitate to reach out.</p>
+  
+        <p>Welcome aboard — we're excited to get started!</p>
+  
+        <p>Best regards,<br>
+        Aaron Ready, CPA<br>
+        Ready CPA</p>
+        `;
+        
+        // Send the direct email 
+        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
+  
+        // Return success with updated candidate and offer
+        res.json({
+          candidate: updatedCandidate,
+          offer
+        });
+      } catch (error: any) {
+        // Check if this is a non-existent email error from sendDirectEmail
+        if (error.isNonExistentEmailError) {
+          console.error("API Error:", error);
+          
+          // Return specific error for non-existent email
+          return res.status(422).json({
+            message: "Candidate email does not exist",
+            errorType: "non_existent_email",
+            candidate // Return the original candidate without updates
+          });
+        }
+        
+        // Otherwise, let the general error handler deal with it
+        throw error;
+      }
     } catch (error) {
       handleApiError(error, res);
     }
