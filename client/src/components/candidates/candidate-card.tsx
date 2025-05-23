@@ -89,8 +89,7 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
         const errorData = await res.json();
         // Check if this is our special email error type
         if (errorData.errorType === "non_existent_email") {
-          // Even though it's an error response, we want to update the UI since the candidate was rejected
-          queryClient.invalidateQueries({ queryKey: ['/api/candidates'] });
+          // We don't need to invalidate queries here as the status wasn't updated
           throw new Error("non_existent_email");
         }
         throw new Error(errorData.message || "Failed to reject candidate");

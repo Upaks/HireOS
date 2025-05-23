@@ -34,9 +34,28 @@ export function ErrorModal({
     friendlyDescription = "We couldn't send an email to this candidate because the email address appears to be invalid or doesn't exist. Please verify the email address or update it before trying again.";
   }
   
-  // If it's a technical JSON error
-  if (description.startsWith("{") || description.includes('{"message"')) {
-    friendlyDescription = "There was a problem processing your request. The candidate's email address may be invalid or our system encountered an issue. Please try again or contact support if this persists.";
+  // Handle any JSON-formatted error messages
+  try {
+    // Check if this is a JSON string error
+    if (description.startsWith("{") || description.includes('{"message"')) {
+      const errorObj = JSON.parse(description);
+      if (errorObj.message) {
+        if (errorObj.message.includes("email does not exist") || 
+            errorObj.errorType === "non_existent_email") {
+          friendlyDescription = "We couldn't send an email to this candidate because the email address appears to be invalid or doesn't exist. Please verify the email address or update it before trying again.";
+        } else {
+          friendlyDescription = "There was a problem processing your request. Please try again or contact support if this persists.";
+        }
+      } else {
+        friendlyDescription = "There was a problem with your request. Please try again.";
+      }
+    }
+  } catch (e) {
+    // If JSON parsing fails, keep using our original friendly description
+    // but make sure it's still a user-friendly message
+    if (description.includes("422") || description.includes("email")) {
+      friendlyDescription = "We couldn't send an email to this candidate. Please check that the email address is valid and try again.";
+    }
   }
   
   return (
