@@ -82,20 +82,25 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
 
   const rejectCandidateMutation = useMutation({
     mutationFn: async (candidateId: number) => {
-      const res = await apiRequest("POST", `/api/candidates/${candidateId}/reject`, {});
+      // Use plain fetch instead of apiRequest for better error handling
+      const response = await fetch(`/api/candidates/${candidateId}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
       
-      // Check if the response is ok before parsing JSON
-      if (!res.ok) {
-        const errorData = await res.json();
-        // Check if this is our special email error type
-        if (errorData.errorType === "non_existent_email") {
-          // We don't need to invalidate queries here as the status wasn't updated
+      // Always parse the response body first
+      const data = await response.json();
+      
+      // Check if the response is ok
+      if (!response.ok) {
+        // Check for email validation errors
+        if (data.errorType === "non_existent_email") {
           throw new Error("non_existent_email");
         }
-        throw new Error(errorData.message || "Failed to reject candidate");
+        throw new Error(data.message || "Failed to reject candidate");
       }
       
-      return await res.json();
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/candidates'] });

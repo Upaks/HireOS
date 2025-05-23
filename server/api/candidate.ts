@@ -435,11 +435,13 @@ export function setupCandidateRoutes(app: Express) {
           timestamp: new Date()
         });
         
-        // Return the error without updating the candidate
+        // Return a clean, simplified error to avoid formatting issues in UI
         return res.status(422).json({
-          message: "Candidate email does not exist",
+          message: "We couldn't send an email to this candidate because the email address appears to be invalid.",
           errorType: "non_existent_email",
-          candidate // Return the original candidate without updates
+          status: "error",
+          candidateName: candidate.name,
+          email: candidate.email
         });
       }
       
@@ -593,11 +595,13 @@ export function setupCandidateRoutes(app: Express) {
             timestamp: new Date()
           });
           
-          // Return error with original candidate
+          // Return a clean, simplified error response to avoid formatting issues in UI
           return res.status(422).json({
-            message: "Candidate email does not exist",
+            message: "We couldn't send an email to this candidate because the email address appears to be invalid.",
             errorType: "non_existent_email",
-            candidate // Return the original candidate without updates
+            status: "error",
+            candidateName: candidate.name,
+            email: candidate.email
           });
         }
         

@@ -285,8 +285,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateCandidate(id: number, data: Partial<Candidate>): Promise<Candidate> {
+    // Ensure consistent status values between currentStatus and finalDecisionStatus
+    const updatedData = { ...data };
+    
+    // If status is being updated to rejected, also update finalDecisionStatus
+    if (data.status === '200_rejected' && !data.finalDecisionStatus) {
+      updatedData.finalDecisionStatus = 'rejected';
+    }
+    // If status is being updated to offer sent, also update finalDecisionStatus
+    else if (data.status === '95_offer_sent' && !data.finalDecisionStatus) {
+      updatedData.finalDecisionStatus = 'offer_sent';
+    }
+    
+    // Vice versa - if finalDecisionStatus is updated, also update current status
+    if (data.finalDecisionStatus === 'rejected' && !data.status) {
+      updatedData.status = '200_rejected';
+    }
+    else if (data.finalDecisionStatus === 'offer_sent' && !data.status) {
+      updatedData.status = '95_offer_sent';
+    }
+    
     const updateData = {
-      ...data,
+      ...updatedData,
       updatedAt: new Date()
     };
     console.log("Updating candidate with data:", data);

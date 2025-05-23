@@ -34,27 +34,21 @@ export function ErrorModal({
     friendlyDescription = "We couldn't send an email to this candidate because the email address appears to be invalid or doesn't exist. Please verify the email address or update it before trying again.";
   }
   
-  // Handle any JSON-formatted error messages
-  try {
-    // Check if this is a JSON string error
-    if (description.startsWith("{") || description.includes('{"message"')) {
-      const errorObj = JSON.parse(description);
-      if (errorObj.message) {
-        if (errorObj.message.includes("email does not exist") || 
-            errorObj.errorType === "non_existent_email") {
-          friendlyDescription = "We couldn't send an email to this candidate because the email address appears to be invalid or doesn't exist. Please verify the email address or update it before trying again.";
-        } else {
-          friendlyDescription = "There was a problem processing your request. Please try again or contact support if this persists.";
-        }
-      } else {
-        friendlyDescription = "There was a problem with your request. Please try again.";
-      }
-    }
-  } catch (e) {
-    // If JSON parsing fails, keep using our original friendly description
-    // but make sure it's still a user-friendly message
-    if (description.includes("422") || description.includes("email")) {
-      friendlyDescription = "We couldn't send an email to this candidate. Please check that the email address is valid and try again.";
+  // More aggressive approach to handle any JSON or technical-looking error messages
+  if (description.startsWith("{") || 
+      description.includes('{"') || 
+      description.includes('message') || 
+      description.includes('422:') ||
+      description.includes('error') ||
+      description.match(/\d{3}[:]/)) { // Matches HTTP error codes like 422:
+    
+    // Use a universal friendly message for invalid email errors
+    if (description.toLowerCase().includes('email') || 
+        description.includes('non_existent_email')) {
+      friendlyDescription = "We couldn't send an email to this candidate because the email address appears to be invalid or doesn't exist. Please verify the email address is correct before trying again.";
+    } else {
+      // Generic user-friendly message for other errors
+      friendlyDescription = "There was a problem processing your request. Please try again or contact support if this issue persists.";
     }
   }
   
