@@ -5,6 +5,7 @@ import AppShell from "@/components/layout/app-shell";
 import TopBar from "@/components/layout/top-bar";
 import CandidateCard from "@/components/candidates/candidate-card";
 import CandidateListItem from "@/components/candidates/candidate-list-item";
+import AddCandidateForm from "@/components/candidates/add-candidate-form";
 import { 
   Select, 
   SelectContent, 
@@ -24,7 +25,8 @@ import {
   ArrowLeft, 
   ArrowRight, 
   RotateCcw,
-  SlidersHorizontal 
+  SlidersHorizontal,
+  Plus
 } from "lucide-react";
 import { 
   getStatusesForFilter, 
@@ -45,6 +47,9 @@ export default function CandidateScreener() {
   // View options
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [showFilters, setShowFilters] = useState(true);
+  
+  // Add Candidate Form
+  const [showAddCandidateForm, setShowAddCandidateForm] = useState(false);
   
   // Fetch jobs for the filter dropdown
   const { data: jobs, isLoading: isLoadingJobs } = useQuery<Job[]>({
@@ -164,7 +169,15 @@ export default function CandidateScreener() {
     <AppShell>
       <TopBar 
         title="Candidate Screener" 
-        showNewHiringButton={false} 
+        showNewHiringButton={false}
+        showAddCandidateButton={true}
+        onAddCandidate={() => setShowAddCandidateForm(true)}
+      />
+      
+      {/* Add Candidate Form */}
+      <AddCandidateForm 
+        open={showAddCandidateForm} 
+        onOpenChange={setShowAddCandidateForm} 
       />
       
       <div className="bg-white border-b border-slate-200">
