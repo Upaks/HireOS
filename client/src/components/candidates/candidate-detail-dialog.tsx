@@ -305,9 +305,9 @@ export default function CandidateDetailDialog({
           </div>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Left side: Candidate information (3/5 of width) */}
-          <div className="lg:col-span-3 space-y-4">
+        <div className="flex flex-col lg:flex-row gap-6 h-full min-h-[75vh]">
+          {/* Left side: Candidate information (fixed width) */}
+          <div className="lg:w-[450px] space-y-4 overflow-y-auto">
             <Tabs defaultValue="evaluation" className="w-full">
               <TabsList className="grid grid-cols-3 mb-4">
                 <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
