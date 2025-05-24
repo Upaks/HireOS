@@ -3,7 +3,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { uploadResume } from "@/lib/supabase";
+import { queryClient } from "@/lib/queryClient";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Job } from "@/types";
@@ -34,7 +35,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Loader2, CalendarIcon } from "lucide-react";
+import { Loader2, CalendarIcon, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 // Define form schema with validations
@@ -65,6 +66,7 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
   const { toast } = useToast();
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
 
   // Fetch jobs for the dropdown
   const { data: jobs, isLoading: isLoadingJobs } = useQuery<Job[]>({
@@ -93,9 +95,6 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
   // Handle form submission
   const addCandidateMutation = useMutation({
     mutationFn: async (data: CandidateFormValues) => {
-      // First, handle file upload if a resume was provided
-      let resumeUrl = undefined;
-      
       // Prepare payload for API
       const payload = {
         jobId: parseInt(data.jobId),
@@ -110,7 +109,6 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
         experienceYears: data.experienceYears,
         expectedSalary: data.expectedSalary || "",
         skills: selectedSkills,
-        resumeUrl,
         status: "new", // Default status for new candidates
       };
 
@@ -125,11 +123,45 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to add candidate");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to add candidate: ${response.status} ${response.statusText}`);
       }
       
-      return response.json();
+      const newCandidate = await response.json();
+      
+      // Handle file upload if provided
+      if (data.resumeFile && newCandidate.id) {
+        try {
+          setIsUploading(true);
+          const resumeUrl = await uploadResume(data.resumeFile, newCandidate.id);
+          
+          // Update the candidate with the resume URL
+          await fetch(`/api/candidates/${newCandidate.id}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ resumeUrl }),
+            credentials: "include"
+          });
+          
+          toast({
+            title: "Resume uploaded",
+            description: "The resume has been attached to the candidate's profile.",
+          });
+        } catch (err) {
+          console.error("Resume upload failed:", err);
+          toast({
+            title: "Resume upload failed",
+            description: "The candidate was added but we couldn't upload the resume.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsUploading(false);
+        }
+      }
+      
+      return newCandidate;
     },
     onSuccess: () => {
       toast({
@@ -145,10 +177,10 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
       // Invalidate the candidates query to refresh the list
       queryClient.invalidateQueries({ queryKey: ['/api/candidates'] });
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast({
         title: "Error Adding Candidate",
-        description: error instanceof Error ? error.message : "There was a problem adding the candidate. Please try again.",
+        description: error.message || "There was a problem adding the candidate. Please try again.",
         variant: "destructive",
       });
     },
@@ -458,6 +490,7 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
                   disabled={selectedSkills.length >= 3 || !skillInput.trim()}
                   className="ml-2"
                 >
+                  <Plus className="h-4 w-4 mr-1" />
                   Add
                 </Button>
               </div>
@@ -467,41 +500,50 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
             </FormItem>
 
             {/* Resume Upload */}
-            <FormItem>
-              <FormLabel>Resume (PDF only)</FormLabel>
-              <FormControl>
-                <Input 
-                  type="file" 
-                  accept=".pdf" 
-                  className="py-1.5"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file && file.type === 'application/pdf') {
-                      form.setValue('resumeFile', file);
-                    } else if (file) {
-                      form.setError('resumeFile', { 
-                        message: 'Only PDF files are allowed'
-                      });
-                    }
-                  }}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+            <FormField
+              control={form.control}
+              name="resumeFile"
+              render={({ field: { value, onChange, ...field } }) => (
+                <FormItem>
+                  <FormLabel>Resume (PDF only)</FormLabel>
+                  <FormControl>
+                    <Input 
+                      type="file" 
+                      accept="application/pdf" 
+                      className="py-1.5"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file && (file.type === 'application/pdf' || file.name.endsWith('.pdf'))) {
+                          onChange(file);
+                        } else if (file) {
+                          form.setError('resumeFile', { 
+                            message: 'Only PDF files are allowed'
+                          });
+                          e.target.value = '';
+                        }
+                      }}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
               <Button 
                 type="button" 
                 variant="outline" 
                 onClick={() => onOpenChange(false)}
+                disabled={addCandidateMutation.isPending || isUploading}
               >
                 Cancel
               </Button>
               <Button 
                 type="submit"
-                disabled={addCandidateMutation.isPending}
+                disabled={addCandidateMutation.isPending || isUploading}
               >
-                {addCandidateMutation.isPending && (
+                {(addCandidateMutation.isPending || isUploading) && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
                 Add Candidate
