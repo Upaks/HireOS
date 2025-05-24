@@ -119,6 +119,9 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
         notes: "", // Empty notes to start
       };
 
+      // Add debugging
+      console.log("Sending candidate data:", payload);
+      
       // Send data to API
       const response = await fetch("/api/candidates", {
         method: "POST",
@@ -130,8 +133,18 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
       });
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Failed to add candidate: ${response.status} ${response.statusText}`);
+        try {
+          const errorData = await response.json();
+          console.error("Server error response:", errorData);
+          // Log validation errors if they exist
+          if (errorData.errors) {
+            console.error("Validation errors:", errorData.errors);
+          }
+          throw new Error(errorData.message || `Failed to add candidate: ${response.status} ${response.statusText}`);
+        } catch (parseError) {
+          console.error("Error parsing server response:", parseError);
+          throw new Error(`Failed to add candidate: ${response.status} ${response.statusText}`);
+        }
       }
       
       const newCandidate = await response.json();
