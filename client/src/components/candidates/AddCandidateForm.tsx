@@ -95,7 +95,7 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
   // Handle form submission
   const addCandidateMutation = useMutation({
     mutationFn: async (data: CandidateFormValues) => {
-      // Prepare payload for API
+      // Prepare payload for API with all required fields
       const payload = {
         jobId: parseInt(data.jobId),
         name: data.name,
@@ -103,12 +103,12 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
         phone: data.phone || "",
         location: data.location || "",
         source: data.source || "",
-        hiPeopleCompletedAt: data.hiPeopleCompletedAt ? data.hiPeopleCompletedAt.toISOString() : undefined,
-        hiPeopleScore: data.hiPeopleScore || 0,
-        hiPeoplePercentile: data.hiPeoplePercentile || 0,
-        experienceYears: data.experienceYears || 0,
+        hiPeopleCompletedAt: data.hiPeopleCompletedAt ? data.hiPeopleCompletedAt.toISOString() : null,
+        hiPeopleScore: data.hiPeopleScore !== undefined ? data.hiPeopleScore : 0,
+        hiPeoplePercentile: data.hiPeoplePercentile !== undefined ? data.hiPeoplePercentile : 0,
+        experienceYears: data.experienceYears !== undefined ? data.experienceYears : 0,
         expectedSalary: data.expectedSalary || "",
-        skills: selectedSkills,
+        skills: selectedSkills || [],
         status: "new", // Default status for new candidates
         finalDecisionStatus: "pending", // Required field
         technicalProficiency: 0, // Default score
@@ -117,6 +117,7 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
         communicationSkills: 0, // Default score
         culturalFit: 0, // Default score
         notes: "", // Empty notes to start
+        resumeUrl: null, // We'll update this after file upload
       };
 
       // Add debugging

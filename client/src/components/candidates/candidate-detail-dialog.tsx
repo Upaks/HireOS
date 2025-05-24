@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Candidate } from "@/types";
-import { Loader2, ExternalLink, Plus } from "lucide-react";
+import { Loader2, ExternalLink, Plus, Download, Printer, MoreVertical } from "lucide-react";
 import StarRating from "../ui/star-rating";
 import { getStatusesForFilter } from "@/lib/candidate-status";
 
@@ -37,6 +37,7 @@ export default function CandidateDetailDialog({
   const { toast } = useToast();
   const { user } = useAuth();
   const [isUploading, setIsUploading] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
   
   // Candidate state values
   const [notes, setNotes] = useState("");
@@ -233,6 +234,38 @@ export default function CandidateDetailDialog({
     }
   };
 
+  // Handle resume upload
+  const handleResumeUpload = async () => {
+    if (!resumeFile || !candidate?.id) return;
+    
+    try {
+      setIsUploading(true);
+      const resumeUrl = await uploadResume(resumeFile, candidate.id);
+      
+      // Update candidate with resume URL
+      await apiRequest("PATCH", `/api/candidates/${candidate.id}`, {
+        resumeUrl
+      });
+      
+      toast({
+        title: "Resume uploaded",
+        description: "The resume has been attached to the candidate's profile."
+      });
+      
+      queryClient.invalidateQueries({ queryKey: ['/api/candidates'] });
+      setResumeFile(null);
+      
+    } catch (error: any) {
+      toast({
+        title: "Upload failed",
+        description: error.message || "Failed to upload the resume.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleSubmit = () => {
     if (!candidate) return;
     
@@ -295,339 +328,261 @@ export default function CandidateDetailDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-hidden p-0">
+        <DialogHeader className="p-4 border-b">
           <DialogTitle className="text-2xl">{candidate.name}</DialogTitle>
-          <div className="flex items-center space-x-2 mt-2">
+          <div className="flex items-center space-x-2 mt-1">
             <span className="text-sm text-muted-foreground">{candidate.email}</span>
             <span className="text-sm text-muted-foreground">•</span>
             <span className="text-sm text-muted-foreground">{candidate.location || 'No location'}</span>
           </div>
         </DialogHeader>
 
-        <div className="flex flex-col lg:flex-row gap-6 h-full min-h-[75vh]">
-          {/* Left side: Candidate information (fixed width) */}
-          <div className="lg:w-[450px] space-y-4 overflow-y-auto">
+        <div className="flex h-[calc(90vh-180px)]">
+          {/* Left side: Candidate information in a scrollable container */}
+          <div className="w-[400px] border-r overflow-y-auto p-4">
             <Tabs defaultValue="evaluation" className="w-full">
               <TabsList className="grid grid-cols-3 mb-4">
                 <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
-                <TabsTrigger value="details">Candidate Details</TabsTrigger>
+                <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="notes">Notes</TabsTrigger>
               </TabsList>
 
               <TabsContent value="evaluation" className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="text-lg font-medium">Assessment Status</h3>
-                      <div className="mt-2">
-                        <Label htmlFor="status">Current Status</Label>
-                        <Select
-                          disabled={!canEdit}
-                          value={candidateStatus}
-                          onValueChange={setCandidateStatus}
-                        >
-                          <SelectTrigger id="status">
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {getStatusesForFilter().map(status => (
-                              <SelectItem key={status.value} value={status.value}>
-                                {status.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <Label>Final Decision Status</Label>
-                      <Select
-                        disabled={!canEdit}
-                        value={finalDecisionStatus}
-                        onValueChange={(value) => setFinalDecisionStatus(value as any)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="offer_sent">Offer Sent</SelectItem>
-                          <SelectItem value="rejected">Rejected</SelectItem>
-                          <SelectItem value="talent_pool">Talent Pool</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                <div>
+                  <h3 className="text-lg font-medium">Assessment Status</h3>
+                  <div className="mt-2">
+                    <Label htmlFor="status">Current Status</Label>
+                    <Select
+                      disabled={!canEdit}
+                      value={candidateStatus}
+                      onValueChange={setCandidateStatus}
+                    >
+                      <SelectTrigger id="status">
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getStatusesForFilter().map(status => (
+                          <SelectItem key={status.value} value={status.value}>
+                            {status.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div>
+                  <Label>Final Decision Status</Label>
+                  <Select
+                    disabled={!canEdit}
+                    value={finalDecisionStatus}
+                    onValueChange={(value) => setFinalDecisionStatus(value as any)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="offer_sent">Offer Sent</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                      <SelectItem value="talent_pool">Talent Pool</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
+                <div>
+                  <h3 className="text-lg font-medium">HiPeople Metrics</h3>
+                  <div className="grid grid-cols-2 gap-4 mt-2">
                     <div>
-                      <h3 className="text-lg font-medium">HiPeople Metrics</h3>
-                      <div className="grid grid-cols-2 gap-4 mt-2">
-                        <div>
-                          <Label htmlFor="score">Score</Label>
-                          <Input
-                            id="score"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={hiPeopleScore || ""}
-                            onChange={(e) => setHiPeopleScore(parseInt(e.target.value) || undefined)}
-                            disabled={!canEdit}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="percentile">Percentile</Label>
-                          <Input
-                            id="percentile"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={hiPeoplePercentile || ""}
-                            onChange={(e) => setHiPeoplePercentile(parseInt(e.target.value) || undefined)}
-                            disabled={!canEdit}
-                          />
-                        </div>
-                      </div>
+                      <Label htmlFor="score">Score</Label>
+                      <Input
+                        id="score"
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={hiPeopleScore || ""}
+                        onChange={(e) => setHiPeopleScore(parseInt(e.target.value) || undefined)}
+                        disabled={!canEdit}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="percentile">Percentile</Label>
+                      <Input
+                        id="percentile"
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={hiPeoplePercentile || ""}
+                        onChange={(e) => setHiPeoplePercentile(parseInt(e.target.value) || undefined)}
+                        disabled={!canEdit}
+                      />
                     </div>
                   </div>
+                </div>
 
-                  <div>
-                    <h3 className="text-lg font-medium mb-4">Evaluation Criteria</h3>
-                    <div className="space-y-3">
-                      <div>
-                        <div className="flex justify-between">
-                          <Label htmlFor="technical">Technical Proficiency</Label>
-                          <span className="text-sm text-muted-foreground">
-                            {technicalProficiency !== undefined ? `${technicalProficiency}/5` : '0/5 (Not rated)'}
-                          </span>
-                        </div>
-                        <StarRating 
-                          value={technicalProficiency || 0} 
-                          onChange={setTechnicalProficiency} 
-                          disabled={!canEdit}
-                        />
+                <div>
+                  <h3 className="text-lg font-medium mb-3">Evaluation Criteria</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex justify-between">
+                        <Label htmlFor="technical">Technical Proficiency</Label>
+                        <span className="text-sm text-muted-foreground">{technicalProficiency || 0}/5</span>
                       </div>
-                      
-                      <div>
-                        <div className="flex justify-between">
-                          <Label htmlFor="leadership">Leadership & Initiative</Label>
-                          <span className="text-sm text-muted-foreground">
-                            {leadershipInitiative !== undefined ? `${leadershipInitiative}/5` : '0/5 (Not rated)'}
-                          </span>
-                        </div>
-                        <StarRating 
-                          value={leadershipInitiative || 0} 
-                          onChange={setLeadershipInitiative} 
-                          disabled={!canEdit}
-                        />
+                      <StarRating
+                        value={technicalProficiency || 0}
+                        onChange={setTechnicalProficiency}
+                        disabled={!canEdit}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between">
+                        <Label htmlFor="leadership">Leadership & Initiative</Label>
+                        <span className="text-sm text-muted-foreground">{leadershipInitiative || 0}/5</span>
                       </div>
-                      
-                      <div>
-                        <div className="flex justify-between">
-                          <Label htmlFor="problem">Problem Solving</Label>
-                          <span className="text-sm text-muted-foreground">
-                            {problemSolving !== undefined ? `${problemSolving}/5` : '0/5 (Not rated)'}
-                          </span>
-                        </div>
-                        <StarRating 
-                          value={problemSolving || 0} 
-                          onChange={setProblemSolving} 
-                          disabled={!canEdit}
-                        />
+                      <StarRating
+                        value={leadershipInitiative || 0}
+                        onChange={setLeadershipInitiative}
+                        disabled={!canEdit}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between">
+                        <Label htmlFor="problem-solving">Problem Solving</Label>
+                        <span className="text-sm text-muted-foreground">{problemSolving || 0}/5</span>
                       </div>
-                      
-                      <div>
-                        <div className="flex justify-between">
-                          <Label htmlFor="communication">Communication Skills</Label>
-                          <span className="text-sm text-muted-foreground">
-                            {communicationSkills !== undefined ? `${communicationSkills}/5` : '0/5 (Not rated)'}
-                          </span>
-                        </div>
-                        <StarRating 
-                          value={communicationSkills || 0} 
-                          onChange={setCommunicationSkills} 
-                          disabled={!canEdit}
-                        />
+                      <StarRating
+                        value={problemSolving || 0}
+                        onChange={setProblemSolving}
+                        disabled={!canEdit}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between">
+                        <Label htmlFor="communication">Communication Skills</Label>
+                        <span className="text-sm text-muted-foreground">{communicationSkills || 0}/5</span>
                       </div>
-                      
-                      <div>
-                        <div className="flex justify-between">
-                          <Label htmlFor="culture">Cultural Fit</Label>
-                          <span className="text-sm text-muted-foreground">
-                            {culturalFit !== undefined ? `${culturalFit}/5` : '0/5 (Not rated)'}
-                          </span>
-                        </div>
-                        <StarRating 
-                          value={culturalFit || 0} 
-                          onChange={setCulturalFit} 
-                          disabled={!canEdit}
-                        />
+                      <StarRating
+                        value={communicationSkills || 0}
+                        onChange={setCommunicationSkills}
+                        disabled={!canEdit}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between">
+                        <Label htmlFor="cultural-fit">Cultural Fit</Label>
+                        <span className="text-sm text-muted-foreground">{culturalFit || 0}/5</span>
                       </div>
+                      <StarRating
+                        value={culturalFit || 0}
+                        onChange={setCulturalFit}
+                        disabled={!canEdit}
+                      />
                     </div>
                   </div>
                 </div>
               </TabsContent>
 
-              <TabsContent value="details">
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="name">Full Name</Label>
-                      <Input 
-                        id="name" 
-                        value={name} 
-                        onChange={(e) => setName(e.target.value)}
-                        disabled={!canEdit} 
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="email">Email</Label>
-                      <Input 
-                        id="email" 
-                        value={email} 
-                        onChange={(e) => setEmail(e.target.value)}
-                        disabled={!canEdit} 
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="phone">Phone</Label>
-                      <Input 
-                        id="phone" 
-                        value={phone || ""} 
-                        onChange={(e) => setPhone(e.target.value)}
-                        disabled={!canEdit} 
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="location">Location</Label>
-                      <Input 
-                        id="location" 
-                        value={location || ""} 
-                        onChange={(e) => setLocation(e.target.value)}
-                        disabled={!canEdit} 
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="experience">Experience (years)</Label>
-                      <Input 
-                        id="experience" 
-                        type="number"
-                        value={experienceYears || ""} 
-                        onChange={(e) => setExperienceYears(e.target.value ? parseInt(e.target.value) : undefined)}
-                        disabled={!canEdit} 
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="salary">Expected Salary</Label>
-                      <Input 
-                        id="salary" 
-                        value={expectedSalary || ""} 
-                        onChange={(e) => setExpectedSalary(e.target.value)}
-                        disabled={!canEdit} 
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="skills">Skills (Max 3)</Label>
-                    {!canEdit ? (
-                      <div className="p-3 border rounded-md bg-slate-50">
-                        {skills.length > 0 ? skills.join(", ") : "No skills listed"}
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex flex-wrap gap-2 mb-2">
-                          {skills.map(skill => (
-                            <Badge 
-                              key={skill} 
-                              variant="secondary"
-                              className="flex items-center gap-1 py-1"
-                            >
-                              {skill}
-                              <button 
-                                type="button"
-                                onClick={() => removeSkill(skill)}
-                                className="text-xs ml-1 hover:text-destructive rounded-full"
-                              >
-                                ×
-                              </button>
-                            </Badge>
-                          ))}
-                        </div>
-                        <div className="flex">
-                          <Input
-                            value={skillInput}
-                            onChange={(e) => setSkillInput(e.target.value)}
-                            onKeyDown={handleSkillKeyDown}
-                            placeholder="Add a skill and press Enter"
-                            disabled={skills.length >= 3}
-                            className="flex-1"
-                          />
-                          <Button 
-                            type="button" 
-                            variant="secondary" 
-                            onClick={addSkill}
-                            disabled={skills.length >= 3 || !skillInput.trim()}
-                            className="ml-2"
+              <TabsContent value="details" className="space-y-4">
+                <div>
+                  <Label htmlFor="full-name">Full Name</Label>
+                  <Input
+                    id="full-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={!canEdit}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={!canEdit}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input
+                    id="phone"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    disabled={!canEdit}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="location">Location</Label>
+                  <Input
+                    id="location"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    disabled={!canEdit}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="experience">Experience (years)</Label>
+                  <Input
+                    id="experience"
+                    type="number"
+                    min="0"
+                    value={experienceYears || ""}
+                    onChange={(e) => setExperienceYears(parseInt(e.target.value) || undefined)}
+                    disabled={!canEdit}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="expected-salary">Expected Salary</Label>
+                  <Input
+                    id="expected-salary"
+                    value={expectedSalary}
+                    onChange={(e) => setExpectedSalary(e.target.value)}
+                    disabled={!canEdit}
+                  />
+                </div>
+                <div>
+                  <Label>Skills</Label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {skills.map(skill => (
+                      <Badge 
+                        key={skill} 
+                        variant="secondary"
+                        className="flex items-center gap-1 py-1"
+                      >
+                        {skill}
+                        {canEdit && (
+                          <button 
+                            type="button"
+                            onClick={() => removeSkill(skill)}
+                            className="text-xs ml-1 hover:text-destructive rounded-full"
                           >
-                            <Plus className="h-4 w-4 mr-1" />
-                            Add
-                          </Button>
-                        </div>
-                        {skills.length >= 3 && (
-                          <p className="text-amber-600 text-sm mt-1">Maximum 3 skills reached</p>
+                            ×
+                          </button>
                         )}
-                      </>
-                    )}
+                      </Badge>
+                    ))}
                   </div>
-                  
-                  {canEdit && (
-                    <div className="space-y-2">
-                      <Label>Upload Resume (PDF only)</Label>
+                  {canEdit && skills.length < 3 && (
+                    <div className="flex">
                       <Input
-                        type="file"
-                        accept="application/pdf"
-                        disabled={isUploading}
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file || !candidate?.id) return;
-
-                          // Block non-PDFs
-                          if (!file.type.includes('pdf') && !file.name.endsWith('.pdf')) {
-                            toast({
-                              title: "Only PDF files are supported",
-                              description: "Please upload a PDF file for viewing in the resume viewer.",
-                              variant: "destructive"
-                            });
-                            return;
-                          }
-
-                          try {
-                            setIsUploading(true);
-                            await uploadResume(file, candidate.id);
-                            toast({ 
-                              title: "Resume uploaded successfully",
-                              description: "The resume has been attached to the candidate's profile."
-                            });
-                            
-                            // Force refresh to show the new resume
-                            queryClient.invalidateQueries({ queryKey: ['/api/candidates'] });
-                          } catch (err) {
-                            toast({
-                              title: "Upload failed",
-                              description: String(err),
-                              variant: "destructive",
-                            });
-                          } finally {
-                            setIsUploading(false);
-                          }
-                        }}
+                        value={skillInput}
+                        onChange={(e) => setSkillInput(e.target.value)}
+                        onKeyDown={handleSkillKeyDown}
+                        placeholder="Add a skill and press Enter"
+                        disabled={skills.length >= 3}
+                        className="flex-1"
                       />
+                      <Button 
+                        type="button" 
+                        variant="secondary" 
+                        onClick={addSkill}
+                        disabled={skills.length >= 3 || !skillInput.trim()}
+                        className="ml-2"
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Add
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -649,33 +604,87 @@ export default function CandidateDetailDialog({
               </TabsContent>
             </Tabs>
           </div>
-          
-          {/* Right side: Resume viewer (2/5 of width) */}
-          <div className="lg:col-span-2 h-full bg-slate-50 rounded-md border border-slate-200 overflow-hidden flex flex-col">
-            <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
-              <h3 className="font-medium">Resume</h3>
-            </div>
-            
-            <div className="flex-1 overflow-hidden flex items-center justify-center">
-              {getResumeUrl() ? (
-                <iframe
-                  src={getResumeUrl() || ""}
-                  className="w-full h-full min-h-[500px]"
-                  title={`${candidate.name}'s Resume`}
-                />
-              ) : (
-                <div className="text-center p-6 text-slate-500">
-                  <p className="mb-2">No resume uploaded yet</p>
-                  {canEdit && (
-                    <p className="text-sm">Upload a resume in the Candidate Details tab</p>
+
+          {/* Right side: Resume viewer (takes all remaining space) */}
+          <div className="flex-1 h-full overflow-hidden">
+            <div className="h-full flex flex-col">
+              <div className="bg-gray-800 px-4 py-2 flex justify-between items-center">
+                <h3 className="text-lg text-white font-medium">Resume</h3>
+                <div className="flex gap-2">
+                  {candidate.resumeUrl && (
+                    <>
+                      <a 
+                        href={getResumeUrl() || ''}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1 rounded-full bg-gray-700 hover:bg-gray-600 text-white"
+                        title="Download Resume"
+                      >
+                        <Download className="h-5 w-5" />
+                      </a>
+                      <button 
+                        className="p-1 rounded-full bg-gray-700 hover:bg-gray-600 text-white"
+                        title="Print Resume"
+                        onClick={() => {
+                          const iframe = document.querySelector('iframe');
+                          if (iframe) {
+                            iframe.contentWindow?.print();
+                          }
+                        }}
+                      >
+                        <Printer className="h-5 w-5" />
+                      </button>
+                    </>
                   )}
                 </div>
-              )}
+              </div>
+              
+              <div className="flex-1 bg-white overflow-hidden">
+                {candidate.resumeUrl ? (
+                  <iframe 
+                    src={getResumeUrl() || ''} 
+                    className="w-full h-full" 
+                    title={`${candidate.name}'s Resume`}
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center p-4">
+                    <p className="text-muted-foreground mb-4">No resume uploaded</p>
+                    {canEdit && (
+                      <>
+                        <Input
+                          type="file"
+                          accept="application/pdf"
+                          className="max-w-xs mb-2"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setResumeFile(e.target.files[0]);
+                            }
+                          }}
+                        />
+                        <Button 
+                          onClick={handleResumeUpload}
+                          disabled={!resumeFile || isUploading}
+                          className="max-w-xs"
+                        >
+                          {isUploading ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>Upload Resume</>
+                          )}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        <DialogFooter className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0 md:space-x-4">
+        <DialogFooter className="mt-0 flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0 md:space-x-4 p-4 border-t">
           <div className="flex flex-wrap gap-2">
             {!isRejected && user && (user.role === 'ceo' || user.role === 'coo' || user.role === 'admin') && (
               <>
