@@ -6,13 +6,17 @@ import HiringIntakeForm from "../jobs/hiring-intake-form";
 interface TopBarProps {
   title: string;
   showNewHiringButton?: boolean;
+  showAddCandidateButton?: boolean;
   onNewHiring?: () => void;
+  onAddCandidate?: () => void;
 }
 
 export default function TopBar({ 
   title, 
-  showNewHiringButton = true, 
-  onNewHiring
+  showNewHiringButton = true,
+  showAddCandidateButton = false,
+  onNewHiring,
+  onAddCandidate
 }: TopBarProps) {
   const [hiringFormOpen, setHiringFormOpen] = useState(false);
   
@@ -23,6 +27,12 @@ export default function TopBar({
       setHiringFormOpen(true);
     }
   };
+
+  const handleAddCandidate = () => {
+    if (onAddCandidate) {
+      onAddCandidate();
+    }
+  };
   
   return (
     <div className="bg-white shadow-sm z-10">
@@ -30,8 +40,18 @@ export default function TopBar({
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
           
-          {showNewHiringButton && (
-            <div className="ml-4 flex items-center md:ml-6">
+          <div className="ml-4 flex items-center space-x-3 md:ml-6">
+            {showAddCandidateButton && (
+              <Button
+                className="flex items-center"
+                onClick={handleAddCandidate}
+              >
+                <Plus className="h-5 w-5 mr-1" />
+                Add Candidate
+              </Button>
+            )}
+            
+            {showNewHiringButton && (
               <Button
                 className="flex items-center"
                 onClick={handleNewHiring}
@@ -39,8 +59,8 @@ export default function TopBar({
                 <Plus className="h-5 w-5 mr-1" />
                 New Hiring Request
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
       
