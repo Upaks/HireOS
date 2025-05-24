@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { uploadResume } from "@/lib/supabase"; // <- at the top with other imports
+import { uploadResume } from "@/lib/supabase";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -18,10 +19,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Candidate } from "@/types";
-import { Loader2, ExternalLink } from "lucide-react";
+import { Loader2, ExternalLink, Save, X, Plus } from "lucide-react";
 import StarRating from "../ui/star-rating";
 import { getStatusDisplay, getStatusesForFilter } from "@/lib/candidate-status";
-import PDFViewerModal from "./pdf-viewer-modal"; // <- Add this import
+import PDFViewerModal from "./pdf-viewer-modal";
 
 
 
@@ -39,7 +40,21 @@ export default function CandidateDetailDialog({
   const { toast } = useToast();
   const { user } = useAuth();
   const [isPdfOpen, setIsPdfOpen] = useState(false);
+  const [showResumeOnRight, setShowResumeOnRight] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  
+  // Candidate state values
   const [notes, setNotes] = useState("");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [location, setLocation] = useState("");
+  const [experienceYears, setExperienceYears] = useState<number | undefined>(undefined);
+  const [expectedSalary, setExpectedSalary] = useState("");
+  const [skills, setSkills] = useState<string[]>([]);
+  const [skillInput, setSkillInput] = useState("");
+  
+  // Assessment and evaluation state
   const [candidateStatus, setCandidateStatus] = useState("");
   const [hiPeopleScore, setHiPeopleScore] = useState<number | undefined>(undefined);
   const [hiPeoplePercentile, setHiPeoplePercentile] = useState<number | undefined>(undefined);
@@ -67,17 +82,38 @@ export default function CandidateDetailDialog({
   // Update form fields when candidate changes
   useEffect(() => {
     if (candidate) {
+      // Candidate details
+      setName(candidate.name || "");
+      setEmail(candidate.email || "");
+      setPhone(candidate.phone || "");
+      setLocation(candidate.location || "");
+      setExperienceYears(candidate.experienceYears);
+      setExpectedSalary(candidate.expectedSalary || "");
+      
+      // Handle skills data - ensure it's an array
+      if (Array.isArray(candidate.skills)) {
+        setSkills(candidate.skills);
+      } else if (typeof candidate.skills === 'object' && candidate.skills !== null) {
+        setSkills(Object.keys(candidate.skills));
+      } else {
+        setSkills([]);
+      }
+      
+      // Notes and status
       setNotes(candidate.notes || "");
       setCandidateStatus(candidate.status || "new");
+      
+      // Assessment data
       setHiPeopleScore(candidate.hiPeopleScore);
       setHiPeoplePercentile(candidate.hiPeoplePercentile);
+      
+      // Evaluation data
       setTechnicalProficiency(candidate.technicalProficiency);
       setLeadershipInitiative(candidate.leadershipInitiative);
       setProblemSolving(candidate.problemSolving);
       setCommunicationSkills(candidate.communicationSkills);
       setCulturalFit(candidate.culturalFit);
       setFinalDecisionStatus(candidate.finalDecisionStatus || "pending");
-
     }
   }, [candidate]);
 
@@ -184,6 +220,27 @@ export default function CandidateDetailDialog({
   };
 
 
+  // Handle adding a skill
+  const addSkill = () => {
+    if (skillInput.trim() && skills.length < 3 && !skills.includes(skillInput.trim())) {
+      setSkills([...skills, skillInput.trim()]);
+      setSkillInput("");
+    }
+  };
+
+  // Handle removing a skill
+  const removeSkill = (skill: string) => {
+    setSkills(skills.filter(s => s !== skill));
+  };
+
+  // Handle skill input keydown events
+  const handleSkillKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addSkill();
+    }
+  };
+
   const handleSubmit = () => {
     if (!candidate) return;
     
@@ -212,6 +269,17 @@ export default function CandidateDetailDialog({
     }
     
     updateCandidateMutation.mutate({
+      // Candidate details (only update if user can edit)
+      ...(canEdit && {
+        name,
+        email,
+        phone,
+        location,
+        experienceYears,
+        expectedSalary,
+        skills,
+      }),
+      // Assessment and evaluation data
       status: updatedStatus, // Use synchronized value
       notes,
       hiPeopleScore,
@@ -244,7 +312,7 @@ export default function CandidateDetailDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl">{candidate.name}</DialogTitle>
           <div className="flex items-center space-x-2 mt-2">
@@ -254,12 +322,15 @@ export default function CandidateDetailDialog({
           </div>
         </DialogHeader>
 
-        <Tabs defaultValue="evaluation" className="w-full">
-          <TabsList className="grid grid-cols-3 mb-4">
-            <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
-            <TabsTrigger value="details">Candidate Details</TabsTrigger>
-            <TabsTrigger value="notes">Notes</TabsTrigger>
-          </TabsList>
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Left side: Candidate information (3/5 of width) */}
+          <div className="lg:col-span-3 space-y-4">
+            <Tabs defaultValue="evaluation" className="w-full">
+              <TabsList className="grid grid-cols-3 mb-4">
+                <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
+                <TabsTrigger value="details">Candidate Details</TabsTrigger>
+                <TabsTrigger value="notes">Notes</TabsTrigger>
+              </TabsList>
 
           <TabsContent value="evaluation" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

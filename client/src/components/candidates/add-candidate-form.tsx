@@ -115,7 +115,21 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
       };
 
       // Send data to API
-      return await apiRequest("/api/candidates", "POST", payload);
+      const response = await fetch("/api/candidates", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        credentials: "include"
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to add candidate");
+      }
+      
+      return response.json();
     },
     onSuccess: () => {
       toast({
