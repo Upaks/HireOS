@@ -5,7 +5,7 @@ import AppShell from "@/components/layout/app-shell";
 import TopBar from "@/components/layout/top-bar";
 import CandidateCard from "@/components/candidates/candidate-card";
 import CandidateListItem from "@/components/candidates/candidate-list-item";
-import AddCandidateForm from "@/components/candidates/add-candidate-form";
+import AddCandidateForm from "@/components/candidates/AddCandidateForm";
 import { 
   Select, 
   SelectContent, 
