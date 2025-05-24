@@ -104,12 +104,19 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
         location: data.location || "",
         source: data.source || "",
         hiPeopleCompletedAt: data.hiPeopleCompletedAt ? data.hiPeopleCompletedAt.toISOString() : undefined,
-        hiPeopleScore: data.hiPeopleScore,
-        hiPeoplePercentile: data.hiPeoplePercentile,
-        experienceYears: data.experienceYears,
+        hiPeopleScore: data.hiPeopleScore || 0,
+        hiPeoplePercentile: data.hiPeoplePercentile || 0,
+        experienceYears: data.experienceYears || 0,
         expectedSalary: data.expectedSalary || "",
         skills: selectedSkills,
         status: "new", // Default status for new candidates
+        finalDecisionStatus: "pending", // Required field
+        technicalProficiency: 0, // Default score
+        leadershipInitiative: 0, // Default score
+        problemSolving: 0, // Default score
+        communicationSkills: 0, // Default score
+        culturalFit: 0, // Default score
+        notes: "", // Empty notes to start
       };
 
       // Send data to API
