@@ -295,7 +295,7 @@ export default function CandidateDetailDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl">{candidate.name}</DialogTitle>
           <div className="flex items-center space-x-2 mt-2">
@@ -675,60 +675,72 @@ export default function CandidateDetailDialog({
           </div>
         </div>
 
-        <DialogFooter className="space-x-2 flex justify-between mt-6">
-          <div className="flex space-x-2">
-            <Button
-              variant="outline"
-              onClick={() => handleQuickStatusUpdate("reject")}
-              disabled={updateCandidateMutation.isPending}
-              className="bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700"
-            >
-              Reject
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => handleQuickStatusUpdate("talent-pool")}
-              disabled={updateCandidateMutation.isPending}
-              className="bg-purple-50 hover:bg-purple-100 text-purple-600 hover:text-purple-700"
-            >
-              Talent Pool
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => handleQuickStatusUpdate("interview")}
-              disabled={updateCandidateMutation.isPending}
-              className="bg-amber-50 hover:bg-amber-100 text-amber-600 hover:text-amber-700"
-            >
-              Interview
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => handleQuickStatusUpdate("offer")}
-              disabled={updateCandidateMutation.isPending}
-              className="bg-green-50 hover:bg-green-100 text-green-600 hover:text-green-700"
-            >
-              Send Offer
-            </Button>
+        <DialogFooter className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0 md:space-x-4">
+          <div className="flex flex-wrap gap-2">
+            {!isRejected && user && (user.role === 'ceo' || user.role === 'coo' || user.role === 'admin') && (
+              <>
+                <Button
+                  className="bg-red-100 text-red-800 border border-transparent hover:border-red-400 hover:bg-red-100 hover:scale-105 transition-transform"
+                  size="sm"
+                  onClick={() => handleQuickStatusUpdate("reject")}
+                  disabled={updateCandidateMutation.isPending}
+                >
+                  Reject
+                </Button>
+                <Button
+                  className="bg-purple-100 text-purple-800 border border-transparent hover:border-purple-400 hover:bg-purple-100 hover:scale-105 transition-transform"
+                  size="sm"
+                  onClick={() => handleQuickStatusUpdate("talent-pool")}
+                  disabled={updateCandidateMutation.isPending}
+                >
+                  Talent Pool
+                </Button>
+                <Button
+                  className="bg-orange-100 text-orange-800 border border-transparent hover:border-orange-400 hover:bg-orange-100 hover:scale-105 transition-transform"
+                  size="sm"
+                  onClick={() => handleQuickStatusUpdate("interview")}
+                  disabled={updateCandidateMutation.isPending}
+                >
+                  Interview
+                </Button>
+                <Button
+                  className="bg-green-100 text-green-800 border border-transparent hover:border-green-400 hover:bg-green-100 hover:scale-105 transition-transform"
+                  size="sm"
+                  onClick={() => handleQuickStatusUpdate("offer")}
+                  disabled={updateCandidateMutation.isPending}
+                >
+                  Send Offer
+                </Button>
+              </>
+            )}
+
+            {isRejected && (
+              <div className="text-sm text-red-600 italic">
+                This candidate has been rejected. No further actions are available.
+              </div>
+            )}
           </div>
-          
-          <div className="flex space-x-2">
+
+          <div className="flex gap-2">
             <Button
               variant="outline"
               onClick={onClose}
               disabled={updateCandidateMutation.isPending}
             >
-              Cancel
+              {isRejected ? "Close" : "Cancel"}
             </Button>
-            <Button
-              type="button"
-              onClick={handleSubmit}
-              disabled={updateCandidateMutation.isPending}
-            >
-              {updateCandidateMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Save Changes
-            </Button>
+            {canEdit && (
+              <Button
+                type="button"
+                onClick={handleSubmit}
+                disabled={updateCandidateMutation.isPending || isRejected}
+              >
+                {updateCandidateMutation.isPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Save Changes
+              </Button>
+            )}
           </div>
         </DialogFooter>
       </DialogContent>
