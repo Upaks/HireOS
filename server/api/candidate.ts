@@ -506,13 +506,13 @@ export function setupCandidateRoutes(app: Express) {
       const emailBody = `
       <p>Hi ${candidate.name},</p>
       
-      <p>Thank you for taking the time to apply for the ${job?.title} position at Ready CPA. We truly appreciate your interest in joining our team and the effort you put into your application.</p>
+      <p>Thanks for taking the time to interview for the ${job?.title} role with us. I really enjoyed our conversation and learning about your background and experience.</p>
       
-      <p>After careful consideration, we've decided to move forward with other candidates whose experience more closely matches the needs of the role at this time.</p>
+      <p>After careful consideration, we've decided to move forward with another candidate for this position.</p>
       
-      <p>We wish you all the best in your job search and future endeavors. We're confident the right opportunity is just around the corner for you.</p>
+      <p>I'd love to keep you in mind for future opportunities at Ready CPA, as your skills and experience would be a great fit for our team. Feel free to stay connected, and I'll reach out if anything opens up that matches your background.</p>
       
-      <p>Thank you again for your interest in Ready CPA.</p>
+      <p>Thanks again for your interest, and I wish you all the best!</p>
       
       <p>Best regards,<br>
       Aaron Ready, CPA<br>

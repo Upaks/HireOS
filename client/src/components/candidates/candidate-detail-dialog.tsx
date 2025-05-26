@@ -328,7 +328,7 @@ export default function CandidateDetailDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-hidden p-0">
+      <DialogContent className="max-w-[90vw] max-h-[95vh] h-[90vh] overflow-hidden p-0">
         <DialogHeader className="p-4 border-b">
           <DialogTitle className="text-2xl">{candidate.name}</DialogTitle>
           <div className="flex items-center space-x-2 mt-1">
@@ -684,41 +684,49 @@ export default function CandidateDetailDialog({
           </div>
         </div>
 
-        <DialogFooter className="mt-0 flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0 md:space-x-4 p-4 border-t">
-          <div className="flex flex-wrap gap-2">
+            <DialogFooter className="sticky bottom-0 bg-white z-10 mt-6 px-6 py-4 border-t flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0 md:space-x-4">
+
+          <div className="flex flex-wrap gap-3">
             {!isRejected && user && (user.role === 'ceo' || user.role === 'coo' || user.role === 'admin') && (
               <>
                 <Button
-                  className="bg-red-100 text-red-800 border border-transparent hover:border-red-400 hover:bg-red-100 hover:scale-105 transition-transform"
-                  size="sm"
-                  onClick={() => handleQuickStatusUpdate("reject")}
-                  disabled={updateCandidateMutation.isPending}
+                  className="bg-green-100 text-green-800 border border-transparent hover:border-green-400 hover:bg-green-100 hover:scale-105 transition-transform px-5 py-2 text-base"
+                  onClick={() => {
+                    toast({
+                      title: "Assessment started",
+                      description: "You clicked the Assessment button. Add your logic here.",
+                    });
+                  }}
                 >
-                  Reject
+                  Assessment
                 </Button>
+
                 <Button
-                  className="bg-purple-100 text-purple-800 border border-transparent hover:border-purple-400 hover:bg-purple-100 hover:scale-105 transition-transform"
-                  size="sm"
-                  onClick={() => handleQuickStatusUpdate("talent-pool")}
-                  disabled={updateCandidateMutation.isPending}
-                >
-                  Talent Pool
-                </Button>
-                <Button
-                  className="bg-orange-100 text-orange-800 border border-transparent hover:border-orange-400 hover:bg-orange-100 hover:scale-105 transition-transform"
-                  size="sm"
+                  className="bg-orange-100 text-orange-800 border border-transparent hover:border-orange-400 hover:bg-orange-100 hover:scale-105 transition-transform px-5 py-2 text-base"
                   onClick={() => handleQuickStatusUpdate("interview")}
-                  disabled={updateCandidateMutation.isPending}
                 >
                   Interview
                 </Button>
+
                 <Button
-                  className="bg-green-100 text-green-800 border border-transparent hover:border-green-400 hover:bg-green-100 hover:scale-105 transition-transform"
-                  size="sm"
+                  className="bg-yellow-100 text-yellow-800 border border-transparent hover:border-yellow-400 hover:bg-yellow-100 hover:scale-105 transition-transform px-5 py-2 text-base"
                   onClick={() => handleQuickStatusUpdate("offer")}
-                  disabled={updateCandidateMutation.isPending}
                 >
-                  Send Offer
+                  Offer
+                </Button>
+
+                <Button
+                  className="bg-purple-100 text-purple-800 border border-transparent hover:border-purple-400 hover:bg-purple-100 hover:scale-105 transition-transform px-5 py-2 text-base"
+                  onClick={() => handleQuickStatusUpdate("talent-pool")}
+                >
+                  Talent Pool
+                </Button>
+
+                <Button
+                  className="bg-red-100 text-red-800 border border-transparent hover:border-red-400 hover:bg-red-100 hover:scale-105 transition-transform px-5 py-2 text-base"
+                  onClick={() => handleQuickStatusUpdate("reject")}
+                >
+                  Reject
                 </Button>
               </>
             )}
@@ -730,24 +738,28 @@ export default function CandidateDetailDialog({
             )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             <Button
               variant="outline"
               onClick={onClose}
-              disabled={updateCandidateMutation.isPending}
+              className="px-5 py-2 text-base"
             >
               {isRejected ? "Close" : "Cancel"}
             </Button>
             {canEdit && (
               <Button
-                type="button"
                 onClick={handleSubmit}
                 disabled={updateCandidateMutation.isPending || isRejected}
+                className="px-5 py-2 text-base"
               >
-                {updateCandidateMutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {updateCandidateMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Changes"
                 )}
-                Save Changes
               </Button>
             )}
           </div>

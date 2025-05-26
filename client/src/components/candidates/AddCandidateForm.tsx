@@ -46,7 +46,6 @@ const candidateFormSchema = z.object({
   phone: z.string().optional(),
   location: z.string().optional(),
   source: z.string().optional(),
-  hiPeopleCompletedAt: z.date().optional(),
   hiPeopleScore: z.number().int().min(0).max(100).optional(),
   hiPeoplePercentile: z.number().int().min(0).max(100).optional(),
   experienceYears: z.number().int().min(0).optional(),
@@ -88,7 +87,6 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
       skills: [],
       hiPeopleScore: undefined,
       hiPeoplePercentile: undefined,
-      hiPeopleCompletedAt: undefined,
     },
   });
 
@@ -103,7 +101,6 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
         phone: data.phone || "",
         location: data.location || "",
         source: data.source || "",
-        hiPeopleCompletedAt: data.hiPeopleCompletedAt ? data.hiPeopleCompletedAt.toISOString() : null,
         hiPeopleScore: data.hiPeopleScore !== undefined ? data.hiPeopleScore : 0,
         hiPeoplePercentile: data.hiPeoplePercentile !== undefined ? data.hiPeoplePercentile : 0,
         experienceYears: data.experienceYears !== undefined ? data.experienceYears : 0,
@@ -390,47 +387,6 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
                   </FormItem>
                 )}
               />
-
-              {/* HiPeople Completion Date */}
-              <FormField
-                control={form.control}
-                name="hiPeopleCompletedAt"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Assessment Completion Date</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={`w-full pl-3 text-left font-normal ${!field.value ? "text-muted-foreground" : ""}`}
-                          >
-                            {field.value ? (
-                              format(field.value, "PPP")
-                            ) : (
-                              <span>Pick a date</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          disabled={(date) =>
-                            date > new Date() || date < new Date("1900-01-01")
-                          }
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
               {/* HiPeople Score */}
               <FormField
                 control={form.control}
