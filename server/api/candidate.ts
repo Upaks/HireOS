@@ -132,13 +132,14 @@ export function setupCandidateRoutes(app: Express) {
         req.body.hiPeopleScore !== undefined ||
         req.body.hiPeoplePercentile !== undefined;
 
-      // Only CEO or COO can update evaluation criteria
+      // Only CEO, COO, or Director can update evaluation criteria
       if (hasEvaluationFields && 
           req.user?.role !== 'ceo' && 
           req.user?.role !== 'coo' && 
+          req.user?.role !== 'director' && 
           req.user?.role !== 'admin') {
         return res.status(403).json({ 
-          message: "Only CEO or COO can update candidate evaluation criteria" 
+          message: "Only CEO, COO, or Director can update candidate evaluation criteria" 
         });
       }
 
