@@ -74,7 +74,7 @@ export function setupJobRoutes(app: Express) {
     }
   });
 
-  // Get all jobs
+  // Get all jobs with real-time candidate counts
   app.get("/api/jobs", async (req, res) => {
     try {
       if (!req.isAuthenticated()) {
@@ -84,7 +84,23 @@ export function setupJobRoutes(app: Express) {
       const status = req.query.status as string;
       const jobs = await storage.getJobs(status);
       
-      res.json(jobs);
+      // Add real-time candidate counts for each job
+      const jobsWithCandidateCounts = await Promise.all(
+        jobs.map(async (job) => {
+          const candidatesResult = await db
+            .select({ count: count() })
+            .from(candidates)
+            .where(eq(candidates.jobId, job.id));
+          const candidateCount = Number(candidatesResult[0].count);
+          
+          return {
+            ...job,
+            candidateCount
+          };
+        })
+      );
+      
+      res.json(jobsWithCandidateCounts);
     } catch (error) {
       handleApiError(error, res);
     }

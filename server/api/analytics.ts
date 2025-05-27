@@ -82,7 +82,7 @@
         }
       });
 
-      // Get job performance metrics
+      // Get job performance metrics with real-time data
       app.get("/api/analytics/job-performance", async (req, res) => {
         try {
           if (!req.isAuthenticated()) {
@@ -90,23 +90,68 @@
           }
 
           const allJobs = await storage.getJobs();
+          const jobPerformance = [];
 
-          const jobPerformance = allJobs.slice(0, 5).map(job => ({
-            id: job.id,
-            title: job.title,
-            type: job.type,
-            department: job.department,
-            status: job.status,
-            postedDate: job.postedDate,
-            metrics: {
-              applications: 20,
-              assessments: 15,
-              interviews: 10,
-              offers: 5,
-              hires: 3,
-              conversionRate: 15
-            }
-          }));
+          for (const job of allJobs) {
+            // Applications: COUNT(*) of candidates assigned to the job
+            const allCandidatesResult = await db
+              .select({ count: count() })
+              .from(candidates)
+              .where(eq(candidates.jobId, job.id));
+            const applications = Number(allCandidatesResult[0].count);
+
+            // Assessments: COUNT(*) of candidates with status = '30_assessment_completed'
+            const assessmentsResult = await db
+              .select({ count: count() })
+              .from(candidates)
+              .where(eq(candidates.jobId, job.id))
+              .where(eq(candidates.status, "30_assessment_completed"));
+            const assessments = Number(assessmentsResult[0].count);
+
+            // Interviews: Sum of candidates with status = '40_first_interview_scheduled' or '50_second_interview_scheduled'
+            const interviewsResult = await db
+              .select({ count: count() })
+              .from(candidates)
+              .where(eq(candidates.jobId, job.id))
+              .where(inArray(candidates.status, ["40_first_interview_scheduled", "50_second_interview_scheduled"]));
+            const interviews = Number(interviewsResult[0].count);
+
+            // Offers: Count of candidates with status = '90_offer_sent'
+            const offersResult = await db
+              .select({ count: count() })
+              .from(candidates)
+              .where(eq(candidates.jobId, job.id))
+              .where(eq(candidates.status, "90_offer_sent"));
+            const offers = Number(offersResult[0].count);
+
+            // Hires: Count of candidates with status = '100_offer_accepted'
+            const hiresResult = await db
+              .select({ count: count() })
+              .from(candidates)
+              .where(eq(candidates.jobId, job.id))
+              .where(eq(candidates.status, "100_offer_accepted"));
+            const hires = Number(hiresResult[0].count);
+
+            // Conversion: Hires ÷ Total candidates × 100 (as percentage)
+            const conversionRate = applications > 0 ? Number(((hires / applications) * 100).toFixed(1)) : 0;
+
+            jobPerformance.push({
+              id: job.id,
+              title: job.title,
+              type: job.type,
+              department: job.department,
+              status: job.status,
+              postedDate: job.postedDate,
+              metrics: {
+                applications,
+                assessments,
+                interviews,
+                offers,
+                hires,
+                conversionRate
+              }
+            });
+          }
 
           res.json(jobPerformance);
         } catch (error) {

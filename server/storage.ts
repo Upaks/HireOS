@@ -55,6 +55,7 @@ export interface IStorage {
   // Interview operations
   createInterview(interview: Partial<Interview>): Promise<Interview>;
   getInterview(id: number): Promise<Interview | undefined>;
+  getInterviews(filters?: { candidateId?: number, jobId?: number }): Promise<Interview[]>;
   
   // Offer operations
   createOffer(offer: Partial<Offer>): Promise<Offer>;
@@ -352,6 +353,19 @@ export class DatabaseStorage implements IStorage {
       .where(eq(interviews.id, id));
     
     return interview || undefined;
+  }
+
+  async getInterviews(filters?: { candidateId?: number, jobId?: number }): Promise<Interview[]> {
+    try {
+      if (filters?.candidateId) {
+        return await db.select().from(interviews).where(eq(interviews.candidateId, filters.candidateId));
+      }
+      
+      return await db.select().from(interviews);
+    } catch (error) {
+      console.error("Error getting interviews:", error);
+      return [];
+    }
   }
 
   // Activity logs
