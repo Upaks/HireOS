@@ -139,31 +139,31 @@ export function setupAuth(app: Express) {
     next();
   });
 
-  // COO routes - accessible by COO, CEO, and ADMIN 
+  // COO routes - accessible by COO, CEO, DIRECTOR, and ADMIN 
   app.use("/api/coo", (req, res, next) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const userRole = req.user?.role as string;
-    if (![UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN].includes(userRole as any)) {
+    if (![UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN].includes(userRole as any)) {
       return res.sendStatus(403);
     }
     next();
   });
   
-  // CEO routes - accessible by CEO and ADMIN only
+  // CEO routes - accessible by CEO, DIRECTOR, and ADMIN only
   app.use("/api/ceo", (req, res, next) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const userRole = req.user?.role as string;
-    if (![UserRoles.CEO, UserRoles.ADMIN].includes(userRole as any)) {
+    if (![UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN].includes(userRole as any)) {
       return res.sendStatus(403);
     }
     next();
   });
   
-  // User management routes - accessible by COO, CEO, and ADMIN only
+  // User management routes - accessible by COO, CEO, DIRECTOR, and ADMIN only
   app.use("/api/users", (req, res, next) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const userRole = req.user?.role as string;
-    if (![UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN].includes(userRole as any)) {
+    if (![UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN].includes(userRole as any)) {
       return res.sendStatus(403);
     }
     next();

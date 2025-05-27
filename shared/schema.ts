@@ -223,6 +223,7 @@ export const UserRoles = {
   PROJECT_MANAGER: 'projectManager',
   COO: 'coo',
   CEO: 'ceo',
+  DIRECTOR: 'director',
   ADMIN: 'admin',
 } as const;
 

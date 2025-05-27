@@ -15,6 +15,7 @@ const updateUserSchema = z.object({
     UserRoles.PROJECT_MANAGER,
     UserRoles.COO,
     UserRoles.CEO,
+    UserRoles.DIRECTOR,
     UserRoles.ADMIN
   ]).optional(),
   password: z.string().min(6, "Password must be at least 6 characters").optional(),
@@ -208,18 +209,19 @@ export function setupUserRoutes(app: Express) {
       const isAdmin = req.user?.role === UserRoles.ADMIN;
       const isCEO = req.user?.role === UserRoles.CEO;
       const isCOO = req.user?.role === UserRoles.COO;
+      const isDirector = req.user?.role === UserRoles.DIRECTOR;
       const isProjectManager = req.user?.role === UserRoles.PROJECT_MANAGER;
       const isHiringManager = req.user?.role === UserRoles.HIRING_MANAGER;
 
       // Calculate permissions based on role
       const permissions = {
-        canCreateUsers: isAdmin || isCEO || isCOO,
-        canUpdateUsers: isAdmin || isCEO || isCOO,
-        canDeleteUsers: isAdmin || isCEO || isCOO,
-        canViewAnalytics: isAdmin || isCEO || isCOO || isProjectManager,
-        canApproveJobs: isAdmin || isCEO || isCOO || isProjectManager,
-        canApproveOffers: isAdmin || isCEO || isCOO,
-        canManageRoles: isAdmin || isCEO || isCOO,
+        canCreateUsers: isAdmin || isCEO || isCOO || isDirector,
+        canUpdateUsers: isAdmin || isCEO || isCOO || isDirector,
+        canDeleteUsers: isAdmin || isCEO || isCOO || isDirector,
+        canViewAnalytics: isAdmin || isCEO || isCOO || isDirector || isProjectManager,
+        canApproveJobs: isAdmin || isCEO || isCOO || isDirector || isProjectManager,
+        canApproveOffers: isAdmin || isCEO || isCOO || isDirector,
+        canManageRoles: isAdmin || isCEO || isCOO || isDirector,
         isSystemAdmin: isAdmin,
         role: req.user?.role
       };

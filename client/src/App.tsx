@@ -33,12 +33,12 @@ function Router() {
       <ProtectedRoute 
         path="/candidates" 
         component={CandidateScreener} 
-        roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]}
+        roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]}
       />
       <ProtectedRoute 
         path="/candidate-screener" 
         component={CandidateScreener} 
-        roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]}
+        roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]}
       />
       
       {/* Interviews page - accessible to all authenticated users */}
@@ -47,25 +47,25 @@ function Router() {
       {/* Interview grading for all authenticated users */}
       <ProtectedRoute path="/interviews/:id" component={InterviewGrading} />
       
-      {/* Final reviews for COO, CEO and Admin only */}
+      {/* Final reviews for COO, CEO, Director and Admin only */}
       <ProtectedRoute 
         path="/reviews" 
         component={CooReview} 
-        roles={[UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]} 
+        roles={[UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]} 
       />
       
-      {/* Analytics for Project Managers, COO, CEO and Admin only */}
+      {/* Analytics for Project Managers, COO, CEO, Director and Admin only */}
       <ProtectedRoute 
         path="/analytics" 
         component={Analytics}
-        roles={[UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]}
+        roles={[UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]}
       />
       
-      {/* System Settings for COO, CEO and Admin only */}
+      {/* System Settings for COO, CEO, Director and Admin only */}
       <ProtectedRoute 
         path="/settings" 
         component={Settings}
-        roles={[UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]}
+        roles={[UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]}
       />
       
       {/* Admin Telemetry Page for admins only */}

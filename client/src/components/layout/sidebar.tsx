@@ -207,8 +207,10 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
                     : user.role === UserRoles.COO 
                       ? "Chief Operating Officer"
                       : user.role === UserRoles.CEO
-                        ? "Chief Executive Officer" 
-                        : "Administrator"
+                        ? "Chief Executive Officer"
+                        : user.role === UserRoles.DIRECTOR
+                          ? "Director"
+                          : "Administrator"
               }</p>
             </div>
             <Button 
