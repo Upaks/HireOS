@@ -196,6 +196,8 @@ export default function Settings() {
         return 'COO';
       case 'ceo':
         return 'CEO';
+      case 'director':
+        return 'Director';
       case 'admin':
         return 'Administrator';
       default:
@@ -203,9 +205,9 @@ export default function Settings() {
     }
   };
   
-  // Check if a user is an admin, CEO, or COO
+  // Check if a user is an admin, CEO, COO, or Director
   const isAdminOrExecutive = (role: string) => {
-    return role === 'admin' || role === 'ceo' || role === 'coo';
+    return role === 'admin' || role === 'ceo' || role === 'coo' || role === 'director';
   };
 
   if (!canManageUsers) {
