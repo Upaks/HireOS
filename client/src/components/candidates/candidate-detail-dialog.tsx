@@ -70,7 +70,9 @@ export default function CandidateDetailDialog({
   
   // Check if user has permission to edit (CEO, COO, or Director)
   // Candidate cannot be edited if rejected, unless by admin/CEO/COO/Director
+  console.log('User role:', user?.role, 'Is rejected:', isRejected);
   const canEdit = (user?.role === 'ceo' || user?.role === 'coo' || user?.role === 'director' || user?.role === 'admin') && !isRejected;
+  console.log('Can edit:', canEdit);
 
   // Update form fields when candidate changes
   useEffect(() => {

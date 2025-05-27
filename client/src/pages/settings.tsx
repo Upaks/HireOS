@@ -39,8 +39,8 @@ export default function Settings() {
   const [showEditUserDialog, setShowEditUserDialog] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   
-  // Only admin, CEO, COO, or Director should access this page
-  const canManageUsers = user?.role === 'admin' || user?.role === 'ceo' || user?.role === 'coo' || user?.role === 'director';
+  // Only admin, CEO, or COO should access this page
+  const canManageUsers = user?.role === 'admin' || user?.role === 'ceo' || user?.role === 'coo';
   
   // Fetch all users
   const { data: users = [], isLoading: isLoadingUsers } = useQuery<User[]>({
@@ -205,9 +205,9 @@ export default function Settings() {
     }
   };
   
-  // Check if a user is an admin, CEO, COO, or Director
+  // Check if a user is an admin, CEO, or COO
   const isAdminOrExecutive = (role: string) => {
-    return role === 'admin' || role === 'ceo' || role === 'coo' || role === 'director';
+    return role === 'admin' || role === 'ceo' || role === 'coo';
   };
 
   if (!canManageUsers) {
@@ -234,7 +234,7 @@ export default function Settings() {
             </div>
             <h1 className="text-3xl font-bold text-destructive">Access Denied</h1>
             <p className="text-muted-foreground mb-4">
-              Only administrators, CEOs, COOs, and Directors can access system settings.
+              Only administrators, CEOs, and COOs can access system settings.
             </p>
           </div>
         </div>
