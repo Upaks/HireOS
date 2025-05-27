@@ -687,7 +687,7 @@ export default function CandidateDetailDialog({
             <DialogFooter className="sticky bottom-0 bg-white z-10 mt-6 px-6 py-4 border-t flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0 md:space-x-4">
 
           <div className="flex flex-wrap gap-3">
-            {!isRejected && user && (user.role === 'ceo' || user.role === 'coo' || user.role === 'admin') && (
+            {!isRejected && user && (user.role === 'ceo' || user.role === 'coo' || user.role === 'director' || user.role === 'admin') && (
               <>
                 <Button
                   className="bg-green-100 text-green-800 border border-transparent hover:border-green-400 hover:bg-green-100 hover:scale-105 transition-transform px-5 py-2 text-base"
