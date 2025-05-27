@@ -1,10 +1,13 @@
 import { Express } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
-import { insertJobSchema, UserRoles } from "@shared/schema";
+import { insertJobSchema, UserRoles, candidates } from "@shared/schema";
 import { handleApiError, validateRequest } from "./utils";
 import { scrapeHipeople } from "./hipeople";
 import { generateJobDescription } from "./openai";
+import { db } from "../db";
+import { eq } from "drizzle-orm";
+import { count } from "drizzle-orm";
 
 export function setupJobRoutes(app: Express) {
   // Create a new job draft

@@ -3,8 +3,8 @@
     import { handleApiError } from "./utils";
     import { db } from "../db";
     import { jobs, candidates, interviews } from "@shared/schema";
-    import { eq, inArray } from "drizzle-orm";
-    import { count } from "drizzle-orm/sql";
+    import { eq, inArray, and } from "drizzle-orm";
+    import { count } from "drizzle-orm";
 
 
     export function setupAnalyticsRoutes(app: Express) {
@@ -104,32 +104,32 @@
             const assessmentsResult = await db
               .select({ count: count() })
               .from(candidates)
-              .where(eq(candidates.jobId, job.id))
-              .where(eq(candidates.status, "30_assessment_completed"));
+              .where(and(eq(candidates.jobId, job.id), eq(candidates.status, "30_assessment_completed")));
             const assessments = Number(assessmentsResult[0].count);
 
-            // Interviews: Sum of candidates with status = '40_first_interview_scheduled' or '50_second_interview_scheduled'
-            const interviewsResult = await db
-              .select({ count: count() })
-              .from(candidates)
-              .where(eq(candidates.jobId, job.id))
-              .where(inArray(candidates.status, ["40_first_interview_scheduled", "50_second_interview_scheduled"]));
-            const interviews = Number(interviewsResult[0].count);
+            // Interviews: Sum of candidates with interview statuses
+            const interviewStatuses = ["40_first_interview_scheduled", "50_second_interview_scheduled"];
+            let interviews = 0;
+            for (const status of interviewStatuses) {
+              const result = await db
+                .select({ count: count() })
+                .from(candidates)
+                .where(and(eq(candidates.jobId, job.id), eq(candidates.status, status)));
+              interviews += Number(result[0].count);
+            }
 
             // Offers: Count of candidates with status = '90_offer_sent'
             const offersResult = await db
               .select({ count: count() })
               .from(candidates)
-              .where(eq(candidates.jobId, job.id))
-              .where(eq(candidates.status, "90_offer_sent"));
+              .where(and(eq(candidates.jobId, job.id), eq(candidates.status, "90_offer_sent")));
             const offers = Number(offersResult[0].count);
 
             // Hires: Count of candidates with status = '100_offer_accepted'
             const hiresResult = await db
               .select({ count: count() })
               .from(candidates)
-              .where(eq(candidates.jobId, job.id))
-              .where(eq(candidates.status, "100_offer_accepted"));
+              .where(and(eq(candidates.jobId, job.id), eq(candidates.status, "100_offer_accepted")));
             const hires = Number(hiresResult[0].count);
 
             // Conversion: Hires ÷ Total candidates × 100 (as percentage)
