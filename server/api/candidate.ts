@@ -524,7 +524,7 @@ export function setupCandidateRoutes(app: Express) {
         service: "gmail",
         auth: {
           user: "earyljames.capitle18@gmail.com",
-          pass: "fkjl gklg tamh vugj"
+          pass: "sfkp epqm pdar bowz" // Updated password
         }
       });
 

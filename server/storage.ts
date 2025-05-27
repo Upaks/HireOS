@@ -462,7 +462,7 @@ export class DatabaseStorage implements IStorage {
         service: "gmail",
         auth: {
           user: "earyljames.capitle18@gmail.com",
-          pass: "fkjl gklg tamh vugj" // It's better to store sensitive information in environment variables.
+          pass: "sfkp epqm pdar bowz" // It's better to store sensitive information in environment variables.
         }
       });
 
