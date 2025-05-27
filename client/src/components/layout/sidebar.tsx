@@ -47,31 +47,31 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
       title: "Dashboard",
       icon: <LayoutDashboard className="h-5 w-5 mr-3" />,
       href: "/",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     },
     {
       title: "Job Postings",
       icon: <FileText className="h-5 w-5 mr-3" />,
       href: "/jobs",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     },
     {
       title: "Candidates",
       icon: <Users className="h-5 w-5 mr-3" />,
       href: "/candidates",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     },
     {
       title: "Interviews",
       icon: <Calendar className="h-5 w-5 mr-3" />,
       href: "/interviews",
-      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     },
     {
       title: "Analytics",
       icon: <BarChart3 className="h-5 w-5 mr-3" />,
       href: "/analytics",
-      roles: [UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]
+      roles: [UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     }
   ];
   
@@ -80,7 +80,7 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
       title: "Final Approvals",
       icon: <CheckCircle className="h-5 w-5 mr-3" />,
       href: "/reviews",
-      roles: [UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]
+      roles: [UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     }
   ];
   
@@ -89,7 +89,7 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
       title: "System Settings",
       icon: <Settings className="h-5 w-5 mr-3" />,
       href: "/settings",
-      roles: [UserRoles.COO, UserRoles.CEO, UserRoles.ADMIN]
+      roles: [UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     },
     {
       title: "Telemetry",
