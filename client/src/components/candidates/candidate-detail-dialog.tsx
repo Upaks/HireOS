@@ -112,6 +112,7 @@ export default function CandidateDetailDialog({
       setCommunicationSkills(candidate.communicationSkills);
       setCulturalFit(candidate.culturalFit);
       setFinalDecisionStatus(candidate.finalDecisionStatus || "pending");
+      setLastInterviewDate(candidate.lastInterviewDate ? new Date(candidate.lastInterviewDate) : undefined);
     }
   }, [candidate]);
 
@@ -320,7 +321,8 @@ export default function CandidateDetailDialog({
       problemSolving,
       communicationSkills,
       finalDecisionStatus: updatedFinalDecisionStatus, // Synchronized value
-      culturalFit
+      culturalFit,
+      lastInterviewDate
     });
   };
 
@@ -357,7 +359,35 @@ export default function CandidateDetailDialog({
               <TabsContent value="evaluation" className="space-y-4">
                 <div>
                   <h3 className="text-lg font-medium">Assessment Status</h3>
+                  
+                  {/* Last Interview Date Field */}
                   <div className="mt-2">
+                    <Label htmlFor="lastInterviewDate">Last Interview Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={`w-full justify-start text-left font-normal ${
+                            !lastInterviewDate && "text-muted-foreground"
+                          }`}
+                          disabled={!canEdit}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {lastInterviewDate ? format(lastInterviewDate, "PPP") : <span>Select date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={lastInterviewDate}
+                          onSelect={setLastInterviewDate}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  
+                  <div className="mt-4">
                     <Label htmlFor="status">Current Status</Label>
                     <Select
                       disabled={!canEdit}
@@ -395,6 +425,11 @@ export default function CandidateDetailDialog({
                       <SelectItem value="talent_pool">Talent Pool</SelectItem>
                     </SelectContent>
                   </Select>
+                  
+                  {/* Display Final Decision Status Label */}
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    Display: {getFinalDecisionDisplayLabel(candidate?.finalDecisionStatus)}
+                  </div>
                 </div>
 
                 <div>
