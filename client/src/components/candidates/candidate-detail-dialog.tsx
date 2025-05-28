@@ -19,9 +19,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Candidate } from "@/types";
-import { Loader2, ExternalLink, Plus, Download, Printer, MoreVertical } from "lucide-react";
+import { Loader2, ExternalLink, Plus, Download, Printer, MoreVertical, CalendarIcon } from "lucide-react";
 import StarRating from "../ui/star-rating";
 import { getStatusesForFilter } from "@/lib/candidate-status";
+import { getFinalDecisionDisplayLabel } from "@/lib/final-decision-utils";
+import { format } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface CandidateDetailDialogProps {
   candidate: Candidate | null;
@@ -62,6 +66,7 @@ export default function CandidateDetailDialog({
   const [finalDecisionStatus, setFinalDecisionStatus] = useState<
     "pending" | "offer_sent" | "rejected" | "talent_pool"
   >("pending");
+  const [lastInterviewDate, setLastInterviewDate] = useState<Date | undefined>(undefined);
   
   // Check if the candidate is rejected (status 200_rejected or finalDecisionStatus is rejected)
   const isRejected = 

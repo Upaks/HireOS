@@ -85,6 +85,7 @@ export const candidates = pgTable("candidates", {
   source: text("source"), // Where they applied from
   status: text("status").notNull().default("new"), // new, assessment_sent, assessment_completed, interview_scheduled, talent_pool, rejected, offer_sent, hired
   finalDecisionStatus: text("final_decision_status"), // ✅ <-- Add this line
+  lastInterviewDate: timestamp("last_interview_date"), // New field for last interview date
   hiPeopleScore: integer("hi_people_score"),
   hiPeoplePercentile: integer("hi_people_percentile"),
   hiPeopleCompletedAt: timestamp("hi_people_completed_at"),
