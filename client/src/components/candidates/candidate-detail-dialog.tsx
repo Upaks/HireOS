@@ -112,7 +112,7 @@ export default function CandidateDetailDialog({
       setCommunicationSkills(candidate.communicationSkills);
       setCulturalFit(candidate.culturalFit);
       setFinalDecisionStatus(candidate.finalDecisionStatus || "pending");
-      setLastInterviewDate(candidate.lastInterviewDate ? new Date(candidate.lastInterviewDate) : undefined);
+      setLastInterviewDate((candidate as any).lastInterviewDate ? new Date((candidate as any).lastInterviewDate) : undefined);
     }
   }, [candidate]);
 
@@ -300,7 +300,7 @@ export default function CandidateDetailDialog({
       setCandidateStatus("95_offer_sent");
     }
     
-    updateCandidateMutation.mutate({
+    const updateData: any = {
       // Candidate details (only update if user can edit)
       ...(canEdit ? {
         name,
@@ -322,8 +322,14 @@ export default function CandidateDetailDialog({
       communicationSkills,
       finalDecisionStatus: updatedFinalDecisionStatus, // Synchronized value
       culturalFit,
-      lastInterviewDate
-    });
+    };
+    
+    // Add lastInterviewDate if set
+    if (lastInterviewDate) {
+      updateData.lastInterviewDate = lastInterviewDate.toISOString();
+    }
+    
+    updateCandidateMutation.mutate(updateData);
   };
 
   // Function to get resume URL for the candidate

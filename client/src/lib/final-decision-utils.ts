@@ -27,8 +27,8 @@ export function getFinalDecisionDisplayLabel(finalDecisionStatus: string | null 
  * Determines if a candidate should appear in the Executive Review > Final Approvals tab
  * Business Logic: Candidates appear if their status OR final_decision_status matches:
  * - rejected
- * - 90_offer_sent  
- * - 80_talent_pool
+ * - offer_sent  
+ * - talent_pool
  * - pending (for final_decision_status only)
  */
 export function shouldShowInFinalApprovals(candidate: any): boolean {
@@ -36,7 +36,7 @@ export function shouldShowInFinalApprovals(candidate: any): boolean {
   const finalDecisionStatus = candidate.finalDecisionStatus;
   
   const targetStatuses = ["200_rejected", "95_offer_sent", "90_talent_pool"];
-  const targetFinalDecisionStatuses = ["rejected", "90_offer_sent", "80_talent_pool", "pending"];
+  const targetFinalDecisionStatuses = ["rejected", "offer_sent", "talent_pool", "pending"];
   
   return (
     targetStatuses.includes(status) ||
