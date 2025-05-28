@@ -33,6 +33,7 @@ import {
   getStatusDisplay, 
   sortCandidatesByStatus 
 } from "@/lib/candidate-status";
+import { shouldExcludeFromRegularTab } from "@/lib/final-decision-utils";
 
 export default function CandidateScreener() {
   // Filters and search
@@ -70,8 +71,8 @@ export default function CandidateScreener() {
   const filteredCandidates = useMemo(() => {
     if (!candidates) return [];
 
-    // Start with all candidates
-    let filtered = [...candidates];
+    // Start with all candidates, excluding those that appear in Final Approvals
+    let filtered = candidates.filter(candidate => !shouldExcludeFromRegularTab(candidate));
     
     // Apply job filter
     if (jobFilter !== "all") {

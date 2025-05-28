@@ -12,17 +12,22 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { shouldShowInFinalApprovals, getFinalDecisionDisplayLabel } from "@/lib/final-decision-utils";
 
 export default function CooReview() {
   const { toast } = useToast();
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [offerFormOpen, setOfferFormOpen] = useState(false);
   
-  // Fetch candidates ready for final review
-  // These are candidates who have completed interviews with positive evaluations
-  const { data: candidates, isLoading: isLoadingCandidates } = useQuery<Candidate[]>({
-    queryKey: ['/api/candidates', { status: 'interview_scheduled' }],
+  // Fetch candidates for final approvals based on your business rules:
+  // Status: rejected, 90_offer_sent, 80_talent_pool OR
+  // Final Decision Status: rejected, 90_offer_sent, 80_talent_pool, pending
+  const { data: allCandidates, isLoading: isLoadingCandidates } = useQuery<Candidate[]>({
+    queryKey: ['/api/candidates'],
   });
+  
+  // Filter candidates for Final Approvals tab
+  const candidates = allCandidates?.filter(candidate => shouldShowInFinalApprovals(candidate)) || [];
   
   // Fetch interviews for candidates
   const { data: interviews, isLoading: isLoadingInterviews } = useQuery<Interview[]>({
@@ -109,7 +114,7 @@ export default function CooReview() {
   return (
     <AppShell>
       <TopBar 
-        title="Executive Review" 
+        title="Executive Review - Final Approvals" 
         showNewHiringButton={false} 
       />
       
