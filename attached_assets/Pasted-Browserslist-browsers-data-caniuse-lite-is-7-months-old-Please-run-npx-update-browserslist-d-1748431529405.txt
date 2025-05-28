@@ -1,0 +1,81 @@
+Browserslist: browsers data (caniuse-lite) is 7 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+11:23:53 AM [express] GET /api/user 304 in 93ms :: {"id":8,"username":"aaronready","fullName":"Aaron …
+API Error: error: column "last_interview_date" does not exist
+    at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async NeonPreparedQuery.execute (/home/runner/workspace/node_modules/src/neon-serverless/session.ts:102:18)
+    at async DatabaseStorage.getCandidates (/home/runner/workspace/server/storage.ts:262:24)
+    at async <anonymous> (/home/runner/workspace/server/api/candidate.ts:73:26) {
+  length: 120,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: '121',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3722',
+  routine: 'errorMissingColumn'
+}
+11:23:53 AM [express] GET /api/candidates 500 in 130ms :: {"message":"An error occurred while process…
+11:23:53 AM [express] GET /api/jobs 304 in 152ms :: [{"id":6,"title":"Audit Senior","suggestedTitle":…
+API Error: error: column "last_interview_date" does not exist
+    at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async NeonPreparedQuery.execute (/home/runner/workspace/node_modules/src/neon-serverless/session.ts:102:18)
+    at async DatabaseStorage.getCandidates (/home/runner/workspace/server/storage.ts:262:24)
+    at async <anonymous> (/home/runner/workspace/server/api/candidate.ts:73:26) {
+  length: 120,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: '121',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3722',
+  routine: 'errorMissingColumn'
+}
+11:24:02 AM [express] GET /api/interviews 304 in 125ms :: []
+11:24:02 AM [express] GET /api/candidates 500 in 264ms :: {"message":"An error occurred while process…
+API Error: error: column "last_interview_date" does not exist
+    at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async NeonPreparedQuery.execute (/home/runner/workspace/node_modules/src/neon-serverless/session.ts:102:18)
+    at async DatabaseStorage.getCandidates (/home/runner/workspace/server/storage.ts:262:24)
+    at async <anonymous> (/home/runner/workspace/server/api/candidate.ts:73:26) {
+  length: 120,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: '121',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3722',
+  routine: 'errorMissingColumn'
+}
+11:24:05 AM [express] GET /api/candidates 500 in 125ms :: {"message":"An error occurred while process…
