@@ -35,19 +35,8 @@ export default function CooReview() {
     enabled: !!candidates,
   });
   
-  // Get candidates with completed interviews and evaluations
-  const getCandidatesWithInterviews = () => {
-    if (!candidates || !interviews) return [];
-    
-    return candidates.filter(candidate => {
-      const candidateInterviews = interviews.filter(
-        interview => interview.candidateId === candidate.id && interview.status === 'completed'
-      );
-      return candidateInterviews.length > 0;
-    });
-  };
-  
-  const finalCandidates = getCandidatesWithInterviews();
+  // Use the filtered candidates directly (they're already filtered for Final Approvals)
+  const finalCandidates = candidates;
   
   // Function to get interviews for a specific candidate
   const getInterviewsForCandidate = (candidateId: number) => {

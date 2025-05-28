@@ -326,7 +326,7 @@ export default function CandidateDetailDialog({
     
     // Add lastInterviewDate if set
     if (lastInterviewDate) {
-      updateData.lastInterviewDate = lastInterviewDate.toISOString();
+      updateData.lastInterviewDate = lastInterviewDate;
     }
     
     updateCandidateMutation.mutate(updateData);
