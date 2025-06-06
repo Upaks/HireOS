@@ -289,12 +289,15 @@ export class DatabaseStorage implements IStorage {
     // Ensure consistent status values between currentStatus and finalDecisionStatus
     const updatedData = { ...data };
     
-    // If status is being updated to rejected, also update finalDecisionStatus
-    if (data.status === '200_rejected' && !data.finalDecisionStatus) {
+    // Only auto-sync if finalDecisionStatus is explicitly provided (not undefined)
+    // This preserves null values when they should stay null
+    
+    // If status is being updated to rejected, also update finalDecisionStatus (only if finalDecisionStatus is being explicitly set)
+    if (data.status === '200_rejected' && data.hasOwnProperty('finalDecisionStatus') && !data.finalDecisionStatus) {
       updatedData.finalDecisionStatus = 'rejected';
     }
-    // If status is being updated to offer sent, also update finalDecisionStatus
-    else if (data.status === '95_offer_sent' && !data.finalDecisionStatus) {
+    // If status is being updated to offer sent, also update finalDecisionStatus (only if finalDecisionStatus is being explicitly set)
+    else if (data.status === '95_offer_sent' && data.hasOwnProperty('finalDecisionStatus') && !data.finalDecisionStatus) {
       updatedData.finalDecisionStatus = 'offer_sent';
     }
     

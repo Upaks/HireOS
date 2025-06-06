@@ -151,8 +151,11 @@ export default function CandidateDetailDialog({
   const [communicationSkills, setCommunicationSkills] = useState<number | undefined>(undefined);
   const [culturalFit, setCulturalFit] = useState<number | undefined>(undefined);
   const [finalDecisionStatus, setFinalDecisionStatus] = useState<
-    "pending" | "offer_sent" | "rejected" | "talent_pool"
-  >("pending");
+    "pending" | "offer_sent" | "rejected" | "talent_pool" | "not_applicable" | null
+  >(null);
+  
+  // Track whether the user has interacted with the final decision dropdown
+  const [finalDecisionTouched, setFinalDecisionTouched] = useState(false);
   const [lastInterviewDate, setLastInterviewDate] = useState<Date | undefined>(undefined);
   
   // Check if the candidate is rejected (status 200_rejected or finalDecisionStatus is rejected)
@@ -199,7 +202,8 @@ export default function CandidateDetailDialog({
       setProblemSolving(candidate.problemSolving);
       setCommunicationSkills(candidate.communicationSkills);
       setCulturalFit(candidate.culturalFit);
-      setFinalDecisionStatus(candidate.finalDecisionStatus || "pending");
+      setFinalDecisionStatus(candidate.finalDecisionStatus || null);
+      setFinalDecisionTouched(false); // Reset touch state when candidate changes
       setLastInterviewDate((candidate as any).lastInterviewDate ? new Date((candidate as any).lastInterviewDate) : undefined);
     }
   }, [candidate]);
@@ -446,9 +450,15 @@ export default function CandidateDetailDialog({
       leadershipInitiative,
       problemSolving,
       communicationSkills,
-      finalDecisionStatus: updatedFinalDecisionStatus, // Synchronized value
       culturalFit,
     };
+
+    // Only include finalDecisionStatus if user touched the dropdown OR if it needs synchronization
+    if (finalDecisionTouched || 
+        (candidateStatus === "200_rejected" && finalDecisionStatus !== "rejected") ||
+        (candidateStatus === "95_offer_sent" && finalDecisionStatus !== "offer_sent")) {
+      updateData.finalDecisionStatus = updatedFinalDecisionStatus;
+    }
     
     // Add lastInterviewDate if set - convert to ISO string for API
     if (lastInterviewDate) {
@@ -544,17 +554,21 @@ export default function CandidateDetailDialog({
                   <Label>Final Decision Status</Label>
                   <Select
                     disabled={!canEdit}
-                    value={finalDecisionStatus}
-                    onValueChange={(value) => setFinalDecisionStatus(value as any)}
+                    value={finalDecisionStatus === null ? "not_applicable" : finalDecisionStatus}
+                    onValueChange={(value) => {
+                      setFinalDecisionTouched(true);
+                      setFinalDecisionStatus(value === "not_applicable" ? null : value as any);
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="not_applicable">Not Applicable</SelectItem>
                       <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="offer_sent">Offer Sent</SelectItem>
-                      <SelectItem value="rejected">Rejected</SelectItem>
+                      <SelectItem value="offer_sent">Offer</SelectItem>
                       <SelectItem value="talent_pool">Talent Pool</SelectItem>
+                      <SelectItem value="rejected">Reject</SelectItem>
                     </SelectContent>
                   </Select>
                   

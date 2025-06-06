@@ -4,7 +4,7 @@
 
 export function getFinalDecisionDisplayLabel(finalDecisionStatus: string | null | undefined): string {
   if (!finalDecisionStatus) {
-    return "Not Applicable Yet";
+    return "Not Applicable";
   }
   
   switch (finalDecisionStatus) {
@@ -19,7 +19,7 @@ export function getFinalDecisionDisplayLabel(finalDecisionStatus: string | null 
     case "talent_pool":
       return "Talent Pool";
     default:
-      return "Not Applicable Yet";
+      return "Not Applicable";
   }
 }
 
