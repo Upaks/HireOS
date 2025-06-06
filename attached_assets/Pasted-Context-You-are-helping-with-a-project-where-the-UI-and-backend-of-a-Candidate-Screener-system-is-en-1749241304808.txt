@@ -1,0 +1,103 @@
+Context
+You are helping with a project where the UI and backend of a Candidate Screener system is encountering a problem.
+
+When the user tries to PATCH a candidate with a new value for Last Interview Date, this error occurs:
+
+javascript
+Copy
+Edit
+API Error: TypeError: value.toISOString is not a function
+    at PgTimestamp.mapToDriverValue ...
+Cause (known)
+The last_interview_date column in the database is timestamp without time zone.
+
+The UI is sending an input that is not a Date object, but a string or other type which does not support .toISOString().
+
+The backend is using PgTimestamp.mapToDriverValue which expects a valid Date.
+
+Goal
+Your job is to ensure that this works correctly:
+
+✅ When the user picks a date in the UI (e.g. with a date picker), the value should be saved to the database without error.
+
+✅ It should be stored properly as a timestamp.
+
+✅ If the user clears the field, null should be saved.
+
+Candidate Table Schema (for full context)
+json
+Copy
+Edit
+[
+  { "column_name": "last_interview_date", "data_type": "timestamp without time zone" },
+  ...
+]
+Observed Behavior
+The PATCH API /api/candidates/:id fails with a 500 error because the wrong type is being passed for last_interview_date.
+
+Stack trace shows value.toISOString is not a function during SQL param processing.
+
+Required Fixes / Explorations
+1️⃣ Fix the last_interview_date issue
+👉 Update the API / mutation handling so that the value passed for last_interview_date is either:
+
+A valid Date object, or
+
+A properly formatted ISO 8601 string (e.g. 2025-06-04T00:00:00Z) if needed by the ORM.
+
+👉 On the frontend, ensure the value selected by the user is correctly transformed before being sent.
+
+👉 On the backend, add a sanity check to coerce or reject invalid types for timestamp fields.
+
+👉 On the SQL level, ensure null is handled correctly.
+
+2️⃣ If this is difficult, explore alternatives:
+✅ Accept string date in 'YYYY-MM-DD' format and convert to timestamp in backend.
+
+✅ Add explicit parsing of date string to Date before calling .toISOString.
+
+✅ Add fallback logic if value.toISOString is not defined.
+
+3️⃣ Additional Feature Request
+👉 Please also modify the schema and UI to add a new field:
+
+Field Name: hipeople_assessment_link
+
+Data Type: text
+
+Purpose: The user should be able to input this field in the UI, and it should be stored in the database and displayed.
+
+👉 You need to:
+
+Alter the candidates table:
+
+sql
+Copy
+Edit
+ALTER TABLE candidates ADD COLUMN hipeople_assessment_link text;
+Update API and DB models to handle this field.
+
+Update UI to show and allow editing this field.
+
+Ensure query cache is invalidated / refreshed so the UI reflects the new schema.
+
+Constraints / Expectations
+✅ The fix must not break existing functionality.
+
+✅ It should handle empty values (null) gracefully.
+
+✅ Date behavior must be consistent across browsers.
+
+✅ The UI and DB must stay in sync for both the existing fields and the new hipeople_assessment_link field.
+
+✅ Performance should not regress.
+
+Recap
+1️⃣ Fix last_interview_date handling (no TypeError, save valid timestamp).
+
+2️⃣ Explore workarounds if necessary.
+
+3️⃣ Add hipeople_assessment_link field to both DB and UI.
+
+Start by checking what type is being sent from the UI and how the API client transforms it — that is the likely cause of the toISOString error. Then apply the rest of the fixes.
+

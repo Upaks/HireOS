@@ -95,8 +95,8 @@ export default function CandidateListItem({ candidate, index }: CandidateListIte
         </td>
 
         <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-          <div className="flex justify-end space-x-2">
-            {candidate.resumeUrl && (
+             <div className="flex justify-end space-x-2">
+               {/*  {candidate.resumeUrl && (
               <a
                 href={candidate.resumeUrl}
                 target="_blank"
@@ -105,7 +105,7 @@ export default function CandidateListItem({ candidate, index }: CandidateListIte
               >
                 <ExternalLink size={16} />
               </a>
-            )}
+            )} */}
             <Button
               variant="outline"
               size="sm"
