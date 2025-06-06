@@ -441,6 +441,7 @@ export default function CandidateDetailDialog({
       notes,
       hiPeopleScore,
       hiPeoplePercentile,
+      hiPeopleAssessmentLink,
       technicalProficiency,
       leadershipInitiative,
       problemSolving,
@@ -449,9 +450,9 @@ export default function CandidateDetailDialog({
       culturalFit,
     };
     
-    // Add lastInterviewDate if set
+    // Add lastInterviewDate if set - convert to ISO string for API
     if (lastInterviewDate) {
-      updateData.lastInterviewDate = lastInterviewDate;
+      updateData.lastInterviewDate = lastInterviewDate.toISOString();
     }
     
     updateCandidateMutation.mutate(updateData);
@@ -590,6 +591,18 @@ export default function CandidateDetailDialog({
                         disabled={!canEdit}
                       />
                     </div>
+                  </div>
+                  
+                  <div className="mt-3">
+                    <Label htmlFor="hiPeopleAssessmentLink">HiPeople Assessment Link</Label>
+                    <Input
+                      id="hiPeopleAssessmentLink"
+                      type="url"
+                      placeholder="https://hipeople.io/assessment/..."
+                      value={hiPeopleAssessmentLink}
+                      onChange={(e) => setHiPeopleAssessmentLink(e.target.value)}
+                      disabled={!canEdit}
+                    />
                   </div>
                 </div>
 
