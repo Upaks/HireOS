@@ -27,6 +27,81 @@ import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
+// Confirmation Modal Component
+interface ConfirmationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  candidateName: string;
+  action: "assessment" | "interview" | "offer" | "talent-pool" | "reject";
+  isLoading?: boolean;
+}
+
+function ConfirmationModal({ 
+  isOpen, 
+  onClose, 
+  onConfirm, 
+  candidateName, 
+  action,
+  isLoading = false 
+}: ConfirmationModalProps) {
+  const getActionDetails = (action: string) => {
+    switch (action) {
+      case "assessment":
+        return { status: "Assessment", actionText: "Assessment" };
+      case "interview":
+        return { status: "Interview", actionText: "Interview" };
+      case "offer":
+        return { status: "Offered", actionText: "Offer" };
+      case "talent-pool":
+        return { status: "Talent Pool", actionText: "Talent Pool" };
+      case "reject":
+        return { status: "Rejected", actionText: "Reject" };
+      default:
+        return { status: action, actionText: action };
+    }
+  };
+
+  const { status, actionText } = getActionDetails(action);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Confirm Action</DialogTitle>
+        </DialogHeader>
+        <div className="py-4">
+          <p className="text-sm text-gray-600">
+            Are you sure you want to update status to <strong>{status}</strong> for <strong>{candidateName}</strong> and send <strong>{actionText}</strong> email?
+          </p>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={isLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              "Confirm"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 interface CandidateDetailDialogProps {
   candidate: Candidate | null;
   isOpen: boolean;
@@ -42,6 +117,17 @@ export default function CandidateDetailDialog({
   const { user } = useAuth();
   const [isUploading, setIsUploading] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  
+  // Confirmation modal state
+  const [confirmationModal, setConfirmationModal] = useState<{
+    isOpen: boolean;
+    action: "assessment" | "interview" | "offer" | "talent-pool" | "reject";
+    isLoading: boolean;
+  }>({
+    isOpen: false,
+    action: "assessment",
+    isLoading: false
+  });
   
   // Candidate state values
   const [notes, setNotes] = useState("");
@@ -144,9 +230,44 @@ export default function CandidateDetailDialog({
     },
   });
   
-  const handleQuickStatusUpdate = async (action: "reject" | "talent-pool" | "interview" | "offer") => {
+  // Show confirmation modal for actions
+  const showConfirmationModal = (action: "assessment" | "reject" | "talent-pool" | "interview" | "offer") => {
+    setConfirmationModal({
+      isOpen: true,
+      action,
+      isLoading: false
+    });
+  };
+
+  // Close confirmation modal
+  const closeConfirmationModal = () => {
+    setConfirmationModal({
+      isOpen: false,
+      action: "assessment",
+      isLoading: false
+    });
+  };
+
+  // Handle confirmed action
+  const handleConfirmedAction = async () => {
     if (!candidate) return;
 
+    const action = confirmationModal.action;
+    
+    // Set loading state
+    setConfirmationModal(prev => ({ ...prev, isLoading: true }));
+
+    // Handle assessment action (currently just shows toast)
+    if (action === "assessment") {
+      toast({
+        title: "Assessment started",
+        description: `Assessment process initiated for ${candidate.name}`,
+      });
+      closeConfirmationModal();
+      return;
+    }
+
+    // Handle other actions that call the API
     const actionMap: Record<string, { endpoint: string; newStatus: string; finalDecisionStatus?: string }> = {
       "reject": { endpoint: "reject", newStatus: "200_rejected", finalDecisionStatus: "rejected" },
       "talent-pool": { endpoint: "talent-pool", newStatus: "90_talent_pool", finalDecisionStatus: "talent_pool" },
@@ -181,12 +302,12 @@ export default function CandidateDetailDialog({
           
           // Show user-friendly error message but still invalidate queries
           toast({
-            title: "Unable to Send Email",
-            description: "We've updated the candidate's status, but couldn't send the notification email because the email address appears to be invalid.",
-            variant: "destructive",
+            title: "Status Updated Successfully",
+            description: `${candidate.name} has been updated, but we couldn't send the notification email because the email address appears to be invalid.`,
           });
           
           queryClient.invalidateQueries({ queryKey: ['/api/candidates'] });
+          closeConfirmationModal();
           onClose();
           return;
         }
@@ -204,11 +325,12 @@ export default function CandidateDetailDialog({
       }
 
       toast({
-        title: "Candidate status updated",
-        description: `Set to ${selected.newStatus.replace(/^\d+_/, "").replace(/_/g, " ")}`,
+        title: "Candidate Successfully Updated",
+        description: `${candidate.name} status updated and email sent successfully.`,
       });
 
       queryClient.invalidateQueries({ queryKey: ['/api/candidates'] });
+      closeConfirmationModal();
       onClose(); // close modal after success
     } catch (error: any) {
       toast({
@@ -216,6 +338,7 @@ export default function CandidateDetailDialog({
         description: error.message || "Failed to update status.",
         variant: "destructive",
       });
+      setConfirmationModal(prev => ({ ...prev, isLoading: false }));
     }
   };
 
@@ -740,40 +863,35 @@ export default function CandidateDetailDialog({
                     <>
                       <Button
                         className="bg-green-100 text-green-800 border border-transparent hover:border-green-400 hover:bg-green-100 hover:scale-105 transition-transform px-5 py-2 text-base"
-                        onClick={() => {
-                          toast({
-                            title: "Assessment started",
-                            description: "You clicked the Assessment button. Add your logic here.",
-                          });
-                        }}
+                        onClick={() => showConfirmationModal("assessment")}
                       >
                         Assessment
                       </Button>
 
                       <Button
                         className="bg-orange-100 text-orange-800 border border-transparent hover:border-orange-400 hover:bg-orange-100 hover:scale-105 transition-transform px-5 py-2 text-base"
-                        onClick={() => handleQuickStatusUpdate("interview")}
+                        onClick={() => showConfirmationModal("interview")}
                       >
                         Interview
                       </Button>
 
                       <Button
                         className="bg-yellow-100 text-yellow-800 border border-transparent hover:border-yellow-400 hover:bg-yellow-100 hover:scale-105 transition-transform px-5 py-2 text-base"
-                        onClick={() => handleQuickStatusUpdate("offer")}
+                        onClick={() => showConfirmationModal("offer")}
                       >
                         Offer
                       </Button>
 
                       <Button
                         className="bg-purple-100 text-purple-800 border border-transparent hover:border-purple-400 hover:bg-purple-100 hover:scale-105 transition-transform px-5 py-2 text-base"
-                        onClick={() => handleQuickStatusUpdate("talent-pool")}
+                        onClick={() => showConfirmationModal("talent-pool")}
                       >
                         Talent Pool
                       </Button>
 
                       <Button
                         className="bg-red-100 text-red-800 border border-transparent hover:border-red-400 hover:bg-red-100 hover:scale-105 transition-transform px-5 py-2 text-base"
-                        onClick={() => handleQuickStatusUpdate("reject")}
+                        onClick={() => showConfirmationModal("reject")}
                       >
                         Reject
                       </Button>
@@ -818,6 +936,16 @@ export default function CandidateDetailDialog({
              
         </DialogFooter>
       </DialogContent>
+      
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={confirmationModal.isOpen}
+        onClose={closeConfirmationModal}
+        onConfirm={handleConfirmedAction}
+        candidateName={candidate?.name || ""}
+        action={confirmationModal.action}
+        isLoading={confirmationModal.isLoading}
+      />
     </Dialog>
   );
 }
