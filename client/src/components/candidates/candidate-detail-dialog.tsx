@@ -144,6 +144,7 @@ export default function CandidateDetailDialog({
   const [candidateStatus, setCandidateStatus] = useState("");
   const [hiPeopleScore, setHiPeopleScore] = useState<number | undefined>(undefined);
   const [hiPeoplePercentile, setHiPeoplePercentile] = useState<number | undefined>(undefined);
+  const [hiPeopleAssessmentLink, setHiPeopleAssessmentLink] = useState("");
   const [technicalProficiency, setTechnicalProficiency] = useState<number | undefined>(undefined);
   const [leadershipInitiative, setLeadershipInitiative] = useState<number | undefined>(undefined);
   const [problemSolving, setProblemSolving] = useState<number | undefined>(undefined);
@@ -190,6 +191,7 @@ export default function CandidateDetailDialog({
       // Assessment data
       setHiPeopleScore(candidate.hiPeopleScore);
       setHiPeoplePercentile(candidate.hiPeoplePercentile);
+      setHiPeopleAssessmentLink((candidate as any).hiPeopleAssessmentLink || "");
       
       // Evaluation data
       setTechnicalProficiency(candidate.technicalProficiency);

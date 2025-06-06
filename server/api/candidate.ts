@@ -143,7 +143,16 @@ export function setupCandidateRoutes(app: Express) {
         });
       }
 
-      const updatedCandidate = await storage.updateCandidate(candidateId, req.body);
+      // Convert lastInterviewDate from string to Date object if it exists
+      const updateData = { ...req.body };
+      if (updateData.lastInterviewDate) {
+        // Convert string date to Date object for PostgreSQL timestamp
+        updateData.lastInterviewDate = new Date(updateData.lastInterviewDate);
+      }
+
+      console.log('Updating candidate with data:', updateData);
+
+      const updatedCandidate = await storage.updateCandidate(candidateId, updateData);
 
       // If status was changed to "interview sent", queue interview invitation email
       if (

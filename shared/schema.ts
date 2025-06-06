@@ -89,6 +89,7 @@ export const candidates = pgTable("candidates", {
   hiPeopleScore: integer("hi_people_score"),
   hiPeoplePercentile: integer("hi_people_percentile"),
   hiPeopleCompletedAt: timestamp("hi_people_completed_at"),
+  hiPeopleAssessmentLink: text("hipeople_assessment_link"),
   // Evaluation criteria scores (0-5)
   technicalProficiency: integer("technical_proficiency"),
   leadershipInitiative: integer("leadership_initiative"),
