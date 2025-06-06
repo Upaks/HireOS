@@ -272,7 +272,7 @@ export default function CandidateDetailDialog({
     }
   };
   
-  const SHOW_ACTION_BUTTONS = false;
+  const SHOW_ACTION_BUTTONS = true;
   const handleSubmit = () => {
     if (!candidate) return;
     
