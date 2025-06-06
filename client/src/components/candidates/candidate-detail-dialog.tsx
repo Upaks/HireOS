@@ -609,14 +609,28 @@ export default function CandidateDetailDialog({
                   
                   <div className="mt-3">
                     <Label htmlFor="hiPeopleAssessmentLink">HiPeople Assessment Link</Label>
-                    <Input
-                      id="hiPeopleAssessmentLink"
-                      type="url"
-                      placeholder="https://hipeople.io/assessment/..."
-                      value={hiPeopleAssessmentLink}
-                      onChange={(e) => setHiPeopleAssessmentLink(e.target.value)}
-                      disabled={!canEdit}
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="hiPeopleAssessmentLink"
+                        type="url"
+                        placeholder="https://hipeople.io/assessment/..."
+                        value={hiPeopleAssessmentLink}
+                        onChange={(e) => setHiPeopleAssessmentLink(e.target.value)}
+                        disabled={!canEdit}
+                        className="flex-1"
+                      />
+                      {hiPeopleAssessmentLink && hiPeopleAssessmentLink.trim() !== "" && hiPeopleAssessmentLink !== "N/A" && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => window.open(hiPeopleAssessmentLink, '_blank', 'noopener,noreferrer')}
+                          title="Open assessment link in new tab"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
