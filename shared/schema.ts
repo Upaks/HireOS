@@ -1,4 +1,13 @@
-import { pgTable, text, serial, integer, boolean, jsonb, timestamp, varchar } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  serial,
+  integer,
+  boolean,
+  jsonb,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -10,7 +19,7 @@ export const users = pgTable("users", {
   fullName: text("full_name").notNull(),
   email: text("email").notNull().unique(),
   role: text("role").notNull().default("hiringManager"),
-  createdAt: timestamp("created_at").defaultNow().notNull()
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -18,7 +27,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
   password: true,
   fullName: true,
   email: true,
-  role: true
+  role: true,
 });
 
 // Job Postings Table
@@ -39,7 +48,7 @@ export const jobs = pgTable("jobs", {
   postedDate: timestamp("posted_date"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  candidateCount: integer("candidate_count") // Virtual field for memory storage
+  candidateCount: integer("candidate_count"), // Virtual field for memory storage
 });
 
 export const insertJobSchema = createInsertSchema(jobs)
@@ -51,32 +60,34 @@ export const insertJobSchema = createInsertSchema(jobs)
     skills: true,
     teamContext: true,
     submitterId: true,
-    status: true
+    status: true,
   })
   .extend({
     // Adding status field with default value of 'draft'
-    status: z.enum(['draft', 'review', 'active', 'closed']).default('draft'),
+    status: z.enum(["draft", "review", "active", "closed"]).default("draft"),
     // Make expressReview optional to avoid type issues
-    expressReview: z.boolean().optional()
+    expressReview: z.boolean().optional(),
   });
 
 // Job Posting Platforms
 export const jobPlatforms = pgTable("job_platforms", {
   id: serial("id").primaryKey(),
-  jobId: integer("job_id").references(() => jobs.id).notNull(),
+  jobId: integer("job_id")
+    .references(() => jobs.id)
+    .notNull(),
   platform: text("platform").notNull(), // LinkedIn, onlinejobs.ph, etc
   platformJobId: text("platform_job_id"),
   postUrl: text("post_url"),
   status: text("status").notNull(), // pending, posted, failed
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull()
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Candidates Table
 export const candidates = pgTable("candidates", {
   id: serial("id").primaryKey(),
-  jobId: integer("job_id").references(() => jobs.id).notNull(),
+  jobId: integer("job_id").references(() => jobs.id),
   name: text("name").notNull(),
   email: text("email").notNull(),
   phone: text("phone"),
@@ -102,21 +113,21 @@ export const candidates = pgTable("candidates", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  job: jsonb("job") // Virtual field for memory storage - job relation
+  job: jsonb("job"), // Virtual field for memory storage - job relation
 });
 
 export const insertCandidateSchema = createInsertSchema(candidates).omit({
   id: true,
   createdAt: true,
-  updatedAt: true
+  updatedAt: true,
 });
-
-
 
 // Interviews Table
 export const interviews = pgTable("interviews", {
   id: serial("id").primaryKey(),
-  candidateId: integer("candidate_id").references(() => candidates.id).notNull(),
+  candidateId: integer("candidate_id")
+    .references(() => candidates.id)
+    .notNull(),
   scheduledDate: timestamp("scheduled_date"),
   conductedDate: timestamp("conducted_date"),
   interviewerId: integer("interviewer_id").references(() => users.id),
@@ -125,13 +136,15 @@ export const interviews = pgTable("interviews", {
   status: text("status").notNull().default("scheduled"), // scheduled, completed, no_show
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull()
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Interview Evaluations
 export const evaluations = pgTable("evaluations", {
   id: serial("id").primaryKey(),
-  interviewId: integer("interview_id").references(() => interviews.id).notNull(),
+  interviewId: integer("interview_id")
+    .references(() => interviews.id)
+    .notNull(),
   technicalScore: integer("technical_score"),
   communicationScore: integer("communication_score"),
   problemSolvingScore: integer("problem_solving_score"),
@@ -144,13 +157,15 @@ export const evaluations = pgTable("evaluations", {
   overallComments: text("overall_comments"),
   evaluatorId: integer("evaluator_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull()
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Offers Table
 export const offers = pgTable("offers", {
   id: serial("id").primaryKey(),
-  candidateId: integer("candidate_id").references(() => candidates.id).notNull(),
+  candidateId: integer("candidate_id")
+    .references(() => candidates.id)
+    .notNull(),
   offerType: text("offer_type").notNull(), // Full-time, Contract
   compensation: text("compensation").notNull(),
   startDate: timestamp("start_date"),
@@ -160,18 +175,18 @@ export const offers = pgTable("offers", {
   contractUrl: text("contract_url"),
   approvedById: integer("approved_by_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull()
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Activity Logs
 export const activityLogs = pgTable("activity_logs", {
-  id: serial("id").primaryKey(), 
+  id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id),
   action: text("action").notNull(), // Created job, sent assessment, scheduled interview, etc.
   entityType: text("entity_type").notNull(), // job, candidate, interview, etc.
   entityId: integer("entity_id").notNull(),
   details: jsonb("details"),
-  timestamp: timestamp("timestamp").defaultNow().notNull()
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
 });
 
 // Email Logs
@@ -184,7 +199,7 @@ export const emailLogs = pgTable("email_logs", {
   status: text("status").notNull().default("pending"), // pending, sent, failed
   error: text("error"),
   sentAt: timestamp("sent_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull()
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Notification Queue
@@ -197,7 +212,7 @@ export const notificationQueue = pgTable("notification_queue", {
   processAttempts: integer("process_attempts").default(0).notNull(),
   lastAttemptAt: timestamp("last_attempt_at"),
   error: text("error"),
-  createdAt: timestamp("created_at").defaultNow().notNull()
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Type Exports
@@ -221,12 +236,12 @@ export type NotificationQueueItem = typeof notificationQueue.$inferSelect;
 
 // Role type
 export const UserRoles = {
-  HIRING_MANAGER: 'hiringManager',
-  PROJECT_MANAGER: 'projectManager',
-  COO: 'coo',
-  CEO: 'ceo',
-  DIRECTOR: 'director',
-  ADMIN: 'admin',
+  HIRING_MANAGER: "hiringManager",
+  PROJECT_MANAGER: "projectManager",
+  COO: "coo",
+  CEO: "ceo",
+  DIRECTOR: "director",
+  ADMIN: "admin",
 } as const;
 
-export type UserRole = typeof UserRoles[keyof typeof UserRoles];
+export type UserRole = (typeof UserRoles)[keyof typeof UserRoles];
