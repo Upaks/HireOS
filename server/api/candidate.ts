@@ -2,7 +2,7 @@ import { Express } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { insertCandidateSchema, emailLogs } from "@shared/schema";
-import { handleApiError, validateRequest } from "./utils";
+import { handleApiError, validateRequest, isAuthorized } from "./utils";
 import { isLikelyInvalidEmail } from "../email-validator";
 import { db } from "../db";
 
@@ -10,8 +10,8 @@ export function setupCandidateRoutes(app: Express) {
   // Create a new candidate
   app.post("/api/candidates", validateRequest(insertCandidateSchema), async (req, res) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Authentication required" });
+      if (!isAuthorized(req)) {
+        return res.status(401).json({ message: "Authentication or API key required" });
       }
 
       const candidate = await storage.createCandidate(req.body);
