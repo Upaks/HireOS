@@ -6,7 +6,7 @@ const GHL_API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Il
 async function updateGHLContact() {
   try {
     // Use one of the contact IDs from your test results
-    const contactId = 'gndreaDkGrOkeCCl6gfX'; // Replace with actual contact ID
+    const contactId = 'EpAORfPsu2D7lSg4ateB'; // Replace with actual contact ID
     
     const updateData = {
       firstName: 'Updated John',
