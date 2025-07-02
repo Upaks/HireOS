@@ -6,7 +6,7 @@ const GHL_API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Il
 async function deleteGHLContact() {
   try {
     // Use one of the contact IDs from your test results
-    const contactId = 'lkYpLfZncRZ23M6DbAS3'; // Replace with actual contact ID you want to delete
+    const contactId = 'nAs5iRJGgA8G5nlEfVVX'; // Replace with actual contact ID you want to delete
     
     const response = await axios.delete(`https://rest.gohighlevel.com/v1/contacts/${contactId}`, {
       headers: {

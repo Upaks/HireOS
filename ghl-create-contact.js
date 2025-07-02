@@ -6,8 +6,8 @@ const GHL_API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Il
 async function createGHLContact() {
   try {
     const newContact = {
-      firstName: 'John',
-      lastName: 'Doe',
+      firstName: 'Earyl',
+      lastName: 'Buque',
       email: 'john.doe@example.com',
       phone: '+1234567890',
       companyName: 'Test Company',
