@@ -5,6 +5,7 @@ import { insertCandidateSchema, emailLogs } from "@shared/schema";
 import { handleApiError, validateRequest, isAuthorized } from "./utils";
 import { isLikelyInvalidEmail } from "../email-validator";
 import { db } from "../db";
+import { createGHLContact, mapJobTitleToGHLTag, parseFullName } from "../ghl-integration";
 
 export function setupCandidateRoutes(app: Express) {
   // Create a new candidate
@@ -15,6 +16,49 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       const candidate = await storage.createCandidate(req.body);
+      
+      // Sync with GoHighLevel
+      try {
+        // Only sync if candidate has a valid jobId
+        if (candidate.jobId !== null) {
+          const job = await storage.getJob(candidate.jobId);
+          const { firstName, lastName } = parseFullName(candidate.name);
+          
+          // Build tags array
+          const tags = ['00_application_submitted'];
+          if (job?.title) {
+            const roleTag = mapJobTitleToGHLTag(job.title);
+            tags.push(roleTag);
+          }
+          
+          await createGHLContact({
+            firstName,
+            lastName,
+            email: candidate.email,
+            phone: candidate.phone || undefined,
+            location: candidate.location || undefined,
+            tags
+          });
+          
+          console.log(`✅ Candidate ${candidate.name} synced to GHL with tags:`, tags);
+        }
+      } catch (ghlError: any) {
+        // Log GHL sync error but don't fail the candidate creation
+        console.error(`⚠️ GHL sync failed for candidate ${candidate.name}:`, ghlError.message);
+        
+        await storage.createActivityLog({
+          userId: req.user?.id,
+          action: "GHL sync failed",
+          entityType: "candidate",
+          entityId: candidate.id,
+          details: { 
+            candidateName: candidate.name, 
+            error: ghlError.message,
+            jobId: candidate.jobId 
+          },
+          timestamp: new Date()
+        });
+      }
       
       // Log activity
       await storage.createActivityLog({
