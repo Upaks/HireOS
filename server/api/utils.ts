@@ -26,7 +26,7 @@ export function validateRequest<T extends z.ZodTypeAny>(schema: T) {
 // Standardized API error handler
 export function handleApiError(error: any, res: Response) {
   console.error("API Error:", error);
-  
+
   // Handle Zod validation errors
   if (error instanceof z.ZodError) {
     return res.status(400).json({
@@ -37,7 +37,7 @@ export function handleApiError(error: any, res: Response) {
       }))
     });
   }
-  
+
   // Handle specific error types
   if (error instanceof Error) {
     // Check for our special email error (added for non-existent email detection)
@@ -47,34 +47,50 @@ export function handleApiError(error: any, res: Response) {
         errorType: "non_existent_email"
       });
     }
-    
+
     // Check for specific error messages that indicate certain HTTP status codes
     if (error.message.includes("not found") || error.message.includes("doesn't exist")) {
       return res.status(404).json({ message: error.message });
     }
-    
+
     if (error.message.includes("unauthorized") || error.message.includes("not authenticated")) {
       return res.status(401).json({ message: error.message });
     }
-    
+
     if (error.message.includes("forbidden") || error.message.includes("not allowed")) {
       return res.status(403).json({ message: error.message });
     }
-    
+
     if (error.message.includes("already exists") || error.message.includes("duplicate")) {
       return res.status(409).json({ message: error.message });
     }
-    
+
     // Generic error handler
     return res.status(500).json({ 
       message: "An error occurred while processing your request",
       error: error.message
     });
   }
-  
+
   // Unknown error
   return res.status(500).json({ 
     message: "An unexpected error occurred",
     error: String(error)
   });
+}
+
+// Check if request is authenticated or has valid API key
+export function isAuthorized(req: Request): boolean {
+  // Check if user is authenticated via session
+  if (req.isAuthenticated()) {
+    return true;
+  }
+
+  // Check for API key in headers
+  const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+
+  // Use the HireOS API key from secrets
+  const validApiKey = process.env.HireOS_API_Key;
+
+  return apiKey === validApiKey;
 }
