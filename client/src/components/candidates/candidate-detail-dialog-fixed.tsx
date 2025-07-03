@@ -59,8 +59,8 @@ export default function CandidateDetailDialog({
   const [communicationSkills, setCommunicationSkills] = useState<number | undefined>(undefined);
   const [culturalFit, setCulturalFit] = useState<number | undefined>(undefined);
   const [finalDecisionStatus, setFinalDecisionStatus] = useState<
-    "pending" | "offer_sent" | "rejected" | "talent_pool"
-  >("pending");
+    "pending" | "offer_sent" | "rejected" | "talent_pool" | null
+  >(null);
   
   // Check if the candidate is rejected (status 200_rejected or finalDecisionStatus is rejected)
   const isRejected = 
@@ -105,7 +105,7 @@ export default function CandidateDetailDialog({
       setProblemSolving(candidate.problemSolving);
       setCommunicationSkills(candidate.communicationSkills);
       setCulturalFit(candidate.culturalFit);
-      setFinalDecisionStatus(candidate.finalDecisionStatus || "pending");
+      setFinalDecisionStatus(candidate.finalDecisionStatus ?? null);
     }
   }, [candidate]);
 
@@ -280,7 +280,7 @@ export default function CandidateDetailDialog({
       leadershipInitiative,
       problemSolving,
       communicationSkills,
-      finalDecisionStatus: updatedFinalDecisionStatus, // Synchronized value
+      finalDecisionStatus: updatedFinalDecisionStatus === null ? undefined : updatedFinalDecisionStatus, // Convert null to undefined for API
       culturalFit
     });
   };
@@ -344,13 +344,14 @@ export default function CandidateDetailDialog({
                       <Label>Final Decision Status</Label>
                       <Select
                         disabled={!canEdit}
-                        value={finalDecisionStatus}
-                        onValueChange={(value) => setFinalDecisionStatus(value as any)}
+                        value={finalDecisionStatus === null ? "not_applicable" : finalDecisionStatus}
+                        onValueChange={(value) => setFinalDecisionStatus(value === "not_applicable" ? null : value as any)}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select status" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="not_applicable">Not Applicable</SelectItem>
                           <SelectItem value="pending">Pending</SelectItem>
                           <SelectItem value="offer_sent">Offer Sent</SelectItem>
                           <SelectItem value="rejected">Rejected</SelectItem>

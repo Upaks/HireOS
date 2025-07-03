@@ -107,7 +107,7 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
         expectedSalary: data.expectedSalary || "",
         skills: selectedSkills || [],
         status: "new", // Default status for new candidates
-        finalDecisionStatus: "pending", // Required field
+        // finalDecisionStatus: null, // Leave null for new candidates
         technicalProficiency: 0, // Default score
         leadershipInitiative: 0, // Default score
         problemSolving: 0, // Default score
