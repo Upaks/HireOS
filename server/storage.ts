@@ -51,6 +51,7 @@ export interface IStorage {
   getCandidate(id: number): Promise<Candidate | undefined>;
   getCandidates(filters: { jobId?: number, status?: string }): Promise<Candidate[]>;
   updateCandidate(id: number, data: Partial<Candidate>): Promise<Candidate>;
+  getCandidateByNameAndEmail(name: string, email: string): Promise<Candidate | undefined>;
   
   // Interview operations
   createInterview(interview: Partial<Interview>): Promise<Interview>;
@@ -283,6 +284,26 @@ export class DatabaseStorage implements IStorage {
       ...candidate,
       job: jobsMap.get(candidate.jobId) || null
     }));
+  }
+
+  async getCandidateByNameAndEmail(name: string, email: string): Promise<Candidate | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(candidates)
+        .where(
+          and(
+            eq(candidates.name, name),
+            eq(candidates.email, email)
+          )
+        )
+        .limit(1);
+      
+      return result[0];
+    } catch (error) {
+      console.error('Error fetching candidate by name and email:', error);
+      return undefined;
+    }
   }
 
   async updateCandidate(id: number, data: Partial<Candidate>): Promise<Candidate> {

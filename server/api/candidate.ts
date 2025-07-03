@@ -15,6 +15,16 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication or API key required" });
       }
 
+      // Check for duplicate candidate (same name and email)
+      const existingCandidate = await storage.getCandidateByNameAndEmail(req.body.name, req.body.email);
+      if (existingCandidate) {
+        return res.status(409).json({ 
+          message: "Candidate already exists",
+          error: "A candidate with the same name and email already exists in the system",
+          existingCandidateId: existingCandidate.id
+        });
+      }
+
       const candidate = await storage.createCandidate(req.body);
       
       // Sync with GoHighLevel

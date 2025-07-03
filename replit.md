@@ -94,13 +94,18 @@ HireOS is a comprehensive full-stack recruitment management system built on Reac
 - **Gmail SMTP**: Email delivery through Nodemailer
 - **Slack Webhooks**: Team notifications and alerts
 
+### CRM Integration
+- **GoHighLevel API**: Automatic contact creation and sync
+- **Bidirectional Sync**: Two-way data flow between HireOS and GHL
+- **Smart Tagging**: Job role-specific tags and application status tracking
+
 ### Infrastructure Services
 - **Neon Database**: Serverless PostgreSQL hosting
 - **Supabase**: File storage for resume uploads
 - **Replit**: Development and hosting platform
 
 ### Testing Tools
-- **GoHighLevel**: CRM integration testing scripts
+- **GoHighLevel**: CRM integration testing scripts and full bidirectional sync
 - **Axios**: HTTP client for external API communications
 
 ## Deployment Strategy

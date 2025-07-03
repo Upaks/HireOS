@@ -1,3 +1,4 @@
+// Test script for GHL Integration - use: npx tsx test-ghl-integration.js
 import { createGHLContact, mapJobTitleToGHLTag, parseFullName } from './server/ghl-integration.js';
 
 async function testGHLIntegration() {
