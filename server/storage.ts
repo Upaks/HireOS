@@ -214,6 +214,7 @@ export class DatabaseStorage implements IStorage {
       .values({
         ...candidate,
         status: candidate.status || 'new',
+        finalDecisionStatus: null, // Explicitly set to null for new candidates
         createdAt: new Date(),
         updatedAt: new Date()
       })
