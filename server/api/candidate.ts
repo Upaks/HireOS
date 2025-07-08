@@ -41,7 +41,7 @@ export function setupCandidateRoutes(app: Express) {
             tags.push(roleTag);
           }
           
-          await createGHLContact({
+          const ghlResponse = await createGHLContact({
             firstName,
             lastName,
             email: candidate.email,
@@ -49,6 +49,13 @@ export function setupCandidateRoutes(app: Express) {
             location: candidate.location || undefined,
             tags
           });
+          
+          // Update candidate with GHL contact ID
+          const ghlContactId = ghlResponse.contact?.id;
+          if (ghlContactId) {
+            await storage.updateCandidate(candidate.id, { ghlContactId });
+            console.log(`✅ Candidate ${candidate.name} synced to GHL with contact ID: ${ghlContactId}`);
+          }
           
           console.log(`✅ Candidate ${candidate.name} synced to GHL with tags:`, tags);
         }

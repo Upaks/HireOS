@@ -97,6 +97,7 @@ export const candidates = pgTable("candidates", {
   status: text("status").notNull().default("new"), // new, assessment_sent, assessment_completed, interview_scheduled, talent_pool, rejected, offer_sent, hired
   finalDecisionStatus: text("final_decision_status"), // ✅ <-- Add this line
   lastInterviewDate: timestamp("last_interview_date"), // New field for last interview date
+  ghlContactId: text("ghl_contact_id"), // GoHighLevel contact ID for sync
   hiPeopleScore: integer("hi_people_score"),
   hiPeoplePercentile: integer("hi_people_percentile"),
   hiPeopleCompletedAt: timestamp("hi_people_completed_at"),

@@ -52,6 +52,7 @@ export interface IStorage {
   getCandidates(filters: { jobId?: number, status?: string }): Promise<Candidate[]>;
   updateCandidate(id: number, data: Partial<Candidate>): Promise<Candidate>;
   getCandidateByNameAndEmail(name: string, email: string): Promise<Candidate | undefined>;
+  getCandidateByGHLContactId(ghlContactId: string): Promise<Candidate | undefined>;
   
   // Interview operations
   createInterview(interview: Partial<Interview>): Promise<Interview>;
@@ -302,6 +303,25 @@ export class DatabaseStorage implements IStorage {
       return result[0];
     } catch (error) {
       console.error('Error fetching candidate by name and email:', error);
+      return undefined;
+    }
+  }
+
+  async getCandidateByGHLContactId(ghlContactId: string): Promise<Candidate | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(candidates)
+        .where(eq(candidates.ghlContactId, ghlContactId))
+        .limit(1);
+      
+      if (!result[0]) return undefined;
+      
+      // Enrich with job data
+      const job = await this.getJob(result[0].jobId);
+      return { ...result[0], job: job || null };
+    } catch (error) {
+      console.error('Error fetching candidate by GHL contact ID:', error);
       return undefined;
     }
   }

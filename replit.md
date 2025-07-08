@@ -136,3 +136,8 @@ Preferred communication style: Simple, everyday language.
 
 Changelog:
 - July 02, 2025. Initial setup
+- July 08, 2025. Enhanced GHL integration with bidirectional sync capabilities
+  - Added `ghl_contact_id` column to candidates table for perfect ID matching
+  - Updated GHL integration to store contact IDs when creating candidates
+  - Added functions for updating and retrieving GHL contacts
+  - Maintained data integrity by keeping existing integer primary keys intact
