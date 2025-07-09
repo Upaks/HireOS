@@ -141,3 +141,10 @@ Changelog:
   - Updated GHL integration to store contact IDs when creating candidates
   - Added functions for updating and retrieving GHL contacts
   - Maintained data integrity by keeping existing integer primary keys intact
+- July 09, 2025. Completed automated GHL contact sync functionality
+  - Implemented automatic sync between GHL contacts and candidates table
+  - Added name-based matching with case normalization
+  - Created sync scripts: `sync-ghl-contacts.js` and `run-ghl-sync.js`
+  - Successfully synced 16 candidates with GHL contact IDs
+  - Added comprehensive error handling and logging
+  - Optimized performance with contact fetching limits
