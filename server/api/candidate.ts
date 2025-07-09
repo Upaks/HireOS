@@ -6,6 +6,8 @@ import { handleApiError, validateRequest, isAuthorized } from "./utils";
 import { isLikelyInvalidEmail } from "../email-validator";
 import { db } from "../db";
 import { createGHLContact, mapJobTitleToGHLTag, parseFullName } from "../ghl-integration";
+import { Candidate } from "@shared/schema";
+
 
 export function setupCandidateRoutes(app: Express) {
   // Create a new candidate
@@ -169,22 +171,26 @@ export function setupCandidateRoutes(app: Express) {
   // Update a candidate
   app.patch("/api/candidates/:id", async (req, res) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Authentication required" });
+      if (!isAuthorized(req)) {
+        return res.status(401).json({ message: "Authentication or API key required" });
       }
 
-      const candidateId = parseInt(req.params.id);
-      if (isNaN(candidateId)) {
-        return res.status(400).json({ message: "Invalid candidate ID" });
+      // Resolve candidate either by numeric ID or GHL Contact ID
+      const candidateIdentifier = req.params.id;
+      let candidate: Candidate | undefined;
+
+      if (!isNaN(Number(candidateIdentifier))) {
+        candidate = await storage.getCandidate(parseInt(candidateIdentifier));
+      } else {
+        candidate = await storage.getCandidateByGHLContactId(candidateIdentifier);
       }
 
-      const candidate = await storage.getCandidate(candidateId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
-      // Check permissions for evaluation criteria updates
-      const hasEvaluationFields = 
+      // Permissions check for evaluation fields
+      const hasEvaluationFields =
         req.body.technicalProficiency !== undefined ||
         req.body.leadershipInitiative !== undefined ||
         req.body.problemSolving !== undefined ||
@@ -193,152 +199,145 @@ export function setupCandidateRoutes(app: Express) {
         req.body.hiPeopleScore !== undefined ||
         req.body.hiPeoplePercentile !== undefined;
 
-      // Only CEO, COO, or Director can update evaluation criteria
-      if (hasEvaluationFields && 
-          req.user?.role !== 'ceo' && 
-          req.user?.role !== 'coo' && 
-          req.user?.role !== 'director' && 
-          req.user?.role !== 'admin') {
-        return res.status(403).json({ 
-          message: "Only CEO, COO, or Director can update candidate evaluation criteria" 
+      if (
+        hasEvaluationFields &&
+        !['ceo', 'coo', 'director', 'admin'].includes(req.user?.role || '')
+      ) {
+        return res.status(403).json({
+          message: "Only CEO, COO, or Director can update candidate evaluation criteria",
         });
       }
 
-      // Convert lastInterviewDate from string to Date object if it exists
+      // Prepare update data
       const updateData = { ...req.body };
       if (updateData.lastInterviewDate) {
-        // Convert string date to Date object for PostgreSQL timestamp
         updateData.lastInterviewDate = new Date(updateData.lastInterviewDate);
       }
 
-      console.log('Updating candidate with data:', updateData);
+      console.log("Updating candidate with data:", updateData);
 
-      const updatedCandidate = await storage.updateCandidate(candidateId, updateData);
+      // Update candidate
+      const updatedCandidate = await storage.updateCandidate(candidate.id, updateData);
 
-      // If status was changed to "interview sent", queue interview invitation email
+      // Status change to "interview sent"
       if (
-        req.body.status &&
         req.body.status === "45_1st_interview_sent" &&
         req.body.status !== candidate.status
       ) {
         const job = await storage.getJob(candidate.jobId);
-
         if (job) {
           await storage.createNotification({
             type: "email",
             payload: {
               recipientEmail: candidate.email,
-              subject: `${candidate.name}, Let's Discuss Your Fit for Our ${job?.title} Position`,
+              subject: `${candidate.name}, Let's Discuss Your Fit for Our ${job.title} Position`,
               template: "custom",
               context: {
                 body: `
-                Hi ${candidate.name},<br><br>
-
-                It's Aaron Ready from Ready CPA. I came across your profile and would like to chat about your background and how you might fit in our <b>${job?.title}</b> position.<br><br>
-
-                Feel free to grab a time on my calendar when you're available:<br>
-                <a href="https://www.calendar.com/aaronready/client-meeting">Schedule your interview here</a><br><br>
-
-                Looking forward to connecting!<br><br>
-
-                Thanks,<br>
-                Aaron Ready, CPA<br>
-                Ready CPA
-                `.trim()
-              }
+                  Hi ${candidate.name},<br><br>
+                  It's Aaron Ready from Ready CPA. I came across your profile and would like to chat about your background and how you might fit in our <b>${job.title}</b> position.<br><br>
+                  Feel free to grab a time on my calendar when you're available:<br>
+                  <a href="https://www.calendar.com/aaronready/client-meeting">Schedule your interview here</a><br><br>
+                  Looking forward to connecting!<br><br>
+                  Thanks,<br>
+                  Aaron Ready, CPA<br>
+                  Ready CPA
+                `.trim(),
               },
-              processAfter: new Date(),
-              status: "pending"
-              });
+            },
+            processAfter: new Date(),
+            status: "pending",
+          });
         }
       }
 
-      // If status changed to offer_sent OR final decision changed to offer, send offer email
-      if ((req.body.status === "95_offer_sent" && candidate.status !== "95_offer_sent") || 
-          (req.body.finalDecisionStatus === "offer" && candidate.finalDecisionStatus !== "offer")) {
-        
-        // Get job details
+      // Status change to "offer sent" or decision "offer"
+      if (
+        (req.body.status === "95_offer_sent" && candidate.status !== "95_offer_sent") ||
+        (req.body.finalDecisionStatus === "offer" &&
+          candidate.finalDecisionStatus !== "offer")
+      ) {
         const job = await storage.getJob(candidate.jobId);
-        
-        // Create offer record if none exists
-        let offer = await storage.getOfferByCandidate(candidateId);
+
+        // Create offer if none exists
+        let offer = await storage.getOfferByCandidate(candidate.id);
         if (!offer) {
           offer = await storage.createOffer({
-            candidateId,
-            offerType: "Full-time", // Default value
-            compensation: "Competitive", // Default value
+            candidateId: candidate.id,
+            offerType: "Full-time",
+            compensation: "Competitive",
             status: "sent",
             sentDate: new Date(),
             approvedById: req.user?.id,
-            contractUrl: `https://talent.firmos.app/web-manager-contract453986`
+            contractUrl: `https://talent.firmos.app/web-manager-contract453986`,
           });
         }
 
-        // Log activity
         await storage.createActivityLog({
           userId: req.user?.id,
           action: "Sent offer to candidate",
           entityType: "candidate",
           entityId: candidate.id,
-          details: { 
-            candidateName: candidate.name, 
-            jobTitle: job?.title
-          },
-          timestamp: new Date()
+          details: { candidateName: candidate.name, jobTitle: job?.title },
+          timestamp: new Date(),
         });
 
-        // Send direct offer email (immediate, no queue)
+        // Send offer email
         const emailSubject = `Excited to Offer You the ${job?.title} Position`;
         const emailBody = `
-        <p>Hi ${candidate.name},</p>
-
-        <p>Great news — we'd love to bring you on board for the ${job?.title} position at Ready CPA. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
-
-        <p>Here's the link to your engagement contract:
-        <a href="https://talent.firmos.app/web-manager-contract453986">[Contract Link]</a></p>
-
-        <p>To kick things off, please schedule your onboarding call here:
-        <a href="https://www.calendar.com/aaronready/client-meeting">[Onboarding Calendar Link]</a></p>
-
-        <p>If anything's unclear or you'd like to chat, don't hesitate to reach out.</p>
-
-        <p>Welcome aboard — we're excited to get started!</p>
-
-        <p>Best regards,<br>
-        Aaron Ready, CPA<br>
-        Ready CPA</p>
+          <p>Hi ${candidate.name},</p>
+          <p>Great news — we'd love to bring you on board for the ${job?.title} position at Ready CPA. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
+          <p>Here's the link to your engagement contract:
+          <a href="https://talent.firmos.app/web-manager-contract453986">[Contract Link]</a></p>
+          <p>To kick things off, please schedule your onboarding call here:
+          <a href="https://www.calendar.com/aaronready/client-meeting">[Onboarding Calendar Link]</a></p>
+          <p>If anything's unclear or you'd like to chat, don't hesitate to reach out.</p>
+          <p>Welcome aboard — we're excited to get started!</p>
+          <p>Best regards,<br>
+          Aaron Ready, CPA<br>
+          Ready CPA</p>
         `;
-        
         await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
       }
-      
-      // Log status change activity
+
+      // Log status change
       if (req.body.status && req.body.status !== candidate.status) {
         await storage.createActivityLog({
           userId: req.user?.id,
           action: `Updated candidate status to ${req.body.status}`,
           entityType: "candidate",
           entityId: candidate.id,
-          details: { candidateName: candidate.name, previousStatus: candidate.status, newStatus: req.body.status },
-          timestamp: new Date()
+          details: {
+            candidateName: candidate.name,
+            previousStatus: candidate.status,
+            newStatus: req.body.status,
+          },
+          timestamp: new Date(),
         });
       }
 
-      // Log evaluation update activity
+      // Log evaluation update
       if (hasEvaluationFields) {
         await storage.createActivityLog({
           userId: req.user?.id,
           action: "Updated candidate evaluation",
           entityType: "candidate",
           entityId: candidate.id,
-          details: { 
+          details: {
             candidateName: candidate.name,
-            updates: Object.keys(req.body).filter(key => 
-              ['technicalProficiency', 'leadershipInitiative', 'problemSolving', 
-               'communicationSkills', 'culturalFit', 'hiPeopleScore', 'hiPeoplePercentile'].includes(key)
-            )
+            updates: Object.keys(req.body).filter((key) =>
+              [
+                "technicalProficiency",
+                "leadershipInitiative",
+                "problemSolving",
+                "communicationSkills",
+                "culturalFit",
+                "hiPeopleScore",
+                "hiPeoplePercentile",
+              ].includes(key)
+            ),
           },
-          timestamp: new Date()
+          timestamp: new Date(),
         });
       }
 
@@ -347,6 +346,7 @@ export function setupCandidateRoutes(app: Express) {
       handleApiError(error, res);
     }
   });
+
 
   // Invite candidate to interview
   app.post("/api/candidates/:id/invite-to-interview", async (req, res) => {
