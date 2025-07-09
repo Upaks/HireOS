@@ -9,6 +9,7 @@ import { setupHiPeopleRoutes } from "./api/hipeople";
 import { setupUserRoutes } from "./api/users";
 import { setupTestIntegrationRoutes } from "./api/test-integration";
 import { setupSimpleTestRoutes } from "./api/test-simple";
+import { setupGHLSyncRoutes } from "./api/ghl-sync";
 import { storage } from "./storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -24,6 +25,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupUserRoutes(app);
   setupTestIntegrationRoutes(app);
   setupSimpleTestRoutes(app);
+  setupGHLSyncRoutes(app);
 
   // We're using the rebuild-users.ts script to create users now
   // The script creates users for each role with the password "justtesting"

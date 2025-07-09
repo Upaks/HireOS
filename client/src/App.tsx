@@ -17,6 +17,7 @@ import CooReview from "@/pages/coo-review";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 import AdminPage from "@/pages/admin";
+import GHLSyncPage from "@/pages/GHLSyncPage";
 import { ThemeProvider } from "next-themes";
 import { UserRoles } from "@shared/schema";
 
@@ -73,6 +74,13 @@ function Router() {
         path="/admin" 
         component={AdminPage}
         roles={[UserRoles.ADMIN]}
+      />
+      
+      {/* GHL Sync Page for COO, CEO, Director and Admin only */}
+      <ProtectedRoute 
+        path="/ghl-sync" 
+        component={GHLSyncPage}
+        roles={[UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]}
       />
       
       <Route path="/auth" component={AuthPage} />

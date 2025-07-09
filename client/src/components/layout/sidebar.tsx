@@ -10,7 +10,8 @@ import {
   CheckCircle,
   Settings,
   Activity,
-  LogOut
+  LogOut,
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -89,6 +90,12 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
       title: "System Settings",
       icon: <Settings className="h-5 w-5 mr-3" />,
       href: "/settings",
+      roles: [UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
+    },
+    {
+      title: "GHL Sync",
+      icon: <RefreshCw className="h-5 w-5 mr-3" />,
+      href: "/ghl-sync",
       roles: [UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     },
     {

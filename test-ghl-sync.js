@@ -1,90 +1,66 @@
-import axios from 'axios';
+import { syncGHLContacts } from './server/ghl-sync';
 
-// Test script to verify GHL sync with new ghl_contact_id column
 async function testGHLSync() {
-  const GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ilgzbm9UMWpNYTZ1Q3VIaHJuVHBlIiwiY29tcGFueV9pZCI6IkJVS2dONlV0OE04WXE5R0pxSHdSIiwidmVyc2lvbiI6MSwiaWF0IjoxNzA4NzE2OTQzNDE0LCJzdWIiOiJ1c2VyX2lkIn0.AhaeewxW5RfLLSdqTYNVSr171R_Sa8K2bIOE4_wfDVA";
-  const GHL_BASE_URL = 'https://rest.gohighlevel.com/v1';
-
+  console.log('🔄 Testing GHL Sync functionality...\n');
+  
   try {
-    // Test 1: Create a new contact
-    console.log('🧪 Testing GHL contact creation...');
-    const testContact = {
-      firstName: 'Test',
-      lastName: 'Candidate',
-      email: 'test.candidate@example.com',
-      phone: '+1234567890',
-      source: 'HireOS Test',
-      tags: ['test', 'hireos-sync']
-    };
-
-    const createResponse = await axios.post(
-      `${GHL_BASE_URL}/contacts/`,
-      testContact,
-      {
-        headers: {
-          Authorization: `Bearer ${GHL_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    const contactId = createResponse.data.contact?.id;
-    console.log('✅ Contact created successfully!');
-    console.log('Contact ID:', contactId);
-    console.log('Response:', JSON.stringify(createResponse.data, null, 2));
-
-    if (contactId) {
-      // Test 2: Retrieve the contact
-      console.log('\n🧪 Testing GHL contact retrieval...');
-      const getResponse = await axios.get(
-        `${GHL_BASE_URL}/contacts/${contactId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${GHL_API_KEY}`
-          }
-        }
-      );
-      
-      console.log('✅ Contact retrieved successfully!');
-      console.log('Retrieved contact:', JSON.stringify(getResponse.data, null, 2));
-
-      // Test 3: Update the contact tags
-      console.log('\n🧪 Testing GHL contact update...');
-      const updateResponse = await axios.put(
-        `${GHL_BASE_URL}/contacts/${contactId}`,
-        {
-          tags: ['test', 'hireos-sync', 'assessment-sent']
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${GHL_API_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      console.log('✅ Contact updated successfully!');
-      console.log('Update response:', JSON.stringify(updateResponse.data, null, 2));
-
-      // Test 4: Final verification
-      console.log('\n🧪 Final verification...');
-      const finalCheckResponse = await axios.get(
-        `${GHL_BASE_URL}/contacts/${contactId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${GHL_API_KEY}`
-          }
-        }
-      );
-      
-      console.log('✅ Final check - Contact tags:', finalCheckResponse.data.contact?.tags);
-      console.log('\n🎉 All tests passed! GHL sync is working correctly.');
+    // First, run a dry run to preview changes
+    console.log('=== DRY RUN PREVIEW ===');
+    const previewResult = await syncGHLContacts(true);
+    
+    console.log('\n📊 Preview Results:');
+    console.log(`   Success: ${previewResult.success}`);
+    console.log(`   Total GHL contacts: ${previewResult.totalGHLContacts}`);
+    console.log(`   Total candidates: ${previewResult.totalCandidates}`);
+    console.log(`   Would match: ${previewResult.matched}`);
+    console.log(`   Would update: ${previewResult.updated}`);
+    console.log(`   Would skip: ${previewResult.skipped}`);
+    console.log(`   Errors: ${previewResult.errors.length}`);
+    
+    if (previewResult.errors.length > 0) {
+      console.log('\n❌ Errors:');
+      previewResult.errors.forEach(error => console.log(`   - ${error}`));
     }
-
+    
+    // Show first 10 details
+    console.log('\n📋 First 10 preview details:');
+    previewResult.details.slice(0, 10).forEach(detail => {
+      console.log(`   ${detail.action.toUpperCase()}: ${detail.ghlName} → ${detail.candidateName} (${detail.reason})`);
+    });
+    
+    // Ask for confirmation before proceeding with actual sync
+    console.log('\n=== ACTUAL SYNC ===');
+    console.log('Would you like to proceed with the actual sync? (This will update the database)');
+    
+    // For testing, we'll just run the actual sync
+    const syncResult = await syncGHLContacts(false);
+    
+    console.log('\n🎉 Sync Results:');
+    console.log(`   Success: ${syncResult.success}`);
+    console.log(`   Total GHL contacts: ${syncResult.totalGHLContacts}`);
+    console.log(`   Total candidates: ${syncResult.totalCandidates}`);
+    console.log(`   Matched: ${syncResult.matched}`);
+    console.log(`   Updated: ${syncResult.updated}`);
+    console.log(`   Skipped: ${syncResult.skipped}`);
+    console.log(`   Errors: ${syncResult.errors.length}`);
+    
+    if (syncResult.errors.length > 0) {
+      console.log('\n❌ Errors:');
+      syncResult.errors.forEach(error => console.log(`   - ${error}`));
+    }
+    
+    // Show successful updates
+    const updates = syncResult.details.filter(d => d.action === 'updated');
+    if (updates.length > 0) {
+      console.log('\n✅ Successful updates:');
+      updates.forEach(update => {
+        console.log(`   Updated "${update.candidateName}" with GHL ID: ${update.contactId}`);
+      });
+    }
+    
   } catch (error) {
-    console.error('❌ Test failed:', error.response?.data || error.message);
+    console.error('❌ Test failed:', error.message);
   }
 }
 
-// Run the test
 testGHLSync();
