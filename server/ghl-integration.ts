@@ -84,6 +84,29 @@ export function mapJobTitleToGHLTag(jobTitle: string): string {
 }
 
 /**
+ * Maps HireOS candidate status to GHL tag
+ * @param status Candidate status from HireOS
+ * @returns GHL tag for the status
+ */
+export function mapStatusToGHLTag(status: string): string {
+  const statusMappings: { [key: string]: string } = {
+    'new': '00_application_submitted',
+    'assessment_sent': '15_assessment_sent',
+    'assessment_completed': '30_assessment_completed',
+    'interview_scheduled': '45_1st_interview_sent',
+    'interview_completed': '60_1st_interview_completed',
+    'second_interview_scheduled': '75_2nd_interview_scheduled',
+    'second_interview_completed': '90_2nd_interview_completed',
+    'talent_pool': '95_talent_pool',
+    'rejected': '99_rejected',
+    'offer_sent': '85_offer_sent',
+    'hired': '100_hired'
+  };
+  
+  return statusMappings[status] || '00_application_submitted';
+}
+
+/**
  * Updates a contact in GoHighLevel
  * @param contactId GHL contact ID
  * @param contactData Contact information to update
@@ -183,4 +206,66 @@ export function parseFullName(fullName: string): { firstName: string; lastName: 
     firstName: nameParts[0],
     lastName: nameParts.slice(1).join(' ')
   };
+}
+
+/**
+ * Updates a candidate's details from HireOS to GoHighLevel
+ * @param candidate Candidate object from HireOS database
+ * @returns Promise<any> GHL API response
+ */
+export async function updateCandidateInGHL(candidate: any): Promise<any> {
+  if (!candidate.ghlContactId) {
+    throw new Error('Candidate must have a GHL contact ID to update');
+  }
+  
+  if (!GHL_API_KEY) {
+    throw new Error('GHL_API_KEY environment variable is not set');
+  }
+
+  // Parse the full name into first and last name
+  const { firstName, lastName } = parseFullName(candidate.name);
+  
+  // Extract job title from candidate's job data (JSONB field)
+  let jobTitle = 'Unknown Role';
+  if (candidate.job && typeof candidate.job === 'object') {
+    jobTitle = candidate.job.title || candidate.job.suggestedTitle || 'Unknown Role';
+  }
+  
+  // Generate tags based on job role and status
+  const roleTag = mapJobTitleToGHLTag(jobTitle);
+  const statusTag = mapStatusToGHLTag(candidate.status);
+  const tags = [roleTag, statusTag];
+  
+  // Build update payload
+  const updateData = {
+    firstName,
+    lastName,
+    phone: candidate.phone || '',
+    location: candidate.location || '',
+    tags
+  };
+
+  try {
+    const response = await updateGHLContact(candidate.ghlContactId, updateData);
+    
+    console.log('✅ Successfully updated candidate in GHL:', {
+      candidateId: candidate.id,
+      candidateName: candidate.name,
+      ghlContactId: candidate.ghlContactId,
+      status: candidate.status,
+      jobTitle,
+      tags
+    });
+    
+    return response;
+  } catch (error: any) {
+    console.error('❌ Failed to update candidate in GHL:', {
+      candidateId: candidate.id,
+      candidateName: candidate.name,
+      ghlContactId: candidate.ghlContactId,
+      error: error.message
+    });
+    
+    throw error;
+  }
 }
