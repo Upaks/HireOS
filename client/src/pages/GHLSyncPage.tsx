@@ -32,11 +32,17 @@ export default function GHLSyncPage() {
 
   const previewMutation = useMutation({
     mutationFn: async () => {
+      console.log('Starting GHL sync preview...');
       const response = await apiRequest('/api/ghl-sync/preview', { method: 'GET' });
+      console.log('Preview response:', response);
       return response;
     },
     onSuccess: (data) => {
+      console.log('Preview successful:', data);
       setLastSyncResult(data);
+    },
+    onError: (error) => {
+      console.error('Preview error:', error);
     },
   });
 
