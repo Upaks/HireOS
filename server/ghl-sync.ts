@@ -46,10 +46,11 @@ function normalizeName(name: string): string {
 }
 
 /**
- * Fetches all contacts from GHL API
+ * Fetches contacts from GHL API with improved efficiency
+ * @param limit Maximum number of contacts to fetch (default: 500)
  * @returns Promise<GHLContact[]> Array of GHL contacts
  */
-async function fetchAllGHLContacts(): Promise<GHLContact[]> {
+async function fetchGHLContacts(limit: number = 500): Promise<GHLContact[]> {
   if (!GHL_API_KEY) {
     throw new Error('GHL_API_KEY environment variable is not set');
   }
@@ -58,31 +59,42 @@ async function fetchAllGHLContacts(): Promise<GHLContact[]> {
   let startAfter = '';
   let hasMore = true;
   let pageCount = 0;
-  const maxPages = 100; // Safety limit to prevent infinite loops
+  const maxPages = Math.ceil(limit / 20); // Each page has ~20 contacts
+  const timeout = 30000; // 30 second timeout per request
 
   try {
-    while (hasMore && pageCount < maxPages) {
+    while (hasMore && pageCount < maxPages && allContacts.length < limit) {
       const url = `${GHL_BASE_URL}/contacts/${startAfter ? `?startAfter=${startAfter}` : ''}`;
       
-      console.log(`Fetching GHL contacts page ${pageCount + 1}...`);
+      console.log(`Fetching GHL contacts page ${pageCount + 1}/${maxPages}...`);
       
       const response = await axios.get(url, {
         headers: {
           Authorization: `Bearer ${GHL_API_KEY}`,
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: timeout
       });
 
       const contacts = response.data.contacts || [];
-      allContacts.push(...contacts);
+      
+      // Add contacts but don't exceed the limit
+      const contactsToAdd = contacts.slice(0, limit - allContacts.length);
+      allContacts.push(...contactsToAdd);
 
-      // Check if there are more pages
-      hasMore = response.data.meta?.nextPageUrl ? true : false;
+      // Check if there are more pages and we haven't reached the limit
+      hasMore = response.data.meta?.nextPageUrl && allContacts.length < limit;
       startAfter = response.data.meta?.startAfterId || '';
       
       pageCount++;
       
-      console.log(`Page ${pageCount}: Found ${contacts.length} contacts (Total: ${allContacts.length})`);
+      console.log(`Page ${pageCount}: Found ${contactsToAdd.length} contacts (Total: ${allContacts.length})`);
+      
+      // If we've reached our limit, break
+      if (allContacts.length >= limit) {
+        console.log(`✅ Reached limit of ${limit} contacts`);
+        break;
+      }
     }
 
     console.log(`✅ Fetched ${allContacts.length} total contacts from GHL`);
@@ -113,8 +125,8 @@ export async function syncGHLContacts(dryRun: boolean = false): Promise<SyncResu
   try {
     console.log(`🔄 Starting GHL contact sync ${dryRun ? '(DRY RUN)' : ''}...`);
     
-    // Fetch all GHL contacts
-    const ghlContacts = await fetchAllGHLContacts();
+    // Fetch GHL contacts (limited to 100 for performance)
+    const ghlContacts = await fetchGHLContacts(100);
     result.totalGHLContacts = ghlContacts.length;
 
     // Fetch all candidates
