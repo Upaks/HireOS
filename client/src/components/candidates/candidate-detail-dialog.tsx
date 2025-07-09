@@ -117,6 +117,7 @@ export default function CandidateDetailDialog({
   const { user } = useAuth();
   const [isUploading, setIsUploading] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [isGHLSyncing, setIsGHLSyncing] = useState(false);
   
   // Confirmation modal state
   const [confirmationModal, setConfirmationModal] = useState<{
@@ -219,11 +220,41 @@ export default function CandidateDetailDialog({
       );
       return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: async (updatedCandidate) => {
       toast({
         title: "Candidate updated",
         description: "The candidate information has been updated successfully.",
       });
+      
+      // Sync candidate to GHL if they have a GHL contact ID
+      if (updatedCandidate?.ghlContactId) {
+        setIsGHLSyncing(true);
+        try {
+          const syncResponse = await apiRequest(
+            "POST",
+            `/api/ghl-sync/update-candidate/${candidate.id}`,
+            {}
+          );
+          
+          if (syncResponse.ok) {
+            const syncResult = await syncResponse.json();
+            toast({
+              title: "GHL sync completed",
+              description: `Candidate details synchronized to GoHighLevel successfully.`,
+            });
+          }
+        } catch (syncError) {
+          // Don't fail the main update if GHL sync fails
+          console.log("GHL sync failed but candidate was updated:", syncError);
+          toast({
+            title: "Candidate updated",
+            description: "Candidate updated successfully. GHL sync will be attempted later.",
+          });
+        } finally {
+          setIsGHLSyncing(false);
+        }
+      }
+      
       queryClient.invalidateQueries({ queryKey: ['/api/candidates'] });
       onClose();
     },
@@ -485,6 +516,14 @@ export default function CandidateDetailDialog({
             <span className="text-sm text-muted-foreground">{candidate.email}</span>
             <span className="text-sm text-muted-foreground">•</span>
             <span className="text-sm text-muted-foreground">{candidate.location || 'No location'}</span>
+            {candidate.ghlContactId && (
+              <>
+                <span className="text-sm text-muted-foreground">•</span>
+                <Badge variant="secondary" className="text-xs">
+                  GHL Synced
+                </Badge>
+              </>
+            )}
           </div>
         </DialogHeader>
 
@@ -962,13 +1001,18 @@ export default function CandidateDetailDialog({
             {canEdit && (
               <Button
                 onClick={handleSubmit}
-                disabled={updateCandidateMutation.isPending || isRejected}
+                disabled={updateCandidateMutation.isPending || isRejected || isGHLSyncing}
                 className="px-5 py-2 text-base"
               >
                 {updateCandidateMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Saving...
+                  </>
+                ) : isGHLSyncing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Syncing to GHL...
                   </>
                 ) : (
                   "Save Changes"
