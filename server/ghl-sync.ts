@@ -125,8 +125,8 @@ export async function syncGHLContacts(dryRun: boolean = false): Promise<SyncResu
   try {
     console.log(`🔄 Starting GHL contact sync ${dryRun ? '(DRY RUN)' : ''}...`);
     
-    // Fetch GHL contacts (limited to 100 for performance)
-    const ghlContacts = await fetchGHLContacts(100);
+    // Fetch GHL contacts (limited to 300 for better coverage)
+    const ghlContacts = await fetchGHLContacts(300);
     result.totalGHLContacts = ghlContacts.length;
 
     // Fetch all candidates
