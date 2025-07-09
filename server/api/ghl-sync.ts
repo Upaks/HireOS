@@ -1,5 +1,7 @@
 import { Express, Request, Response } from 'express';
 import { syncGHLContacts, previewGHLSync, executeGHLSync } from '../ghl-sync';
+import { updateCandidateInGHL } from '../ghl-integration';
+import { storage } from '../storage';
 
 // Middleware to check authentication
 function requireAuth(req: Request, res: Response, next: Function) {
@@ -61,6 +63,66 @@ export function setupGHLSyncRoutes(app: Express) {
       res.status(500).json({
         success: false,
         message: 'Failed to sync GHL contacts',
+        error: error.message
+      });
+    }
+  });
+
+  // Update specific candidate in GHL
+  app.post('/api/ghl-sync/update-candidate/:candidateId', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const candidateId = parseInt(req.params.candidateId);
+      
+      if (isNaN(candidateId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid candidate ID'
+        });
+      }
+
+      // Get candidate from database
+      const candidate = await storage.getCandidate(candidateId);
+      if (!candidate) {
+        return res.status(404).json({
+          success: false,
+          message: 'Candidate not found'
+        });
+      }
+
+      // Check if candidate has GHL contact ID
+      if (!candidate.ghlContactId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Candidate does not have a GHL contact ID. Run sync first.'
+        });
+      }
+
+      // Get job details if available
+      if (candidate.jobId) {
+        const job = await storage.getJob(candidate.jobId);
+        if (job) {
+          (candidate as any).job = job;
+        }
+      }
+
+      // Update candidate in GHL
+      const result = await updateCandidateInGHL(candidate);
+
+      res.json({
+        success: true,
+        message: 'Candidate updated successfully in GHL',
+        data: {
+          candidateId: candidate.id,
+          candidateName: candidate.name,
+          ghlContactId: candidate.ghlContactId,
+          result
+        }
+      });
+    } catch (error: any) {
+      console.error('Update candidate in GHL error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update candidate in GHL',
         error: error.message
       });
     }

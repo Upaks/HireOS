@@ -148,3 +148,8 @@ Changelog:
   - Successfully synced 16 candidates with GHL contact IDs
   - Added comprehensive error handling and logging
   - Optimized performance with contact fetching limits
+  - Built candidate update function for HireOS to GHL sync
+  - Added `updateCandidateInGHL` function with automatic name parsing and tag mapping
+  - Implemented status-to-tag mapping for workflow tracking
+  - Added API endpoint `/api/ghl-sync/update-candidate/:candidateId`
+  - Created comprehensive test scripts and documentation
