@@ -5,119 +5,146 @@ import { insertCandidateSchema, emailLogs } from "@shared/schema";
 import { handleApiError, validateRequest, isAuthorized } from "./utils";
 import { isLikelyInvalidEmail } from "../email-validator";
 import { db } from "../db";
-import { createGHLContact, mapJobTitleToGHLTag, parseFullName } from "../ghl-integration";
+import {
+  createGHLContact,
+  mapJobTitleToGHLTag,
+  parseFullName,
+} from "../ghl-integration";
 import { Candidate } from "@shared/schema";
-
 
 export function setupCandidateRoutes(app: Express) {
   // Create a new candidate
-  app.post("/api/candidates", validateRequest(insertCandidateSchema), async (req, res) => {
-    try {
-      if (!isAuthorized(req)) {
-        return res.status(401).json({ message: "Authentication or API key required" });
-      }
-
-      // Check for duplicate candidate (same name and email)
-      const existingCandidate = await storage.getCandidateByNameAndEmail(req.body.name, req.body.email);
-      if (existingCandidate) {
-        return res.status(409).json({ 
-          message: "Candidate already exists",
-          error: "A candidate with the same name and email already exists in the system",
-          existingCandidateId: existingCandidate.id
-        });
-      }
-
-      const candidate = await storage.createCandidate(req.body);
-      
-      // Sync with GoHighLevel
+  app.post(
+    "/api/candidates",
+    validateRequest(insertCandidateSchema),
+    async (req, res) => {
       try {
-        // Only sync if candidate has a valid jobId
-        if (candidate.jobId !== null) {
-          const job = await storage.getJob(candidate.jobId);
-          const { firstName, lastName } = parseFullName(candidate.name);
-          
-          // Build tags array
-          const tags = ['00_application_submitted'];
-          if (job?.title) {
-            const roleTag = mapJobTitleToGHLTag(job.title);
-            tags.push(roleTag);
-          }
-          
-          const ghlResponse = await createGHLContact({
-            firstName,
-            lastName,
-            email: candidate.email,
-            phone: candidate.phone || undefined,
-            location: candidate.location || undefined,
-            tags
-          });
-          
-          // Update candidate with GHL contact ID
-          const ghlContactId = ghlResponse.contact?.id;
-          if (ghlContactId) {
-            await storage.updateCandidate(candidate.id, { ghlContactId });
-            console.log(`✅ Candidate ${candidate.name} synced to GHL with contact ID: ${ghlContactId}`);
-          }
-          
-          console.log(`✅ Candidate ${candidate.name} synced to GHL with tags:`, tags);
+        if (!isAuthorized(req)) {
+          return res
+            .status(401)
+            .json({ message: "Authentication or API key required" });
         }
-      } catch (ghlError: any) {
-        // Log GHL sync error but don't fail the candidate creation
-        console.error(`⚠️ GHL sync failed for candidate ${candidate.name}:`, ghlError.message);
-        
+
+        // Check for duplicate candidate (same name and email)
+        const existingCandidate = await storage.getCandidateByNameAndEmail(
+          req.body.name,
+          req.body.email,
+        );
+        if (existingCandidate) {
+          return res.status(409).json({
+            message: "Candidate already exists",
+            error:
+              "A candidate with the same name and email already exists in the system",
+            existingCandidateId: existingCandidate.id,
+          });
+        }
+
+        const candidate = await storage.createCandidate(req.body);
+
+        // Sync with GoHighLevel
+        try {
+          // Only sync if candidate has a valid jobId
+          if (candidate.jobId !== null) {
+            const job = await storage.getJob(candidate.jobId);
+            const { firstName, lastName } = parseFullName(candidate.name);
+
+            // Build tags array
+            const tags = ["00_application_submitted"];
+            if (job?.title) {
+              const roleTag = mapJobTitleToGHLTag(job.title);
+              tags.push(roleTag);
+            }
+
+            const ghlResponse = await createGHLContact({
+              firstName,
+              lastName,
+              email: candidate.email,
+              phone: candidate.phone || undefined,
+              location: candidate.location || undefined,
+              tags,
+              score: candidate.hiPeopleScore || undefined,
+              expectedSalary: candidate.expectedSalary || undefined,
+              experienceYears: candidate.experienceYears || undefined,
+              hiPeopleAssessmentLink: candidate.hiPeopleAssessmentLink || undefined,
+              hiPeoplePercentile: candidate.hiPeoplePercentile || undefined,
+              skills: candidate.skills && Array.isArray(candidate.skills) ? candidate.skills : []
+            });
+
+            // Update candidate with GHL contact ID
+            const ghlContactId = ghlResponse.contact?.id;
+            if (ghlContactId) {
+              await storage.updateCandidate(candidate.id, { ghlContactId });
+              console.log(
+                `✅ Candidate ${candidate.name} synced to GHL with contact ID: ${ghlContactId}`,
+              );
+            }
+
+            console.log(
+              `✅ Candidate ${candidate.name} synced to GHL with tags:`,
+              tags,
+            );
+          }
+        } catch (ghlError: any) {
+          // Log GHL sync error but don't fail the candidate creation
+          console.error(
+            `⚠️ GHL sync failed for candidate ${candidate.name}:`,
+            ghlError.message,
+          );
+
+          await storage.createActivityLog({
+            userId: req.user?.id,
+            action: "GHL sync failed",
+            entityType: "candidate",
+            entityId: candidate.id,
+            details: {
+              candidateName: candidate.name,
+              error: ghlError.message,
+              jobId: candidate.jobId,
+            },
+            timestamp: new Date(),
+          });
+        }
+
+        // Log activity
         await storage.createActivityLog({
           userId: req.user?.id,
-          action: "GHL sync failed",
+          action: "Added candidate",
           entityType: "candidate",
           entityId: candidate.id,
-          details: { 
-            candidateName: candidate.name, 
-            error: ghlError.message,
-            jobId: candidate.jobId 
-          },
-          timestamp: new Date()
+          details: { candidateName: candidate.name, jobId: candidate.jobId },
+          timestamp: new Date(),
         });
+
+        // If express review is enabled, send assessment immediately
+        // Otherwise, schedule it for 3 hours later
+        const job = await storage.getJob(candidate.jobId);
+        const processAfter = job?.expressReview
+          ? new Date()
+          : new Date(Date.now() + 3 * 60 * 60 * 1000); // 3 hours later
+
+        // Queue assessment email notification
+        await storage.createNotification({
+          type: "email",
+          payload: {
+            recipientEmail: candidate.email,
+            subject: `Your Assessment for ${job?.title}`,
+            template: "assessment",
+            context: {
+              candidateName: candidate.name,
+              jobTitle: job?.title,
+              hiPeopleLink: job?.hiPeopleLink,
+            },
+          },
+          processAfter,
+          status: "pending",
+        });
+
+        res.status(201).json(candidate);
+      } catch (error) {
+        handleApiError(error, res);
       }
-      
-      // Log activity
-      await storage.createActivityLog({
-        userId: req.user?.id,
-        action: "Added candidate",
-        entityType: "candidate",
-        entityId: candidate.id,
-        details: { candidateName: candidate.name, jobId: candidate.jobId },
-        timestamp: new Date()
-      });
-
-      // If express review is enabled, send assessment immediately
-      // Otherwise, schedule it for 3 hours later
-      const job = await storage.getJob(candidate.jobId);
-      const processAfter = job?.expressReview 
-        ? new Date() 
-        : new Date(Date.now() + 3 * 60 * 60 * 1000); // 3 hours later
-      
-      // Queue assessment email notification
-      await storage.createNotification({
-        type: "email",
-        payload: {
-          recipientEmail: candidate.email,
-          subject: `Your Assessment for ${job?.title}`,
-          template: "assessment",
-          context: {
-            candidateName: candidate.name,
-            jobTitle: job?.title,
-            hiPeopleLink: job?.hiPeopleLink
-          }
-        },
-        processAfter,
-        status: "pending"
-      });
-
-      res.status(201).json(candidate);
-    } catch (error) {
-      handleApiError(error, res);
-    }
-  });
+    },
+  );
 
   // Get all candidates with optional filtering
   app.get("/api/candidates", async (req, res) => {
@@ -126,19 +153,21 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const jobId = req.query.jobId ? parseInt(req.query.jobId as string) : undefined;
+      const jobId = req.query.jobId
+        ? parseInt(req.query.jobId as string)
+        : undefined;
       const status = req.query.status as string | undefined;
-      const hiPeoplePercentile = req.query.hiPeoplePercentile 
+      const hiPeoplePercentile = req.query.hiPeoplePercentile
         ? parseInt(req.query.hiPeoplePercentile as string)
         : undefined;
-      
+
       // Get candidates based on filters
       const candidates = await storage.getCandidates({
         jobId,
         status,
-        hiPeoplePercentile
+        hiPeoplePercentile,
       });
-      
+
       res.json(candidates);
     } catch (error) {
       handleApiError(error, res);
@@ -172,7 +201,9 @@ export function setupCandidateRoutes(app: Express) {
   app.patch("/api/candidates/:id", async (req, res) => {
     try {
       if (!isAuthorized(req)) {
-        return res.status(401).json({ message: "Authentication or API key required" });
+        return res
+          .status(401)
+          .json({ message: "Authentication or API key required" });
       }
 
       // Resolve candidate either by numeric ID or GHL Contact ID
@@ -182,7 +213,8 @@ export function setupCandidateRoutes(app: Express) {
       if (!isNaN(Number(candidateIdentifier))) {
         candidate = await storage.getCandidate(parseInt(candidateIdentifier));
       } else {
-        candidate = await storage.getCandidateByGHLContactId(candidateIdentifier);
+        candidate =
+          await storage.getCandidateByGHLContactId(candidateIdentifier);
       }
 
       if (!candidate) {
@@ -201,10 +233,11 @@ export function setupCandidateRoutes(app: Express) {
 
       if (
         hasEvaluationFields &&
-        !['ceo', 'coo', 'director', 'admin'].includes(req.user?.role || '')
+        !["ceo", "coo", "director", "admin"].includes(req.user?.role || "")
       ) {
         return res.status(403).json({
-          message: "Only CEO, COO, or Director can update candidate evaluation criteria",
+          message:
+            "Only CEO, COO, or Director can update candidate evaluation criteria",
         });
       }
 
@@ -217,7 +250,10 @@ export function setupCandidateRoutes(app: Express) {
       console.log("Updating candidate with data:", updateData);
 
       // Update candidate
-      const updatedCandidate = await storage.updateCandidate(candidate.id, updateData);
+      const updatedCandidate = await storage.updateCandidate(
+        candidate.id,
+        updateData,
+      );
 
       // Status change to "interview sent"
       if (
@@ -253,7 +289,8 @@ export function setupCandidateRoutes(app: Express) {
 
       // Status change to "offer sent" or decision "offer"
       if (
-        (req.body.status === "95_offer_sent" && candidate.status !== "95_offer_sent") ||
+        (req.body.status === "95_offer_sent" &&
+          candidate.status !== "95_offer_sent") ||
         (req.body.finalDecisionStatus === "offer" &&
           candidate.finalDecisionStatus !== "offer")
       ) {
@@ -334,7 +371,7 @@ export function setupCandidateRoutes(app: Express) {
                 "culturalFit",
                 "hiPeopleScore",
                 "hiPeoplePercentile",
-              ].includes(key)
+              ].includes(key),
             ),
           },
           timestamp: new Date(),
@@ -346,7 +383,6 @@ export function setupCandidateRoutes(app: Express) {
       handleApiError(error, res);
     }
   });
-
 
   // Invite candidate to interview
   app.post("/api/candidates/:id/invite-to-interview", async (req, res) => {
@@ -367,41 +403,47 @@ export function setupCandidateRoutes(app: Express) {
 
       // Get job details first (needed for email and logging)
       const job = await storage.getJob(candidate.jobId);
-      
+
       // Check for valid email before sending interview invite
       if (isLikelyInvalidEmail(candidate.email)) {
-        console.error(`❌ Rejected likely non-existent email: ${candidate.email}`);
-        
+        console.error(
+          `❌ Rejected likely non-existent email: ${candidate.email}`,
+        );
+
         // Log activity about the failed interview invite
         await storage.createActivityLog({
           userId: req.user?.id,
           action: "Interview invite failed - invalid email",
           entityType: "candidate",
           entityId: candidate.id,
-          details: { candidateName: candidate.name, jobTitle: job?.title, email: candidate.email },
-          timestamp: new Date()
+          details: {
+            candidateName: candidate.name,
+            jobTitle: job?.title,
+            email: candidate.email,
+          },
+          timestamp: new Date(),
         });
-        
+
         // Return a simple error message
         return res.status(422).json({
           message: "Email invalid",
-          errorType: "non_existent_email"
+          errorType: "non_existent_email",
         });
       }
-      
+
       // Only update candidate status if email is valid
       const updatedCandidate = await storage.updateCandidate(candidateId, {
-        status: "45_1st_interview_sent"
+        status: "45_1st_interview_sent",
       });
-      
-      // Log activity 
+
+      // Log activity
       await storage.createActivityLog({
         userId: req.user?.id,
         action: "Invited candidate to interview",
         entityType: "candidate",
         entityId: candidate.id,
         details: { candidateName: candidate.name, jobTitle: job?.title },
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       // Send direct interview invitation email (immediate, no queue)
@@ -420,7 +462,7 @@ export function setupCandidateRoutes(app: Express) {
       Aaron Ready, CPA<br>
       Ready CPA</p>
       `;
-      
+
       // Use direct email sending to leverage our error handling
       await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
 
@@ -449,34 +491,40 @@ export function setupCandidateRoutes(app: Express) {
 
       // Get job details first
       const job = await storage.getJob(candidate.jobId);
-      
+
       // Check for valid email before adding to talent pool
       if (isLikelyInvalidEmail(candidate.email)) {
-        console.error(`❌ Rejected likely non-existent email: ${candidate.email}`);
-        
+        console.error(
+          `❌ Rejected likely non-existent email: ${candidate.email}`,
+        );
+
         // Log activity about the failed talent pool add
         await storage.createActivityLog({
           userId: req.user?.id,
           action: "Talent pool add failed - invalid email",
           entityType: "candidate",
           entityId: candidate.id,
-          details: { candidateName: candidate.name, jobTitle: job?.title, email: candidate.email },
-          timestamp: new Date()
+          details: {
+            candidateName: candidate.name,
+            jobTitle: job?.title,
+            email: candidate.email,
+          },
+          timestamp: new Date(),
         });
-        
+
         // Return a simple error message
         return res.status(422).json({
           message: "Email invalid",
-          errorType: "non_existent_email"
+          errorType: "non_existent_email",
         });
       }
-      
+
       // Only update candidate status if email is valid
       const updatedCandidate = await storage.updateCandidate(candidateId, {
         status: "90_talent_pool",
-        finalDecisionStatus: "talent_pool" // Also keep final decision status in sync
+        finalDecisionStatus: "talent_pool", // Also keep final decision status in sync
       });
-      
+
       // Log activity
       await storage.createActivityLog({
         userId: req.user?.id,
@@ -484,7 +532,7 @@ export function setupCandidateRoutes(app: Express) {
         entityType: "candidate",
         entityId: candidate.id,
         details: { candidateName: candidate.name, jobTitle: job?.title },
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       // Queue talent pool email (with 2-hour delay)
@@ -496,11 +544,11 @@ export function setupCandidateRoutes(app: Express) {
           template: "talent-pool",
           context: {
             candidateName: candidate.name,
-            jobTitle: job?.title
-          }
+            jobTitle: job?.title,
+          },
         },
         processAfter: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours later
-        status: "pending"
+        status: "pending",
       });
 
       res.json(updatedCandidate);
@@ -528,40 +576,46 @@ export function setupCandidateRoutes(app: Express) {
 
       // Get job details first (needed for email)
       const job = await storage.getJob(candidate.jobId);
-      
+
       // IMPORTANT: First check if email exists before updating candidate status
       // Use the same email validation as in sendDirectEmail
-      const nodemailer = await import('nodemailer');
-      
+      const nodemailer = await import("nodemailer");
+
       // First check if the email is likely invalid
       if (isLikelyInvalidEmail(candidate.email)) {
-        console.error(`❌ Rejected likely non-existent email: ${candidate.email}`);
-        
+        console.error(
+          `❌ Rejected likely non-existent email: ${candidate.email}`,
+        );
+
         // Do NOT update the candidate status for invalid emails
-        
+
         // Log activity
         await storage.createActivityLog({
           userId: req.user?.id,
           action: "Rejection failed - invalid email",
           entityType: "candidate",
           entityId: candidate.id,
-          details: { candidateName: candidate.name, jobTitle: job?.title, email: candidate.email },
-          timestamp: new Date()
+          details: {
+            candidateName: candidate.name,
+            jobTitle: job?.title,
+            email: candidate.email,
+          },
+          timestamp: new Date(),
         });
-        
+
         // Return a simple error message without any large objects
         return res.status(422).json({
           message: "Email invalid",
-          errorType: "non_existent_email"
+          errorType: "non_existent_email",
         });
       }
-      
+
       // Email appears valid, proceed with updating the status
       const updatedCandidate = await storage.updateCandidate(candidateId, {
         status: "200_rejected",
-        finalDecisionStatus: "rejected"
+        finalDecisionStatus: "rejected",
       });
-      
+
       // Log activity
       await storage.createActivityLog({
         userId: req.user?.id,
@@ -569,7 +623,7 @@ export function setupCandidateRoutes(app: Express) {
         entityType: "candidate",
         entityId: candidate.id,
         details: { candidateName: candidate.name, jobTitle: job?.title },
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       // Send the email directly (not using sendDirectEmail to avoid error throwing)
@@ -589,66 +643,64 @@ export function setupCandidateRoutes(app: Express) {
       Aaron Ready, CPA<br>
       Ready CPA</p>
       `;
-      
+
       // Create a transporter for sending email - same as the working one in offer and interview
       const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {
           user: "earyljames.capitle18@gmail.com",
-          pass: "sfkp epqm pdar bowz" // Updated password
-        }
+          pass: "sfkp epqm pdar bowz", // Updated password
+        },
       });
 
       const mailOptions = {
         from: "earyljames.capitle18@gmail.com",
         to: candidate.email,
         subject: emailSubject,
-        html: emailBody
+        html: emailBody,
       };
 
       try {
         await transporter.sendMail(mailOptions);
-        
+
         // Log a successful email send
-        console.log(`✅ Rejection email sent to ${candidate.email} for job: ${job?.title}`);
-        
+        console.log(
+          `✅ Rejection email sent to ${candidate.email} for job: ${job?.title}`,
+        );
+
         // Log the email in the database
-        await db
-          .insert(emailLogs)
-          .values({
-            recipientEmail: candidate.email,
-            subject: emailSubject,
-            template: 'rejection',
-            context: { body: emailBody },
-            status: 'sent',
-            sentAt: new Date(),
-            createdAt: new Date()
-          });
-        
+        await db.insert(emailLogs).values({
+          recipientEmail: candidate.email,
+          subject: emailSubject,
+          template: "rejection",
+          context: { body: emailBody },
+          status: "sent",
+          sentAt: new Date(),
+          createdAt: new Date(),
+        });
+
         // Return success with updated candidate
         res.json(updatedCandidate);
       } catch (emailError: any) {
-        console.error('❌ Error sending rejection email:', emailError);
-        
+        console.error("❌ Error sending rejection email:", emailError);
+
         // Log the failure in email_logs
-        await db
-          .insert(emailLogs)
-          .values({
-            recipientEmail: candidate.email,
-            subject: emailSubject,
-            template: 'rejection',
-            context: { body: emailBody },
-            status: 'failed',
-            error: String(emailError),
-            createdAt: new Date()
-          });
-        
+        await db.insert(emailLogs).values({
+          recipientEmail: candidate.email,
+          subject: emailSubject,
+          template: "rejection",
+          context: { body: emailBody },
+          status: "failed",
+          error: String(emailError),
+          createdAt: new Date(),
+        });
+
         // Return a success with the updated candidate but note the email failure
         // We don't want to prevent rejection just because email failed
         res.status(200).json({
           message: "Candidate rejected but email failed to send",
           emailError: String(emailError),
-          candidate: updatedCandidate
+          candidate: updatedCandidate,
         });
       }
     } catch (error) {
@@ -657,100 +709,107 @@ export function setupCandidateRoutes(app: Express) {
   });
 
   // Send offer to candidate
-  app.post("/api/candidates/:id/send-offer", validateRequest(
-    z.object({
-      offerType: z.string(),
-      compensation: z.string(),
-      startDate: z.string().optional(),
-      notes: z.string().optional()
-    })
-  ), async (req, res) => {
-    try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Authentication required" });
-      }
-
-      const candidateId = parseInt(req.params.id);
-      if (isNaN(candidateId)) {
-        return res.status(400).json({ message: "Invalid candidate ID" });
-      }
-
-      const candidate = await storage.getCandidate(candidateId);
-      if (!candidate) {
-        return res.status(404).json({ message: "Candidate not found" });
-      }
-
-      // Get job details first (needed for email template)
-      const job = await storage.getJob(candidate.jobId);
-
-      // First check if email is valid, similar to how reject works
-      // Validate email exists before updating status
+  app.post(
+    "/api/candidates/:id/send-offer",
+    validateRequest(
+      z.object({
+        offerType: z.string(),
+        compensation: z.string(),
+        startDate: z.string().optional(),
+        notes: z.string().optional(),
+      }),
+    ),
+    async (req, res) => {
       try {
-        if (isLikelyInvalidEmail(candidate.email)) {
-          console.log(`❌ Rejected likely non-existent email: ${candidate.email}`);
-          
-          // Do not update candidate status or create offer for invalid email
-          
-          // Log failed attempt
+        if (!req.isAuthenticated()) {
+          return res.status(401).json({ message: "Authentication required" });
+        }
+
+        const candidateId = parseInt(req.params.id);
+        if (isNaN(candidateId)) {
+          return res.status(400).json({ message: "Invalid candidate ID" });
+        }
+
+        const candidate = await storage.getCandidate(candidateId);
+        if (!candidate) {
+          return res.status(404).json({ message: "Candidate not found" });
+        }
+
+        // Get job details first (needed for email template)
+        const job = await storage.getJob(candidate.jobId);
+
+        // First check if email is valid, similar to how reject works
+        // Validate email exists before updating status
+        try {
+          if (isLikelyInvalidEmail(candidate.email)) {
+            console.log(
+              `❌ Rejected likely non-existent email: ${candidate.email}`,
+            );
+
+            // Do not update candidate status or create offer for invalid email
+
+            // Log failed attempt
+            await storage.createActivityLog({
+              userId: req.user?.id,
+              action: "Offer send failed - invalid email",
+              entityType: "candidate",
+              entityId: candidate.id,
+              details: {
+                candidateName: candidate.name,
+                jobTitle: job?.title,
+                email: candidate.email,
+                error: "Invalid or non-existent email address",
+              },
+              timestamp: new Date(),
+            });
+
+            // Return a simple error message without any large objects
+            return res.status(422).json({
+              message: "Email invalid",
+              errorType: "non_existent_email",
+            });
+          }
+
+          // Email appears valid, proceed with updating the status
+          const updatedCandidate = await storage.updateCandidate(candidateId, {
+            status: "95_offer_sent",
+            finalDecisionStatus: "offer_sent", // Also update final decision status
+          });
+
+          // Create offer record
+          const startDate = req.body.startDate
+            ? new Date(req.body.startDate)
+            : undefined;
+          const offer = await storage.createOffer({
+            candidateId,
+            offerType: req.body.offerType,
+            compensation: req.body.compensation,
+            startDate,
+            notes: req.body.notes,
+            status: "sent",
+            sentDate: new Date(),
+            approvedById: req.user?.id,
+            contractUrl: `https://firmos.ai/contracts/${candidateId}-${Date.now()}.pdf`,
+          });
+
+          // Log activity for successful offer creation
           await storage.createActivityLog({
             userId: req.user?.id,
-            action: "Offer send failed - invalid email",
+            action: "Sent offer to candidate",
             entityType: "candidate",
             entityId: candidate.id,
-            details: { 
-              candidateName: candidate.name, 
+            details: {
+              candidateName: candidate.name,
               jobTitle: job?.title,
-              email: candidate.email,
-              error: "Invalid or non-existent email address"
+              offerType: req.body.offerType,
+              compensation: req.body.compensation,
             },
-            timestamp: new Date()
+            timestamp: new Date(),
           });
-          
-          // Return a simple error message without any large objects
-          return res.status(422).json({
-            message: "Email invalid",
-            errorType: "non_existent_email"
-          });
-        }
-        
-        // Email appears valid, proceed with updating the status
-        const updatedCandidate = await storage.updateCandidate(candidateId, {
-          status: "95_offer_sent",
-          finalDecisionStatus: "offer_sent"  // Also update final decision status
-        });
-  
-        // Create offer record
-        const startDate = req.body.startDate ? new Date(req.body.startDate) : undefined;
-        const offer = await storage.createOffer({
-          candidateId,
-          offerType: req.body.offerType,
-          compensation: req.body.compensation,
-          startDate,
-          notes: req.body.notes,
-          status: "sent",
-          sentDate: new Date(),
-          approvedById: req.user?.id,
-          contractUrl: `https://firmos.ai/contracts/${candidateId}-${Date.now()}.pdf`
-        });
-        
-        // Log activity for successful offer creation
-        await storage.createActivityLog({
-          userId: req.user?.id,
-          action: "Sent offer to candidate",
-          entityType: "candidate",
-          entityId: candidate.id,
-          details: { 
-            candidateName: candidate.name, 
-            jobTitle: job?.title,
-            offerType: req.body.offerType,
-            compensation: req.body.compensation 
-          },
-          timestamp: new Date()
-        });
-  
-        // Send direct offer email (immediate, no queue)
-        const emailSubject = `Excited to Offer You the ${job?.title} Position`;
-        const emailBody = `
+
+          // Send direct offer email (immediate, no queue)
+          const emailSubject = `Excited to Offer You the ${job?.title} Position`;
+          const emailBody = `
         <p>Hi ${candidate.name},</p>
   
         <p>Great news — we'd love to bring you on board for the ${job?.title} position at Ready CPA. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
@@ -768,35 +827,40 @@ export function setupCandidateRoutes(app: Express) {
         Aaron Ready, CPA<br>
         Ready CPA</p>
         `;
-        
-        // Send the direct email 
-        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
-  
-        // Return success with updated candidate and offer
-        res.json({
-          candidate: updatedCandidate,
-          offer
-        });
-      } catch (error: any) {
-        // Check if this is a non-existent email error from sendDirectEmail
-        if (error.isNonExistentEmailError) {
-          console.error("API Error:", error);
-          
-          // Return specific error for non-existent email
-          return res.status(422).json({
-            message: "Candidate email does not exist",
-            errorType: "non_existent_email",
-            candidate // Return the original candidate without updates
+
+          // Send the direct email
+          await storage.sendDirectEmail(
+            candidate.email,
+            emailSubject,
+            emailBody,
+          );
+
+          // Return success with updated candidate and offer
+          res.json({
+            candidate: updatedCandidate,
+            offer,
           });
+        } catch (error: any) {
+          // Check if this is a non-existent email error from sendDirectEmail
+          if (error.isNonExistentEmailError) {
+            console.error("API Error:", error);
+
+            // Return specific error for non-existent email
+            return res.status(422).json({
+              message: "Candidate email does not exist",
+              errorType: "non_existent_email",
+              candidate, // Return the original candidate without updates
+            });
+          }
+
+          // Otherwise, let the general error handler deal with it
+          throw error;
         }
-        
-        // Otherwise, let the general error handler deal with it
-        throw error;
+      } catch (error) {
+        handleApiError(error, res);
       }
-    } catch (error) {
-      handleApiError(error, res);
-    }
-  });
+    },
+  );
 
   // Handle offer acceptance
   app.post("/api/candidates/:id/accept-offer", async (req, res) => {
@@ -817,20 +881,20 @@ export function setupCandidateRoutes(app: Express) {
 
       // Update candidate status
       const updatedCandidate = await storage.updateCandidate(candidateId, {
-        status: "100_offer_accepted"
+        status: "100_offer_accepted",
       });
 
       // Update offer status
       const offer = await storage.getOfferByCandidate(candidateId);
       if (offer) {
         await storage.updateOffer(offer.id, {
-          status: "accepted"
+          status: "accepted",
         });
       }
 
       // Get job details
       const job = await storage.getJob(candidate.jobId);
-      
+
       // Log activity
       await storage.createActivityLog({
         userId: req.user?.id,
@@ -838,7 +902,7 @@ export function setupCandidateRoutes(app: Express) {
         entityType: "candidate",
         entityId: candidate.id,
         details: { candidateName: candidate.name, jobTitle: job?.title },
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       // Send Slack notification
@@ -848,10 +912,10 @@ export function setupCandidateRoutes(app: Express) {
           channel: "onboarding",
           message: `${candidate.name} has accepted the offer for ${job?.title} position!`,
           candidateId: candidate.id,
-          jobId: candidate.jobId
+          jobId: candidate.jobId,
         },
         processAfter: new Date(),
-        status: "pending"
+        status: "pending",
       });
 
       // Queue onboarding email
@@ -864,12 +928,14 @@ export function setupCandidateRoutes(app: Express) {
           context: {
             candidateName: candidate.name,
             jobTitle: job?.title,
-            startDate: offer?.startDate ? new Date(offer.startDate).toLocaleDateString() : "To be determined",
-            contractUrl: offer?.contractUrl
-          }
+            startDate: offer?.startDate
+              ? new Date(offer.startDate).toLocaleDateString()
+              : "To be determined",
+            contractUrl: offer?.contractUrl,
+          },
         },
         processAfter: new Date(),
-        status: "pending"
+        status: "pending",
       });
 
       res.json(updatedCandidate);
