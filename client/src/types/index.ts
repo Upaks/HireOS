@@ -65,7 +65,7 @@ export interface Candidate {
   notes?: string;
   createdAt: string;
   updatedAt: string;
-
+  ghlContactId?: string;
   job?: Job;
 }
 

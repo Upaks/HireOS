@@ -1,7 +1,10 @@
 import axios from "axios";
-
+import { ghlFetch } from "./ghl/ghlApi";
+import { getAccessToken } from "./ghl/ghlAuth";
 const GHL_API_KEY = process.env.GHL_API_KEY;
+const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID!;
 const GHL_BASE_URL = "https://rest.gohighlevel.com/v1";
+const GHL_V2_BASE_URL = "https://services.leadconnectorhq.com";
 
 interface GHLContactData {
   firstName: string;
@@ -46,54 +49,64 @@ export async function createGHLContact(
     throw new Error("GHL_API_KEY environment variable is not set");
   }
 
+  // Build customFields array in the new format
+  const customFields: any[] = [];
+  if (contactData.interview)
+    customFields.push({
+      id: "P1PnG6PqDqPSOpxI85iN",
+      key: "interview_date",
+      field_value: toGhlDate(contactData.interview),
+    });
+  if (contactData.score)
+    customFields.push({
+      id: "P1fCAXatdJS0Q7KCR1vz",
+      key: "score",
+      field_value: contactData.score,
+    });
+  if (contactData.communicationSkills)
+    customFields.push({
+      id: "i5TsZMwxsL4zf1cpyOX6",
+      key: "communication_skills",
+      field_value: contactData.communicationSkills,
+    });
+  // … repeat for all your custom fields
+
   const payload = {
+    locationId: GHL_LOCATION_ID,
     firstName: contactData.firstName,
     lastName: contactData.lastName,
     email: contactData.email,
     phone: contactData.phone || "",
-    location: contactData.location || "",
-    customField: [
-      { P1PnG6PqDqPSOpxI85iN: toGhlDate(contactData.interview) }, // Date field
-      { P1fCAXatdJS0Q7KCR1vz: contactData.score },
-      { i5TsZMwxsL4zf1cpyOX6: contactData.communicationSkills },
-      { pmk0Nq5WCDlBX7CJ4cv8: contactData.culturalFit },
-      { RcjIIRzPgSf0Jg8z3vtG: contactData.expectedSalary },
-      { RODD0qGo2oGxNBFgbkBK: contactData.experienceYears },
-      { oj1uqAxC9wGGJ7BRzUH3: contactData.finalDecisionStatus },
-      { m7h2tz9JaXUukb2P4DM6: contactData.hiPeopleAssessmentLink },
-      { n4uIIQoNV9Kb5pCagkym: contactData.hiPeoplePercentile },
-      { fnSdWp8nbofgf6jaHIxA: contactData.problemSolving },
-      { YNpq6139B2eRhE3Aoexu: contactData.leadershipInitiative },
-      { scbqBrtEsihBxWmNpZyw: contactData.technicalProficiency },
-      { xjnAKyMcQF6fTMdl0uPf: contactData.skills.join(", ") },
-    ],
     source: "HireOS",
     tags: contactData.tags,
+    customFields, // ✅ array of objects
   };
 
   try {
-    const response = await axios.post(`${GHL_BASE_URL}/contacts/`, payload, {
+    const response = await ghlFetch(`${GHL_V2_BASE_URL}/contacts/upsert`, {
+      method: "POST",
       headers: {
-        Authorization: `Bearer ${GHL_API_KEY}`,
         "Content-Type": "application/json",
+        Version: "2021-07-28",
       },
+      body: JSON.stringify(payload),
     });
 
-    console.log("✅ GHL contact created successfully:", {
-      payload,
-    });
+    const raw = await response.text();
+    console.log("📩 Raw GHL response:", raw);
 
-    return response.data;
+    if (!response.ok) {
+      throw new Error(`GHL API Error: ${response.status} ${raw}`);
+    }
+
+    console.log("✅ GHL contact created successfully:", { payload });
+    return JSON.parse(raw);
   } catch (error: any) {
     console.error("❌ Failed to create GHL contact:", {
       email: contactData.email,
-      error: error.response?.data || error.message,
+      error: error.message,
     });
-
-    // Re-throw the error so the calling code can handle it
-    throw new Error(
-      `GHL API Error: ${error.response?.data?.message || error.message}`,
-    );
+    throw error;
   }
 }
 

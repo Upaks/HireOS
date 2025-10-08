@@ -216,6 +216,17 @@ export const notificationQueue = pgTable("notification_queue", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// GHL_Tokens
+export const ghlTokens = pgTable("ghl_tokens", {
+  tokenId: serial("token_id").primaryKey(),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  userType: text("user_type"), // e.g. "Company"
+  companyId: text("company_id"), // optional: match GHL companyId if needed
+  updatedAt: timestamp("updated_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+});
+
 // Type Exports
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
