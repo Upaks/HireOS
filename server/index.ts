@@ -90,12 +90,14 @@ const initApp = async () => {
 
   // ✅ Setup Vite or serve static (ALWAYS last!)
   // On Vercel, static files are served automatically, so we skip this
+  // NOTE: setupVite is never called on Vercel, so vite.ts is not imported
+  // This prevents vite/rollup from being bundled into the serverless function
   if (process.env.VERCEL !== "1") {
     if (app.get("env") === "development") {
-      // Dynamically import setupVite only when needed (not on Vercel)
-      // This prevents vite/rollup from being bundled
-      const { setupVite } = await import("./vite");
-      await setupVite(app, server);
+      // Only import setupVite in non-Vercel development environment
+      // Using Function constructor to prevent static analysis by esbuild
+      const viteModule = await new Function('return import("./vite")')();
+      await viteModule.setupVite(app, server);
     } else {
       serveStatic(app);
     }

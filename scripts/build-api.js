@@ -27,9 +27,14 @@ await build({
     // Keep these external as they're provided by Vercel runtime or are node_modules
     '@vercel/node',
     // vite is only used in development, not in serverless function
-    // Mark as external to prevent bundling (even though packages: 'external' should handle this)
+    // Mark as external to prevent bundling
     'vite',
     '@vitejs/plugin-react',
+    'rollup',
+    '@rollup/*',
+    // Exclude vite config from bundle
+    './vite.config',
+    '../vite.config',
   ],
   // Ensure all local code is bundled (not just node_modules are external)
   // By using packages: 'external', only packages in node_modules are external

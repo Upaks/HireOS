@@ -1885,109 +1885,6 @@ var init_google_sheets_integration = __esm({
   }
 });
 
-// vite.config.ts
-var vite_config_exports = {};
-__export(vite_config_exports, {
-  default: () => vite_config_default
-});
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import path2 from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
-var vite_config_default;
-var init_vite_config = __esm({
-  async "vite.config.ts"() {
-    "use strict";
-    vite_config_default = defineConfig({
-      plugins: [
-        react(),
-        runtimeErrorOverlay(),
-        ...process.env.NODE_ENV !== "production" && process.env.REPL_ID !== void 0 ? [
-          await import("@replit/vite-plugin-cartographer").then(
-            (m) => m.cartographer()
-          )
-        ] : []
-      ],
-      resolve: {
-        alias: {
-          "@": path2.resolve(import.meta.dirname, "client", "src"),
-          "@shared": path2.resolve(import.meta.dirname, "shared"),
-          "@assets": path2.resolve(import.meta.dirname, "attached_assets")
-        }
-      },
-      root: path2.resolve(import.meta.dirname, "client"),
-      build: {
-        outDir: path2.resolve(import.meta.dirname, "dist/public"),
-        emptyOutDir: true
-      }
-    });
-  }
-});
-
-// server/vite.ts
-var vite_exports = {};
-__export(vite_exports, {
-  setupVite: () => setupVite
-});
-import fs2 from "fs";
-import path3 from "path";
-import { nanoid } from "nanoid";
-async function setupVite(app2, server) {
-  if (!viteModule) {
-    viteModule = await import("vite");
-    viteConfig = (await init_vite_config().then(() => vite_config_exports)).default;
-  }
-  const serverOptions = {
-    middlewareMode: true,
-    hmr: { server },
-    allowedHosts: true
-  };
-  const viteLogger = viteModule.createLogger();
-  const vite = await viteModule.createServer({
-    ...viteConfig,
-    configFile: false,
-    customLogger: {
-      ...viteLogger,
-      error: (msg, options) => {
-        viteLogger.error(msg, options);
-        process.exit(1);
-      }
-    },
-    server: serverOptions,
-    appType: "custom"
-  });
-  app2.use(vite.middlewares);
-  app2.use("*", async (req, res, next) => {
-    const url = req.originalUrl;
-    try {
-      const clientTemplate = path3.resolve(
-        import.meta.dirname,
-        "..",
-        "client",
-        "index.html"
-      );
-      let template = await fs2.promises.readFile(clientTemplate, "utf-8");
-      template = template.replace(
-        `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid()}"`
-      );
-      const page = await vite.transformIndexHtml(url, template);
-      res.status(200).set({ "Content-Type": "text/html" }).end(page);
-    } catch (e) {
-      vite.ssrFixStacktrace(e);
-      next(e);
-    }
-  });
-}
-var viteModule, viteConfig;
-var init_vite = __esm({
-  "server/vite.ts"() {
-    "use strict";
-    viteModule = null;
-    viteConfig = null;
-  }
-});
-
 // scripts/api-index.ts
 import serverless from "serverless-http";
 
@@ -6648,8 +6545,8 @@ function setupStorageRoutes(app2) {
       const { candidateId } = req.body;
       const file = req.file;
       const ext = file.originalname.split(".").pop();
-      const path4 = candidateId ? `candidate-${candidateId}.${ext}` : `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage.from("resumes").upload(path4, file.buffer, {
+      const path2 = candidateId ? `candidate-${candidateId}.${ext}` : `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage.from("resumes").upload(path2, file.buffer, {
         cacheControl: "3600",
         upsert: true,
         contentType: file.mimetype
@@ -6675,13 +6572,13 @@ function setupStorageRoutes(app2) {
           message: `Upload failed: ${errorMessage || "Unknown error"}`
         });
       }
-      const { data: urlData } = supabase.storage.from("resumes").getPublicUrl(path4);
+      const { data: urlData } = supabase.storage.from("resumes").getPublicUrl(path2);
       if (!urlData?.publicUrl) {
         return res.status(500).json({ message: "Failed to generate public URL for uploaded file" });
       }
       res.json({
         url: urlData.publicUrl,
-        path: path4
+        path: path2
       });
     } catch (error) {
       handleApiError(error, res);
@@ -7003,7 +6900,7 @@ app.use(express2.json());
 app.use(express2.urlencoded({ extended: false }));
 app.use((req, res, next) => {
   const start = Date.now();
-  const path4 = req.path;
+  const path2 = req.path;
   let capturedJsonResponse = void 0;
   const originalResJson = res.json;
   res.json = function(bodyJson, ...args) {
@@ -7012,8 +6909,8 @@ app.use((req, res, next) => {
   };
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path4.startsWith("/api")) {
-      let logLine = `${req.method} ${path4} ${res.statusCode} in ${duration}ms`;
+    if (path2.startsWith("/api")) {
+      let logLine = `${req.method} ${path2} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
@@ -7051,8 +6948,8 @@ var initApp = async () => {
   });
   if (process.env.VERCEL !== "1") {
     if (app.get("env") === "development") {
-      const { setupVite: setupVite2 } = await Promise.resolve().then(() => (init_vite(), vite_exports));
-      await setupVite2(app, server);
+      const viteModule = await new Function('return import("./vite")')();
+      await viteModule.setupVite(app, server);
     } else {
       serveStatic(app);
     }
