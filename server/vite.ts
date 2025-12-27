@@ -1,12 +1,13 @@
 import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
-import { createServer as createViteServer, createLogger } from "vite";
 import { type Server } from "http";
-import viteConfig from "../vite.config";
 import { nanoid } from "nanoid";
 
-const viteLogger = createLogger();
+// Dynamic import for vite - only load when actually needed (not on Vercel)
+// This prevents vite and rollup from being bundled into the serverless function
+let viteModule: typeof import("vite") | null = null;
+let viteConfig: any = null;
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -20,13 +21,21 @@ export function log(message: string, source = "express") {
 }
 
 export async function setupVite(app: Express, server: Server) {
+  // Dynamically import vite only when needed (not on Vercel)
+  if (!viteModule) {
+    viteModule = await import("vite");
+    viteConfig = (await import("../vite.config")).default;
+  }
+
   const serverOptions: any = {
     middlewareMode: true,
     hmr: { server },
     allowedHosts: true,
   };
 
-  const vite = await createViteServer({
+  const viteLogger = viteModule.createLogger();
+
+  const vite = await viteModule.createServer({
     ...viteConfig,
     configFile: false,
     customLogger: {

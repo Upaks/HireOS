@@ -1885,6 +1885,45 @@ var init_google_sheets_integration = __esm({
   }
 });
 
+// vite.config.ts
+var vite_config_exports = {};
+__export(vite_config_exports, {
+  default: () => vite_config_default
+});
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+var vite_config_default;
+var init_vite_config = __esm({
+  async "vite.config.ts"() {
+    "use strict";
+    vite_config_default = defineConfig({
+      plugins: [
+        react(),
+        runtimeErrorOverlay(),
+        ...process.env.NODE_ENV !== "production" && process.env.REPL_ID !== void 0 ? [
+          await import("@replit/vite-plugin-cartographer").then(
+            (m) => m.cartographer()
+          )
+        ] : []
+      ],
+      resolve: {
+        alias: {
+          "@": path.resolve(import.meta.dirname, "client", "src"),
+          "@shared": path.resolve(import.meta.dirname, "shared"),
+          "@assets": path.resolve(import.meta.dirname, "attached_assets")
+        }
+      },
+      root: path.resolve(import.meta.dirname, "client"),
+      build: {
+        outDir: path.resolve(import.meta.dirname, "dist/public"),
+        emptyOutDir: true
+      }
+    });
+  }
+});
+
 // scripts/api-index.ts
 import serverless from "serverless-http";
 
@@ -6770,40 +6809,9 @@ async function registerRoutes(app2) {
 import express from "express";
 import fs from "fs";
 import path2 from "path";
-import { createServer as createViteServer, createLogger } from "vite";
-
-// vite.config.ts
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
-var vite_config_default = defineConfig({
-  plugins: [
-    react(),
-    runtimeErrorOverlay(),
-    ...process.env.NODE_ENV !== "production" && process.env.REPL_ID !== void 0 ? [
-      await import("@replit/vite-plugin-cartographer").then(
-        (m) => m.cartographer()
-      )
-    ] : []
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets")
-    }
-  },
-  root: path.resolve(import.meta.dirname, "client"),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true
-  }
-});
-
-// server/vite.ts
 import { nanoid } from "nanoid";
-var viteLogger = createLogger();
+var viteModule = null;
+var viteConfig = null;
 function log(message, source = "express") {
   const formattedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -6814,13 +6822,18 @@ function log(message, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 async function setupVite(app2, server) {
+  if (!viteModule) {
+    viteModule = await import("vite");
+    viteConfig = (await init_vite_config().then(() => vite_config_exports)).default;
+  }
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
     allowedHosts: true
   };
-  const vite = await createViteServer({
-    ...vite_config_default,
+  const viteLogger = viteModule.createLogger();
+  const vite = await viteModule.createServer({
+    ...viteConfig,
     configFile: false,
     customLogger: {
       ...viteLogger,
