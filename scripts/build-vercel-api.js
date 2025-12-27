@@ -45,12 +45,4 @@ await build({
   process.exit(1);
 });
 
-// Delete the TypeScript source file to avoid conflicts
-try {
-  await unlink(sourceFile);
-  console.log('   Removed source TypeScript file to avoid conflicts');
-} catch (error) {
-  // Ignore if file doesn't exist
-}
-
 console.log(`✅ API function bundled successfully to ${outputFile}`);

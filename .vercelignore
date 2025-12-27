@@ -3,6 +3,7 @@
 !server/**
 !shared/
 !shared/**
+!api/
 
 # Ignore these
 node_modules
@@ -11,4 +12,3 @@ node_modules
 dist/public
 .vscode
 .idea
-
