@@ -21,14 +21,17 @@ await build({
   format: 'esm',
   target: 'node18',
   outfile: outputFile,
+  packages: 'external', // Don't bundle any node_modules packages
   external: [
     // Keep Vercel runtime external
     '@vercel/node',
-    // Keep node built-ins external
-    'fs', 'path', 'http', 'https', 'url', 'stream', 'util', 'crypto', 
-    'dns', 'net', 'tls', 'zlib', 'events', 'buffer', 'process', 'os',
-    'querystring', 'child_process', 'cluster', 'dgram', 'readline',
-    'repl', 'string_decoder', 'timers', 'tty', 'vm', 'worker_threads',
+    // Keep node built-ins external (already handled by platform: 'node')
+    // Frontend build tools that might be accidentally imported
+    'vite', '@vitejs/*', 'lightningcss', '@babel/*', 'babel-*',
+    'autoprefixer', 'postcss', 'tailwindcss', '@tailwindcss/*',
+    'react', 'react-dom', 'react/jsx-runtime', '@radix-ui/*',
+    // Vite plugins
+    '@replit/*', '@tailwindcss/vite',
   ],
   banner: {
     js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
