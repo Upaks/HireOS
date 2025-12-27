@@ -72,7 +72,11 @@ app.post('/send-message', async (req, res) => {
   }
 });
 
-(async () => {
+// Initialize app (async)
+let appInitialized = false;
+const initApp = async () => {
+  if (appInitialized) return;
+  
   // ✅ Register all other routes
   const server = await registerRoutes(app);
 
@@ -84,24 +88,40 @@ app.post('/send-message', async (req, res) => {
   });
 
   // ✅ Setup Vite or serve static (ALWAYS last!)
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
+  // On Vercel, static files are served automatically, so we skip this
+  if (process.env.VERCEL !== "1") {
+    if (app.get("env") === "development") {
+      await setupVite(app, server);
+    } else {
+      serveStatic(app);
+    }
   }
 
-  // ✅ Start the server
-  const port = 5000;
-  server.listen(port, "0.0.0.0", () => {
-    log(`serving on port ${port}`);
-    
-    // Start background sync service for two-way sync
-    // Checks every 5 minutes for changes in Google Sheets/Airtable
-    const syncInterval = process.env.CRM_SYNC_INTERVAL_MS 
-      ? parseInt(process.env.CRM_SYNC_INTERVAL_MS) 
-      : 1 * 60 * 1000; // Default: 5 minutes
-    
-    backgroundSyncService.start(syncInterval);
-    log(`Background sync service started (interval: ${syncInterval / 1000}s)`);
-  });
-})();
+  // ✅ Start the server (only in non-Vercel environments)
+  if (process.env.VERCEL !== "1") {
+    const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
+    server.listen(port, "0.0.0.0", () => {
+      log(`serving on port ${port}`);
+      
+      // Start background sync service for two-way sync
+      // Checks every 5 minutes for changes in Google Sheets/Airtable
+      const syncInterval = process.env.CRM_SYNC_INTERVAL_MS 
+        ? parseInt(process.env.CRM_SYNC_INTERVAL_MS) 
+        : 1 * 60 * 1000; // Default: 1 minute
+      
+      backgroundSyncService.start(syncInterval);
+      log(`Background sync service started (interval: ${syncInterval / 1000}s)`);
+    });
+  }
+  
+  appInitialized = true;
+};
+
+// Initialize immediately if not on Vercel
+if (process.env.VERCEL !== "1") {
+  initApp();
+}
+
+// Export app and init function for Vercel
+export default app;
+export { initApp };

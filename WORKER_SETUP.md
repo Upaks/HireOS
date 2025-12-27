@@ -12,8 +12,8 @@ Your main app (Vercel) handles user requests. Background jobs (like CRM sync) sh
 
 ```
 ┌─────────────┐         ┌──────────────┐
-│   Vercel    │         │   Railway    │
-│  (Main App) │         │   (Worker)   │
+│   Vercel    │         │  Fly.io /    │
+│  (Main App) │         │  Worker      │
 │             │         │              │
 │ - User API  │         │ - CRM Sync   │
 │ - Frontend  │         │ - Background  │
@@ -30,15 +30,136 @@ Your main app (Vercel) handles user requests. Background jobs (like CRM sync) sh
 
 Both services connect to the same database. The worker reads/writes directly, no API calls needed.
 
-## Quick Setup (Railway - 5 minutes)
+## Quick Setup (Fly.io - Free Tier) ⭐ RECOMMENDED
 
 ### Step 1: Create Worker Service
 
 I've created a `worker/` folder with everything needed.
 
-### Step 2: Deploy to Railway
+### Step 2: Deploy to Fly.io
 
-1. **Sign up**: Go to [railway.app](https://railway.app) (free $5/month credit)
+1. **Sign up**: Go to [fly.io](https://fly.io) (free account)
+2. **Install CLI**: 
+   ```bash
+   npm install -g @fly/cli
+   # or
+   curl -L https://fly.io/install.sh | sh
+   ```
+3. **Login**: 
+   ```bash
+   fly auth login
+   ```
+4. **Initialize** (from your repo root):
+   ```bash
+   fly launch --no-deploy
+   ```
+   - When prompted, name your app (e.g., `hireos-worker`)
+   - Choose a region close to you
+   - Don't deploy yet (we'll configure first)
+
+5. **Create `fly.toml`** (if not auto-generated):
+   ```toml
+   app = "hireos-worker"
+   primary_region = "iad"  # Change to your preferred region
+   
+   [build]
+   
+   [env]
+     NODE_ENV = "production"
+   
+   [[services]]
+     internal_port = 8080
+     protocol = "tcp"
+   ```
+
+6. **Set Start Command**: Edit `fly.toml` and add:
+   ```toml
+   [processes]
+     worker = "npx tsx worker/index.js"
+   ```
+
+   Or use `fly.toml` with `[build]` section:
+   ```toml
+   [build]
+     builder = "paketobuildpacks/builder:base"
+   
+   [deploy]
+     release_command = "npm install"
+   ```
+
+7. **Set Environment Variables**:
+   ```bash
+   fly secrets set DATABASE_URL="your_database_connection_string"
+   fly secrets set CRM_SYNC_INTERVAL_MS="60000"
+   # Add any other env vars your worker needs
+   ```
+
+8. **Deploy**:
+   ```bash
+   fly deploy
+   ```
+
+9. **Check Logs**:
+   ```bash
+   fly logs
+   ```
+   You should see: "🚀 HireOS Worker Service Starting..."
+
+### Step 3: Update Main App
+
+Remove background sync from `server/index.ts` since worker handles it now:
+
+```typescript
+// Remove or comment out:
+// backgroundSyncService.start(syncInterval);
+```
+
+### Step 4: Test
+
+1. Check Fly.io logs (`fly logs`) - you should see: "🚀 HireOS Worker Service Starting..."
+2. Make a change in Google Sheets
+3. Wait 1 minute
+4. Check HireOS - changes should appear!
+
+## Alternative: GitHub Actions (Free for Public Repos)
+
+If your repo is public, GitHub Actions is completely free! For private repos, you get 2000 minutes/month free.
+
+1. Create `.github/workflows/worker.yml`:
+   ```yaml
+   name: CRM Sync Worker
+   
+   on:
+     schedule:
+       - cron: '*/1 * * * *'  # Every minute
+     workflow_dispatch:  # Manual trigger
+   
+   jobs:
+     sync:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v3
+         - uses: actions/setup-node@v3
+           with:
+             node-version: '18'
+         - run: npm install
+         - run: npx tsx worker/index.js
+           env:
+             DATABASE_URL: ${{ secrets.DATABASE_URL }}
+             CRM_SYNC_INTERVAL_MS: 60000
+   ```
+
+2. Add secrets in GitHub: Settings → Secrets → Actions
+3. The workflow runs automatically every minute!
+
+**Note**: GitHub Actions has a 6-hour timeout limit, but for periodic syncs this works great.
+
+## Alternative: Railway (Paid - Trial Ended)
+
+⚠️ **Note**: Railway's free trial has ended. It now requires a paid plan. Use Fly.io or GitHub Actions for free options.
+
+If you still want to use Railway (paid):
+1. Go to [railway.app](https://railway.app) and upgrade
 2. **New Project**: Click "New Project"
 3. **Deploy from GitHub**: Connect your GitHub repo
 4. **Add Service**: Click "+ New" → "GitHub Repo"
@@ -53,35 +174,21 @@ I've created a `worker/` folder with everything needed.
    ```
 7. **Deploy**: Railway auto-deploys!
 
-### Step 3: Update Main App
+## Alternative: Render (Paid - $7/month minimum)
 
-Remove background sync from `server/index.ts` since worker handles it now:
+⚠️ **Note**: Render's Background Workers require a paid plan (Starter starts at $7/month). The free tier only applies to Web Services, not Background Workers.
 
-```typescript
-// Remove or comment out:
-// backgroundSyncService.start(syncInterval);
-```
-
-### Step 4: Test
-
-1. Check Railway logs - you should see: "🚀 HireOS Worker Service Starting..."
-2. Make a change in Google Sheets
-3. Wait 1 minute
-4. Check HireOS - changes should appear!
-
-## Alternative: Render (Free Tier)
-
+If you still want to use Render:
 1. Go to [render.com](https://render.com)
 2. New → Background Worker
 3. Connect GitHub
-4. Settings:
+4. Select "Starter" instance ($7/month - 512 MB RAM, 0.5 CPU)
+5. Settings:
    - Root Directory: Leave blank (deploy from repo root)
    - Build: `npm install` (installs from root package.json)
    - Start: `npx tsx worker/index.js` (tsx handles TypeScript imports)
-5. Add environment variables
-6. Deploy!
-
-**Free Tier**: 750 hours/month (enough for 24/7)
+6. Add environment variables
+7. Deploy!
 
 ## How It Works
 
@@ -93,30 +200,32 @@ Remove background sync from `server/index.ts` since worker handles it now:
 ## Benefits
 
 - ✅ **No Vercel timeouts**: Worker runs continuously
-- ✅ **Free tier available**: Railway/Render/Fly.io all have free options
+- ✅ **Free tier available**: Fly.io, GitHub Actions (public repos), and other free options
 - ✅ **Independent scaling**: Scale workers separately
 - ✅ **Better performance**: Main app stays fast
 
 ## Monitoring
 
-- **Railway Dashboard**: View logs, metrics, restarts
+- **Fly.io Dashboard**: `fly dashboard` or visit fly.io web dashboard - View logs, metrics, restarts
+- **GitHub Actions**: View runs in Actions tab, see logs for each run
 - **Console logs**: Worker logs sync results
 - **Database**: Check `updatedAt` timestamps on candidates
 
 ## Cost
 
-- **Railway**: $5/month credit (usually free for 1 worker)
-- **Render**: 750 hrs/month free (enough for 24/7)
-- **Fly.io**: 3 shared VMs free
+- **Fly.io** ⭐ **RECOMMENDED**: 3 shared VMs free (enough for 1 worker 24/7)
+- **GitHub Actions**: Free for public repos, 2000 min/month for private repos
+- **Render**: Background Workers start at $7/month (Starter plan)
+- **Railway**: Paid only (trial ended)
 
-For a single worker, you'll likely stay in free tier!
+**For free tier, use Fly.io or GitHub Actions!**
 
 ## Troubleshooting
 
 **Worker not starting?**
-- Check environment variables are set
+- Check environment variables are set (`fly secrets list` for Fly.io)
 - Verify `DATABASE_URL` is correct
-- Check Railway/Render logs
+- Check Fly.io logs (`fly logs`) or GitHub Actions logs
 
 **Sync not working?**
 - Verify two-way sync is enabled in Settings
@@ -132,8 +241,8 @@ npx tsx worker/index.js  # Run worker (tsx handles TypeScript)
 
 ## Next Steps
 
-1. Deploy worker to Railway/Render
-2. Remove background sync from main app
+1. Deploy worker to Fly.io (free) or GitHub Actions (free for public repos)
+2. Remove background sync from main app (`server/index.ts`)
 3. Test sync works
 4. Monitor logs for a few days
 5. Adjust sync interval if needed
