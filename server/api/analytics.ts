@@ -1,15 +1,15 @@
-    import { Express } from "express";
+    import { Express, Request, Response } from "express";
     import { storage } from "../storage";
     import { handleApiError } from "./utils";
     import { db } from "../db";
     import { jobs, candidates, interviews } from "@shared/schema";
-    import { eq, inArray, and } from "drizzle-orm";
+    import { eq, inArray, and, gte } from "drizzle-orm";
     import { count } from "drizzle-orm";
 
 
     export function setupAnalyticsRoutes(app: Express) {
       // Get dashboard stats
-      app.get("/api/analytics/dashboard", async (req, res) => {
+      app.get("/api/analytics/dashboard", async (req: Request, res: Response) => {
         try {
           if (!req.isAuthenticated()) {
             return res.status(401).json({ message: "Authentication required" });
@@ -57,23 +57,101 @@
         }
       });
 
-      // Get hiring funnel metrics (simplified for now)
-      app.get("/api/analytics/funnel", async (req, res) => {
+      // Get hiring funnel metrics with real data
+      app.get("/api/analytics/funnel", async (req: Request, res: Response) => {
         try {
           if (!req.isAuthenticated()) {
             return res.status(401).json({ message: "Authentication required" });
           }
 
           const jobId = req.query.jobId ? parseInt(req.query.jobId as string) : undefined;
+          const dateRange = req.query.dateRange as string || "30"; // Default to 30 days
+
+          // Calculate date filter
+          const buildConditions = (...conditions: any[]) => {
+            const allConditions = [];
+            if (dateRange !== "all") {
+              const days = parseInt(dateRange);
+              const startDate = new Date();
+              startDate.setDate(startDate.getDate() - days);
+              allConditions.push(gte(candidates.createdAt, startDate));
+            }
+            if (jobId) {
+              allConditions.push(eq(candidates.jobId, jobId));
+            }
+            allConditions.push(...conditions);
+            return allConditions.length > 0 ? and(...allConditions) : undefined;
+          };
+
+          // Applications: Total candidates (or for specific job)
+          const applicationsResult = await db
+            .select({ count: count() })
+            .from(candidates)
+            .where(buildConditions());
+          const applications = Number(applicationsResult[0]?.count || 0);
+
+          // Assessments: Candidates who completed assessment (status: 30_assessment_completed)
+          const assessmentsResult = await db
+            .select({ count: count() })
+            .from(candidates)
+            .where(buildConditions(eq(candidates.status, "30_assessment_completed")));
+          const assessments = Number(assessmentsResult[0]?.count || 0);
+
+          // Qualified: Candidates who passed assessment and moved forward (assessment completed or beyond)
+          // This includes: assessment_completed, interview_sent, interview_scheduled, etc.
+          const qualifiedStatuses = [
+            "30_assessment_completed",
+            "45_1st_interview_sent",
+            "60_1st_interview_scheduled",
+            "75_2nd_interview_scheduled",
+            "95_offer_sent",
+            "100_offer_accepted"
+          ];
+          
+          const qualifiedResult = await db
+            .select({ count: count() })
+            .from(candidates)
+            .where(buildConditions(inArray(candidates.status, qualifiedStatuses)));
+          const qualified = Number(qualifiedResult[0]?.count || 0);
+
+          // Interviews: Candidates who have been interviewed (interview sent or scheduled)
+          const interviewStatuses = [
+            "45_1st_interview_sent",
+            "60_1st_interview_scheduled",
+            "75_2nd_interview_scheduled"
+          ];
+          
+          const interviewsResult = await db
+            .select({ count: count() })
+            .from(candidates)
+            .where(buildConditions(inArray(candidates.status, interviewStatuses)));
+          const interviews = Number(interviewsResult[0]?.count || 0);
+
+          // Offers: Candidates with offers sent
+          const offersResult = await db
+            .select({ count: count() })
+            .from(candidates)
+            .where(buildConditions(eq(candidates.status, "95_offer_sent")));
+          const offers = Number(offersResult[0]?.count || 0);
+
+          // Hires: Candidates who accepted offers
+          const hiresResult = await db
+            .select({ count: count() })
+            .from(candidates)
+            .where(buildConditions(eq(candidates.status, "100_offer_accepted")));
+          const hires = Number(hiresResult[0]?.count || 0);
+
+          // Conversion rate: Hires / Applications * 100
+          const conversionRate = applications > 0 ? Number(((hires / applications) * 100).toFixed(1)) : 0;
 
           const funnelData = {
-            applications: 100,
-            assessments: 80,
-            qualified: 50,
-            interviews: 30,
-            offers: 10,
-            hires: 8,
-            conversionRate: 8
+            applications,
+            assessments,
+            qualified,
+            interviews,
+            offers,
+            hires,
+            conversionRate
           };
 
           res.json(funnelData);
@@ -83,7 +161,7 @@
       });
 
       // Get job performance metrics with real-time data
-      app.get("/api/analytics/job-performance", async (req, res) => {
+      app.get("/api/analytics/job-performance", async (req: Request, res: Response) => {
         try {
           if (!req.isAuthenticated()) {
             return res.status(401).json({ message: "Authentication required" });
@@ -108,21 +186,25 @@
             const assessments = Number(assessmentsResult[0].count);
 
             // Interviews: Sum of candidates with interview statuses
-            const interviewStatuses = ["40_first_interview_scheduled", "50_second_interview_scheduled"];
-            let interviews = 0;
-            for (const status of interviewStatuses) {
-              const result = await db
-                .select({ count: count() })
-                .from(candidates)
-                .where(and(eq(candidates.jobId, job.id), eq(candidates.status, status)));
-              interviews += Number(result[0].count);
-            }
+            const interviewStatuses = [
+              "45_1st_interview_sent",
+              "60_1st_interview_scheduled",
+              "75_2nd_interview_scheduled"
+            ];
+            const interviewsResult = await db
+              .select({ count: count() })
+              .from(candidates)
+              .where(and(
+                eq(candidates.jobId, job.id),
+                inArray(candidates.status, interviewStatuses)
+              ));
+            const interviews = Number(interviewsResult[0].count);
 
-            // Offers: Count of candidates with status = '90_offer_sent'
+            // Offers: Count of candidates with status = '95_offer_sent'
             const offersResult = await db
               .select({ count: count() })
               .from(candidates)
-              .where(and(eq(candidates.jobId, job.id), eq(candidates.status, "90_offer_sent")));
+              .where(and(eq(candidates.jobId, job.id), eq(candidates.status, "95_offer_sent")));
             const offers = Number(offersResult[0].count);
 
             // Hires: Count of candidates with status = '100_offer_accepted'
@@ -160,7 +242,7 @@
       });
 
       // Get time-to-hire metrics
-      app.get("/api/analytics/time-to-hire", async (req, res) => {
+      app.get("/api/analytics/time-to-hire", async (req: Request, res: Response) => {
         try {
           if (!req.isAuthenticated()) {
             return res.status(401).json({ message: "Authentication required" });
@@ -191,7 +273,7 @@
       });
 
       // Get activity logs
-      app.get("/api/analytics/activity", async (req, res) => {
+      app.get("/api/analytics/activity", async (req: Request, res: Response) => {
         try {
           if (!req.isAuthenticated()) {
             return res.status(401).json({ message: "Authentication required" });

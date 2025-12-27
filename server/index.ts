@@ -1,9 +1,24 @@
+// Configure DNS to prefer IPv4 FIRST (before any network imports)
+import dns from 'dns';
+dns.setDefaultResultOrder('ipv4first');
+
+// Disable TLS certificate validation for Supabase connections
+if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import axios from 'axios';
+import { backgroundSyncService } from "./background-sync";
 
 const app = express();
+
+// Trust proxy for correct protocol detection (needed for ngrok, production, etc.)
+app.set("trust proxy", 1);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -41,6 +56,10 @@ app.use((req, res, next) => {
 app.post('/send-message', async (req, res) => {
   const { message } = req.body;
 
+  if (!process.env.SLACK_WEBHOOK) {
+    return res.status(500).json({ success: false, error: 'Slack webhook not configured' });
+  }
+
   try {
     await axios.post(process.env.SLACK_WEBHOOK, {
       text: message,
@@ -73,7 +92,16 @@ app.post('/send-message', async (req, res) => {
 
   // ✅ Start the server
   const port = 5000;
-  server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+  server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
+    
+    // Start background sync service for two-way sync
+    // Checks every 5 minutes for changes in Google Sheets/Airtable
+    const syncInterval = process.env.CRM_SYNC_INTERVAL_MS 
+      ? parseInt(process.env.CRM_SYNC_INTERVAL_MS) 
+      : 1 * 60 * 1000; // Default: 5 minutes
+    
+    backgroundSyncService.start(syncInterval);
+    log(`Background sync service started (interval: ${syncInterval / 1000}s)`);
   });
 })();

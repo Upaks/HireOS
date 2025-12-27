@@ -83,6 +83,7 @@ export interface Interview {
   updatedAt: string;
   candidate?: Candidate;
   interviewer?: User;
+  evaluation?: Evaluation;
 }
 
 export interface Evaluation {

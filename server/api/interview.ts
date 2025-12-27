@@ -287,4 +287,39 @@ export function setupInterviewRoutes(app: Express) {
       handleApiError(error, res);
     }
   });
+
+  // Delete an interview (typically for cancelled interviews)
+  app.delete("/api/interviews/:id", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const interviewId = parseInt(req.params.id);
+      if (isNaN(interviewId)) {
+        return res.status(400).json({ message: "Invalid interview ID" });
+      }
+
+      const interview = await storage.getInterview(interviewId);
+      if (!interview) {
+        return res.status(404).json({ message: "Interview not found" });
+      }
+
+      await storage.deleteInterview(interviewId);
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId: req.user?.id,
+        action: "Deleted interview",
+        entityType: "interview",
+        entityId: interviewId,
+        details: { candidateId: interview.candidateId },
+        timestamp: new Date()
+      });
+
+      res.status(200).json({ message: "Interview deleted successfully" });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
 }

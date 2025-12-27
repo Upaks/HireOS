@@ -11,7 +11,7 @@ import { count } from "drizzle-orm";
 
 export function setupJobRoutes(app: Express) {
   // Create a new job draft
-  app.post("/api/jobs", validateRequest(insertJobSchema.omit({ description: true })), async (req, res) => {
+  app.post("/api/jobs", validateRequest(insertJobSchema), async (req, res) => {
     try {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
@@ -110,12 +110,9 @@ export function setupJobRoutes(app: Express) {
   });
 
   // Get a specific job by ID
+  // Public endpoint - no auth required (for public application page)
   app.get("/api/jobs/:id", async (req, res) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Authentication required" });
-      }
-
       const jobId = parseInt(req.params.id);
       if (isNaN(jobId)) {
         return res.status(400).json({ message: "Invalid job ID" });
@@ -126,7 +123,21 @@ export function setupJobRoutes(app: Express) {
         return res.status(404).json({ message: "Job not found" });
       }
 
+      // If authenticated, return full job data
+      // If not authenticated (public access), return limited data
+      if (req.isAuthenticated()) {
       res.json(job);
+      } else {
+        res.json({
+          id: job.id,
+          title: job.title,
+          description: job.description,
+          type: job.type,
+          department: job.department,
+          status: job.status,
+          formTemplateId: job.formTemplateId,
+        });
+      }
     } catch (error) {
       handleApiError(error, res);
     }
@@ -191,15 +202,27 @@ export function setupJobRoutes(app: Express) {
       });
 
       // Post job to platforms
+      // Get selected platforms from request body, or default to all available
+      const requestedPlatforms = req.body.platforms || ["linkedin", "onlinejobs"];
+      
+      // Map platform IDs to display names
+      const platformMap: Record<string, string> = {
+        "linkedin": "LinkedIn",
+        "onlinejobs": "onlinejobs.ph"
+      };
+      
       // In production, this would connect to the LinkedIn and onlinejobs.ph APIs
       // For demonstration, we're creating platform records in the database
-      const platforms = ["LinkedIn", "onlinejobs.ph"];
-      for (const platform of platforms) {
+      const platforms: string[] = [];
+      for (const platformId of requestedPlatforms) {
+        const platformName = platformMap[platformId] || platformId;
+        platforms.push(platformName);
+        
         await storage.createJobPlatform({
           jobId,
-          platform,
-          platformJobId: `${platform}-${Math.random().toString(36).substring(2, 12)}`,
-          postUrl: `https://${platform.toLowerCase().replace('.', '')}.com/jobs/${Math.random().toString(36).substring(2, 10)}`,
+          platform: platformName,
+          platformJobId: `${platformId}-${Math.random().toString(36).substring(2, 12)}`,
+          postUrl: `https://${platformId === "onlinejobs" ? "onlinejobs.ph" : platformId}.com/jobs/${Math.random().toString(36).substring(2, 10)}`,
           status: "posted"
         });
       }

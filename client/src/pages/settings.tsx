@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import AppShell from "@/components/layout/app-shell";
 import TopBar from "@/components/layout/top-bar";
@@ -20,6 +20,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Loader2, UserPlus, Pencil, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from "@/components/ui/dialog";
 import UserManagement from "@/components/users/user-management";
+import PlatformIntegrations from "@/components/integrations/platform-integrations";
+import CRMIntegrations from "@/components/integrations/crm-integrations";
+import FormBuilder from "@/components/forms/form-builder";
+import EmailTemplates from "@/components/settings/email-templates";
 
 // Form schema for creating a new user
 const userFormSchema = z.object({
@@ -38,6 +42,29 @@ export default function Settings() {
   const [showNewUserDialog, setShowNewUserDialog] = useState(false);
   const [showEditUserDialog, setShowEditUserDialog] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  
+  // Check for OAuth callback success/error
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google_sheets_connected') === 'true') {
+      toast({
+        title: "Google Sheets Connected",
+        description: "Your Google Sheets account has been connected successfully!",
+      });
+      // Clean up URL
+      window.history.replaceState({}, '', '/settings');
+      // Refresh integrations
+      queryClient.invalidateQueries({ queryKey: ['/api/crm-integrations'] });
+    } else if (params.get('error')) {
+      toast({
+        title: "Connection Failed",
+        description: decodeURIComponent(params.get('error') || "Failed to connect Google Sheets"),
+        variant: "destructive",
+      });
+      // Clean up URL
+      window.history.replaceState({}, '', '/settings');
+    }
+  }, [toast]);
   
   // Only admin, CEO, or COO should access this page
   const canManageUsers = user?.role === 'admin' || user?.role === 'ceo' || user?.role === 'coo';
@@ -257,12 +284,18 @@ export default function Settings() {
         <Tabs defaultValue="users" className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="users">User Management</TabsTrigger>
+            <TabsTrigger value="emails">Email Templates</TabsTrigger>
             <TabsTrigger value="system">System Configuration</TabsTrigger>
+            <TabsTrigger value="forms">Application Forms</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
           </TabsList>
           
           <TabsContent value="users">
             <UserManagement />
+          </TabsContent>
+          
+          <TabsContent value="emails">
+            <EmailTemplates />
           </TabsContent>
           
           <TabsContent value="system">
@@ -278,19 +311,40 @@ export default function Settings() {
               </CardContent>
             </Card>
           </TabsContent>
-          
-          <TabsContent value="integrations">
+
+          <TabsContent value="forms">
             <Card>
               <CardHeader>
-                <CardTitle>Integrations</CardTitle>
-                <CardDescription>Connect HireOS with external services and APIs</CardDescription>
+                <CardTitle>Application Form Builder</CardTitle>
+                <CardDescription>Create and customize application forms for job postings</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-center py-12 text-slate-500">
-                  Integration settings coming soon
-                </p>
+                <FormBuilder />
               </CardContent>
             </Card>
+          </TabsContent>
+          
+          <TabsContent value="integrations">
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>CRM & ATS Integrations</CardTitle>
+                  <CardDescription>Connect your CRM or ATS to sync candidate data</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <CRMIntegrations />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Job Posting Platforms</CardTitle>
+                  <CardDescription>Connect job posting platforms</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <PlatformIntegrations />
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

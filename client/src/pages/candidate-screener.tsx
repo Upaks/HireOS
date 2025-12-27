@@ -31,9 +31,21 @@ import {
 import { 
   getStatusesForFilter, 
   getStatusDisplay, 
-  sortCandidatesByStatus 
+  sortCandidatesByStatus,
+  LEGACY_STATUS_MAPPING
 } from "@/lib/candidate-status";
 import { shouldExcludeFromRegularTab } from "@/lib/final-decision-utils";
+
+// Helper function to normalize candidate status (legacy -> new format)
+function normalizeCandidateStatus(status: string | null | undefined): string {
+  if (!status) return "00_application_submitted";
+  // Check if it's a legacy status and map it
+  if (LEGACY_STATUS_MAPPING[status]) {
+    return LEGACY_STATUS_MAPPING[status];
+  }
+  // If it's already in the new format, return as is
+  return status;
+}
 
 export default function CandidateScreener() {
   // Filters and search
@@ -81,7 +93,11 @@ export default function CandidateScreener() {
     
     // Apply status filter
     if (statusFilter !== "all") {
-      filtered = filtered.filter(candidate => candidate.status === statusFilter);
+      filtered = filtered.filter(candidate => {
+        // Normalize candidate status (handle legacy statuses)
+        const normalizedStatus = normalizeCandidateStatus(candidate.status);
+        return normalizedStatus === statusFilter;
+      });
     }
     
     // Apply search filter

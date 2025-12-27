@@ -132,3 +132,14 @@ export function sortCandidatesByStatus<T extends {status: string}>(candidates: T
 export function getAllStatuses(): CandidateStatus[] {
   return Object.values(CANDIDATE_STATUSES);
 }
+
+// Normalize candidate status (legacy -> new format)
+export function normalizeCandidateStatus(status: string | null | undefined): string {
+  if (!status) return "00_application_submitted";
+  // Check if it's a legacy status and map it
+  if (LEGACY_STATUS_MAPPING[status]) {
+    return LEGACY_STATUS_MAPPING[status];
+  }
+  // If it's already in the new format, return as is
+  return status;
+}

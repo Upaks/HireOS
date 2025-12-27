@@ -1,6 +1,6 @@
 import { 
-  users, jobs, jobPlatforms, candidates, interviews, activityLogs, notificationQueue,
-  offers, emailLogs,
+  users, jobs, jobPlatforms, candidates, interviews, evaluations, activityLogs, notificationQueue,
+  offers, emailLogs, platformIntegrations, formTemplates,
   UserRoles,
   type User, 
   type InsertUser,
@@ -13,13 +13,17 @@ import {
   type Evaluation,
   type Offer,
   type ActivityLog,
-  type NotificationQueueItem
+  type NotificationQueueItem,
+  type PlatformIntegration,
+  type InsertPlatformIntegration,
+  type FormTemplate,
+  type InsertFormTemplate
 } from "@shared/schema";
 import { isLikelyInvalidEmail } from "./email-validator";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { db, pool } from "./db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or, isNull } from "drizzle-orm";
 
 // Database session store configuration
 const PostgresSessionStore = connectPg(session);
@@ -46,6 +50,21 @@ export interface IStorage {
   createJobPlatform(platform: Partial<JobPlatform>): Promise<JobPlatform>;
   getJobPlatforms(jobId: number): Promise<JobPlatform[]>;
   
+  // Platform integration operations
+  getPlatformIntegrations(): Promise<PlatformIntegration[]>;
+  getPlatformIntegration(platformId: string): Promise<PlatformIntegration | undefined>;
+  createPlatformIntegration(integration: InsertPlatformIntegration): Promise<PlatformIntegration>;
+  updatePlatformIntegration(platformId: string, data: Partial<PlatformIntegration>): Promise<PlatformIntegration>;
+  deletePlatformIntegration(platformId: string): Promise<void>;
+  
+  // Form template operations
+  getFormTemplates(): Promise<FormTemplate[]>;
+  getFormTemplate(id: number): Promise<FormTemplate | undefined>;
+  getDefaultFormTemplate(): Promise<FormTemplate | undefined>;
+  createFormTemplate(template: InsertFormTemplate): Promise<FormTemplate>;
+  updateFormTemplate(id: number, data: Partial<FormTemplate>): Promise<FormTemplate>;
+  deleteFormTemplate(id: number): Promise<void>;
+  
   // Candidate operations
   createCandidate(candidate: InsertCandidate): Promise<Candidate>;
   getCandidate(id: number): Promise<Candidate | undefined>;
@@ -57,11 +76,19 @@ export interface IStorage {
   // Interview operations
   createInterview(interview: Partial<Interview>): Promise<Interview>;
   getInterview(id: number): Promise<Interview | undefined>;
-  getInterviews(filters?: { candidateId?: number, jobId?: number }): Promise<Interview[]>;
+  getInterviews(filters?: { candidateId?: number, interviewerId?: number, status?: string }): Promise<Interview[]>;
+  updateInterview(id: number, data: Partial<Interview>): Promise<Interview>;
+  deleteInterview(id: number): Promise<void>;
+  
+  // Evaluation operations
+  createEvaluation(evaluation: Partial<Evaluation>): Promise<Evaluation>;
+  getEvaluationByInterview(interviewId: number): Promise<Evaluation | undefined>;
+  updateEvaluation(id: number, data: Partial<Evaluation>): Promise<Evaluation>;
   
   // Offer operations
   createOffer(offer: Partial<Offer>): Promise<Offer>;
   getOfferByCandidate(candidateId: number): Promise<Offer | undefined>;
+  getOfferByToken(token: string): Promise<Offer | undefined>;
   updateOffer(id: number, data: Partial<Offer>): Promise<Offer>;
   
   // Activity logs
@@ -101,7 +128,16 @@ export class DatabaseStorage implements IStorage {
       const [user] = await db.select().from(users).where(eq(users.username, username));
       return user || undefined;
     } catch (error) {
-      console.error("Error getting user by username:", error);
+      // Better error logging
+      if (error instanceof Error) {
+        console.error(`Error getting user by username "${username}":`, error.message);
+        // Only log stack in development
+        if (process.env.NODE_ENV === 'development') {
+          console.error("Stack:", error.stack);
+        }
+      } else {
+        console.error("Error getting user by username:", String(error));
+      }
       return undefined;
     }
   }
@@ -207,6 +243,153 @@ export class DatabaseStorage implements IStorage {
       .where(eq(jobPlatforms.jobId, jobId));
   }
 
+  // Platform integration operations
+  async getPlatformIntegrations(userId?: number): Promise<PlatformIntegration[]> {
+    if (userId) {
+      // Get user-specific integrations (CRM/ATS) and system-wide integrations (job posting platforms)
+      return await db
+        .select()
+        .from(platformIntegrations)
+        .where(
+          // User's integrations OR system-wide (user_id IS NULL)
+          or(
+            eq(platformIntegrations.userId, userId),
+            isNull(platformIntegrations.userId)
+          )
+        )
+        .orderBy(platformIntegrations.platformName);
+    }
+    // Legacy: Get all integrations (for backward compatibility)
+    return await db
+      .select()
+      .from(platformIntegrations)
+      .orderBy(platformIntegrations.platformName);
+  }
+
+  async getPlatformIntegration(platformId: string, userId?: number): Promise<PlatformIntegration | undefined> {
+    if (userId) {
+      // Get user-specific integration
+      const [integration] = await db
+        .select()
+        .from(platformIntegrations)
+        .where(
+          and(
+            eq(platformIntegrations.platformId, platformId),
+            eq(platformIntegrations.userId, userId)
+          )
+        );
+      return integration || undefined;
+    }
+    // Legacy: Get by platformId only (for backward compatibility)
+    const [integration] = await db
+      .select()
+      .from(platformIntegrations)
+      .where(eq(platformIntegrations.platformId, platformId));
+    return integration || undefined;
+  }
+
+  // Get CRM/ATS integrations for a user
+  async getCRMIntegrations(userId: number): Promise<PlatformIntegration[]> {
+    return await db
+      .select()
+      .from(platformIntegrations)
+      .where(
+        and(
+          eq(platformIntegrations.userId, userId),
+          or(
+            eq(platformIntegrations.platformType, "crm"),
+            eq(platformIntegrations.platformType, "ats")
+          )
+        )
+      )
+      .orderBy(platformIntegrations.platformName);
+  }
+
+  async createPlatformIntegration(integration: InsertPlatformIntegration): Promise<PlatformIntegration> {
+    const [newIntegration] = await db
+      .insert(platformIntegrations)
+      .values({
+        ...integration,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .returning();
+    return newIntegration;
+  }
+
+  async updatePlatformIntegration(platformId: string, data: Partial<PlatformIntegration>): Promise<PlatformIntegration> {
+    const [updatedIntegration] = await db
+      .update(platformIntegrations)
+      .set({
+        ...data,
+        updatedAt: new Date()
+      })
+      .where(eq(platformIntegrations.platformId, platformId))
+      .returning();
+    return updatedIntegration;
+  }
+
+  async deletePlatformIntegration(platformId: string): Promise<void> {
+    await db
+      .delete(platformIntegrations)
+      .where(eq(platformIntegrations.platformId, platformId));
+  }
+
+  // Form template operations
+  async getFormTemplates(): Promise<FormTemplate[]> {
+    return await db
+      .select()
+      .from(formTemplates)
+      .orderBy(formTemplates.name);
+  }
+
+  async getFormTemplate(id: number): Promise<FormTemplate | undefined> {
+    const [template] = await db
+      .select()
+      .from(formTemplates)
+      .where(eq(formTemplates.id, id));
+    return template || undefined;
+  }
+
+  async getDefaultFormTemplate(): Promise<FormTemplate | undefined> {
+    const [template] = await db
+      .select()
+      .from(formTemplates)
+      .where(eq(formTemplates.isDefault, true))
+      .limit(1);
+    return template || undefined;
+  }
+
+  async createFormTemplate(template: InsertFormTemplate): Promise<FormTemplate> {
+    const [newTemplate] = await db
+      .insert(formTemplates)
+      .values({
+        ...template,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .returning();
+    return newTemplate;
+  }
+
+  async updateFormTemplate(id: number, data: Partial<FormTemplate>): Promise<FormTemplate> {
+    const [updatedTemplate] = await db
+      .update(formTemplates)
+      .set({
+        ...data,
+        updatedAt: new Date()
+      })
+      .where(eq(formTemplates.id, id))
+      .returning();
+    return updatedTemplate;
+  }
+
+  async deleteFormTemplate(id: number): Promise<void> {
+    await db
+      .delete(formTemplates)
+      .where(eq(formTemplates.id, id));
+  }
+
   // Candidate operations
   async createCandidate(candidate: InsertCandidate): Promise<Candidate> {
     const [newCandidate] = await db
@@ -221,7 +404,7 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     // Get the job data to enrich the candidate
-    const job = await this.getJob(newCandidate.jobId);
+    const job = newCandidate.jobId ? await this.getJob(newCandidate.jobId) : null;
     return { ...newCandidate, job: job || null };
   }
 
@@ -234,7 +417,7 @@ export class DatabaseStorage implements IStorage {
     if (!candidate) return undefined;
     
     // Enrich with job data
-    const job = await this.getJob(candidate.jobId);
+    const job = candidate.jobId ? await this.getJob(candidate.jobId) : null;
     return { ...candidate, job: job || null };
   }
 
@@ -267,12 +450,12 @@ export class DatabaseStorage implements IStorage {
     
     // Enrich candidates with job data - use array instead of Set for compatibility
     const jobIdsArray = candidatesList.map(c => c.jobId);
-    const uniqueJobIds = jobIdsArray.filter((id, index) => jobIdsArray.indexOf(id) === index);
+    const uniqueJobIds = jobIdsArray.filter((id, index) => jobIdsArray.indexOf(id) === index && id !== null);
     const jobsMap = new Map();
     
     if (uniqueJobIds.length > 0) {
       const jobsList = await Promise.all(
-        uniqueJobIds.map(id => this.getJob(id))
+        uniqueJobIds.map(id => this.getJob(id!))
       );
       
       jobsList.forEach(job => {
@@ -319,7 +502,7 @@ export class DatabaseStorage implements IStorage {
       if (!result[0]) return undefined;
       
       // Enrich with job data
-      const job = await this.getJob(result[0].jobId);
+      const job = result[0].jobId ? await this.getJob(result[0].jobId) : null;
       return { ...result[0], job: job || null };
     } catch (error) {
       console.error('Error fetching candidate by GHL contact ID:', error);
@@ -355,8 +538,6 @@ export class DatabaseStorage implements IStorage {
       ...updatedData,
       updatedAt: new Date()
     };
-    console.log("Updating candidate with data:", data);
-    console.log("DB Update Payload:", updateData);
 
     const [updatedCandidate] = await db
       .update(candidates)
@@ -365,7 +546,7 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     // Enrich with job data
-    const job = await this.getJob(updatedCandidate.jobId);
+    const job = updatedCandidate.jobId ? await this.getJob(updatedCandidate.jobId) : null;
     return { ...updatedCandidate, job: job || null };
   }
 
@@ -400,17 +581,141 @@ export class DatabaseStorage implements IStorage {
     return interview || undefined;
   }
 
-  async getInterviews(filters?: { candidateId?: number, jobId?: number }): Promise<Interview[]> {
+  async getInterviews(filters?: { candidateId?: number, interviewerId?: number, status?: string }): Promise<Interview[]> {
     try {
+      const conditions = [];
+      
       if (filters?.candidateId) {
-        return await db.select().from(interviews).where(eq(interviews.candidateId, filters.candidateId));
+        conditions.push(eq(interviews.candidateId, filters.candidateId));
       }
       
-      return await db.select().from(interviews);
+      if (filters?.interviewerId) {
+        conditions.push(eq(interviews.interviewerId, filters.interviewerId));
+      }
+      
+      if (filters?.status) {
+        conditions.push(eq(interviews.status, filters.status));
+      }
+      
+      // Build base query with joins
+      let baseQuery = db
+        .select({
+          id: interviews.id,
+          candidateId: interviews.candidateId,
+          scheduledDate: interviews.scheduledDate,
+          conductedDate: interviews.conductedDate,
+          interviewerId: interviews.interviewerId,
+          type: interviews.type,
+          videoUrl: interviews.videoUrl,
+          status: interviews.status,
+          notes: interviews.notes,
+          createdAt: interviews.createdAt,
+          updatedAt: interviews.updatedAt,
+          // Candidate info
+          candidateName: candidates.name,
+          candidateEmail: candidates.email,
+          // Interviewer info
+          interviewerName: users.fullName,
+        })
+        .from(interviews)
+        .leftJoin(candidates, eq(interviews.candidateId, candidates.id))
+        .leftJoin(users, eq(interviews.interviewerId, users.id));
+      
+      // Apply conditions if any
+      if (conditions.length > 0) {
+        baseQuery = baseQuery.where(and(...conditions)) as any;
+      }
+      
+      const results = await baseQuery;
+      
+      // Map results to Interview format with nested candidate/interviewer objects
+      return results.map((row: any) => ({
+        id: row.id,
+        candidateId: row.candidateId,
+        scheduledDate: row.scheduledDate,
+        conductedDate: row.conductedDate,
+        interviewerId: row.interviewerId,
+        type: row.type,
+        videoUrl: row.videoUrl,
+        status: row.status,
+        notes: row.notes,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        candidate: row.candidateName ? {
+          id: row.candidateId,
+          name: row.candidateName,
+          email: row.candidateEmail,
+        } : undefined,
+        interviewer: row.interviewerName ? {
+          id: row.interviewerId,
+          fullName: row.interviewerName,
+        } : undefined,
+      })) as Interview[];
     } catch (error) {
       console.error("Error getting interviews:", error);
       return [];
     }
+  }
+
+  async updateInterview(id: number, data: Partial<Interview>): Promise<Interview> {
+    const [updatedInterview] = await db
+      .update(interviews)
+      .set({
+        ...data,
+        updatedAt: new Date()
+      })
+      .where(eq(interviews.id, id))
+      .returning();
+    return updatedInterview;
+  }
+
+  async deleteInterview(id: number): Promise<void> {
+    // First, delete any evaluations associated with this interview
+    // (due to foreign key constraint)
+    await db
+      .delete(evaluations)
+      .where(eq(evaluations.interviewId, id));
+    
+    // Then delete the interview
+    await db
+      .delete(interviews)
+      .where(eq(interviews.id, id));
+  }
+
+  // Evaluation operations
+  async createEvaluation(evaluationData: Partial<Evaluation>): Promise<Evaluation> {
+    const [evaluation] = await db
+      .insert(evaluations)
+      .values({
+        interviewId: evaluationData.interviewId!,
+        evaluatorId: evaluationData.evaluatorId!,
+        overallRating: evaluationData.overallRating!,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...evaluationData
+      })
+      .returning();
+    return evaluation;
+  }
+
+  async getEvaluationByInterview(interviewId: number): Promise<Evaluation | undefined> {
+    const [evaluation] = await db
+      .select()
+      .from(evaluations)
+      .where(eq(evaluations.interviewId, interviewId));
+    return evaluation || undefined;
+  }
+
+  async updateEvaluation(id: number, data: Partial<Evaluation>): Promise<Evaluation> {
+    const [updatedEvaluation] = await db
+      .update(evaluations)
+      .set({
+        ...data,
+        updatedAt: new Date()
+      })
+      .where(eq(evaluations.id, id))
+      .returning();
+    return updatedEvaluation;
   }
 
   // Activity logs
@@ -447,6 +752,10 @@ export class DatabaseStorage implements IStorage {
 
   // Offer operations
   async createOffer(offerData: Partial<Offer>): Promise<Offer> {
+    // Generate unique acceptance token
+    const crypto = await import('crypto');
+    const acceptanceToken = crypto.randomBytes(32).toString('hex');
+    
     const [offer] = await db
       .insert(offers)
       .values({
@@ -458,6 +767,7 @@ export class DatabaseStorage implements IStorage {
         status: offerData.status || 'draft',
         sentDate: offerData.sentDate || null,
         contractUrl: offerData.contractUrl || null,
+        acceptanceToken: acceptanceToken,
         approvedById: offerData.approvedById || null,
         createdAt: new Date(),
         updatedAt: new Date()
@@ -471,7 +781,17 @@ export class DatabaseStorage implements IStorage {
     const [offer] = await db
       .select()
       .from(offers)
-      .where(eq(offers.candidateId, candidateId));
+      .where(eq(offers.candidateId, candidateId))
+      .limit(1);
+    
+    return offer || undefined;
+  }
+
+  async getOfferByToken(token: string): Promise<Offer | undefined> {
+    const [offer] = await db
+      .select()
+      .from(offers)
+      .where(eq(offers.acceptanceToken, token));
     
     return offer || undefined;
   }
@@ -520,20 +840,19 @@ export class DatabaseStorage implements IStorage {
       const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {
-          user: "earyljames.capitle18@gmail.com",
-          pass: "sfkp epqm pdar bowz" // It's better to store sensitive information in environment variables.
+          user: "upaksabraham24@gmail.com",
+          pass: "znjpubjqmqxkyuht" // Gmail App Password (spaces removed)
         }
       });
 
       const mailOptions = {
-        from: "earyljames.capitle18@gmail.com",
+        from: "upaksabraham24@gmail.com",
         to,
         subject,
         html: body
       };
 
       await transporter.sendMail(mailOptions);
-      console.log(`✅ Direct email sent to ${to} with subject: ${subject}`);
 
       // Log the email but don't add to queue
       await db

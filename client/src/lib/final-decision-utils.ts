@@ -28,6 +28,7 @@ export function getFinalDecisionDisplayLabel(finalDecisionStatus: string | null 
  * Business Logic: Candidates appear if their status OR final_decision_status matches:
  * - rejected
  * - offer_sent  
+ * - offer_accepted
  * - talent_pool
  * - pending (for final_decision_status only)
  */
@@ -35,8 +36,8 @@ export function shouldShowInFinalApprovals(candidate: any): boolean {
   const status = candidate.status;
   const finalDecisionStatus = candidate.finalDecisionStatus;
   
-  const targetStatuses = ["200_rejected", "95_offer_sent", "90_talent_pool"];
-  const targetFinalDecisionStatuses = ["rejected", "offer_sent", "talent_pool", "pending"];
+  const targetStatuses = ["200_rejected", "95_offer_sent", "100_offer_accepted", "90_talent_pool"];
+  const targetFinalDecisionStatuses = ["rejected", "offer_sent", "offer_accepted", "talent_pool", "pending"];
   
   return (
     targetStatuses.includes(status) ||

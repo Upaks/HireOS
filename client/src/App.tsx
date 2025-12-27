@@ -17,7 +17,9 @@ import CooReview from "@/pages/coo-review";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 import AdminPage from "@/pages/admin";
-import GHLSyncPage from "@/pages/GHLSyncPage";
+import CRMSyncPage from "@/pages/crm-sync";
+import ApplyPage from "@/pages/apply";
+import AcceptOfferPage from "@/pages/accept-offer";
 import { ThemeProvider } from "next-themes";
 import { UserRoles } from "@shared/schema";
 
@@ -76,14 +78,18 @@ function Router() {
         roles={[UserRoles.ADMIN]}
       />
       
-      {/* GHL Sync Page for COO, CEO, Director and Admin only */}
+      {/* CRM Sync Page for COO, CEO, Director and Admin only */}
       <ProtectedRoute 
-        path="/ghl-sync" 
-        component={GHLSyncPage}
+        path="/crm-sync" 
+        component={CRMSyncPage}
         roles={[UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]}
       />
       
+      {/* Public routes - no authentication required */}
       <Route path="/auth" component={AuthPage} />
+      <Route path="/apply/:jobId" component={ApplyPage} />
+      <Route path="/accept-offer/:token" component={AcceptOfferPage} />
+      
       <Route component={NotFound} />
     </Switch>
   );

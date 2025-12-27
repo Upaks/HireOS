@@ -15,6 +15,8 @@ export function setupGHLSyncRoutes(app: Express) {
   // Preview GHL sync (dry run)
   app.get('/api/ghl-sync/preview', requireAuth, async (req: Request, res: Response) => {
     try {
+      const userId = (req.user as any)?.id;
+      
       // Set timeout for response
       const timeoutMs = 120000; // 2 minutes
       const timeoutPromise = new Promise((_, reject) => {
@@ -22,7 +24,7 @@ export function setupGHLSyncRoutes(app: Express) {
       });
 
       const result = await Promise.race([
-        previewGHLSync(),
+        previewGHLSync(userId),
         timeoutPromise
       ]);
 
@@ -40,7 +42,8 @@ export function setupGHLSyncRoutes(app: Express) {
   // Execute GHL sync
   app.post('/api/ghl-sync/execute', requireAuth, async (req: Request, res: Response) => {
     try {
-      const result = await executeGHLSync();
+      const userId = (req.user as any)?.id;
+      const result = await executeGHLSync(userId);
       res.json(result);
     } catch (error: any) {
       console.error('Execute GHL sync error:', error);
@@ -55,8 +58,9 @@ export function setupGHLSyncRoutes(app: Express) {
   // Manual sync with dry run option
   app.post('/api/ghl-sync/sync', requireAuth, async (req: Request, res: Response) => {
     try {
+      const userId = (req.user as any)?.id;
       const { dryRun = false } = req.body;
-      const result = await syncGHLContacts(dryRun);
+      const result = await syncGHLContacts(dryRun, userId);
       res.json(result);
     } catch (error: any) {
       console.error('Manual GHL sync error:', error);
@@ -105,8 +109,9 @@ export function setupGHLSyncRoutes(app: Express) {
         }
       }
 
-      // Update candidate in GHL
-      const result = await updateCandidateInGHL(candidate);
+      // Update candidate in GHL (use the authenticated user's credentials)
+      const userId = (req.user as any)?.id;
+      const result = await updateCandidateInGHL(candidate, userId);
 
       res.json({
         success: true,

@@ -1,8 +1,36 @@
 import axios from 'axios';
 import { storage } from './storage';
 
-const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_BASE_URL = 'https://rest.gohighlevel.com/v1';
+
+// Helper function to get GHL credentials for a user
+async function getGHLCredentials(userId?: number): Promise<{ apiKey: string; locationId?: string } | null> {
+  if (!userId) {
+    // Fallback to env for backward compatibility
+    const envKey = process.env.GHL_API_KEY;
+    const envLocationId = process.env.GHL_LOCATION_ID;
+    if (envKey) {
+      return { apiKey: envKey, locationId: envLocationId };
+    }
+    return null;
+  }
+
+  // Get user's GHL integration from database
+  const integration = await storage.getPlatformIntegration("ghl", userId);
+  if (!integration || !integration.credentials) {
+    return null;
+  }
+
+  const credentials = integration.credentials as any;
+  if (!credentials.apiKey) {
+    return null;
+  }
+
+  return {
+    apiKey: credentials.apiKey,
+    locationId: credentials.locationId,
+  };
+}
 
 interface GHLContact {
   id: string;
@@ -48,11 +76,14 @@ function normalizeName(name: string): string {
 /**
  * Fetches contacts from GHL API with improved efficiency
  * @param limit Maximum number of contacts to fetch (default: 500)
+ * @param userId Optional user ID to get credentials from database
  * @returns Promise<GHLContact[]> Array of GHL contacts
  */
-async function fetchGHLContacts(limit: number = 500): Promise<GHLContact[]> {
-  if (!GHL_API_KEY) {
-    throw new Error('GHL_API_KEY environment variable is not set');
+async function fetchGHLContacts(limit: number = 500, userId?: number): Promise<GHLContact[]> {
+  // Get credentials for the user
+  const credentials = await getGHLCredentials(userId);
+  if (!credentials) {
+    throw new Error('GHL credentials not found. Please connect your GHL account in Settings → Integrations.');
   }
 
   const allContacts: GHLContact[] = [];
@@ -70,7 +101,7 @@ async function fetchGHLContacts(limit: number = 500): Promise<GHLContact[]> {
       
       const response = await axios.get(url, {
         headers: {
-          Authorization: `Bearer ${GHL_API_KEY}`,
+          Authorization: `Bearer ${credentials.apiKey}`,
           'Content-Type': 'application/json'
         },
         timeout: timeout
@@ -108,9 +139,10 @@ async function fetchGHLContacts(limit: number = 500): Promise<GHLContact[]> {
 /**
  * Syncs GHL contacts with candidates table
  * @param dryRun If true, only previews changes without updating database
+ * @param userId Optional user ID to get credentials from database
  * @returns Promise<SyncResult> Sync operation results
  */
-export async function syncGHLContacts(dryRun: boolean = false): Promise<SyncResult> {
+export async function syncGHLContacts(dryRun: boolean = false, userId?: number): Promise<SyncResult> {
   const result: SyncResult = {
     success: false,
     totalGHLContacts: 0,
@@ -126,7 +158,7 @@ export async function syncGHLContacts(dryRun: boolean = false): Promise<SyncResu
     console.log(`🔄 Starting GHL contact sync ${dryRun ? '(DRY RUN)' : ''}...`);
     
     // Fetch GHL contacts (limited to 300 for better coverage)
-    const ghlContacts = await fetchGHLContacts(300);
+    const ghlContacts = await fetchGHLContacts(300, userId);
     result.totalGHLContacts = ghlContacts.length;
 
     // Fetch all candidates
@@ -238,16 +270,18 @@ export async function syncGHLContacts(dryRun: boolean = false): Promise<SyncResu
 
 /**
  * Runs a dry run of the GHL sync to preview changes
+ * @param userId Optional user ID to get credentials from database
  * @returns Promise<SyncResult> Preview of sync operations
  */
-export async function previewGHLSync(): Promise<SyncResult> {
-  return await syncGHLContacts(true);
+export async function previewGHLSync(userId?: number): Promise<SyncResult> {
+  return await syncGHLContacts(true, userId);
 }
 
 /**
  * Executes the actual GHL sync with database updates
+ * @param userId Optional user ID to get credentials from database
  * @returns Promise<SyncResult> Results of sync operations
  */
-export async function executeGHLSync(): Promise<SyncResult> {
-  return await syncGHLContacts(false);
+export async function executeGHLSync(userId?: number): Promise<SyncResult> {
+  return await syncGHLContacts(false, userId);
 }

@@ -1,10 +1,39 @@
 import axios from "axios";
 import { ghlFetch } from "./ghl/ghlApi";
 import { getAccessToken } from "./ghl/ghlAuth";
-const GHL_API_KEY = process.env.GHL_API_KEY;
-const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID!;
+import { storage } from "./storage";
+
 const GHL_BASE_URL = "https://rest.gohighlevel.com/v1";
 const GHL_V2_BASE_URL = "https://services.leadconnectorhq.com";
+
+// Helper function to get GHL credentials for a user
+async function getGHLCredentials(userId?: number): Promise<{ apiKey: string; locationId?: string } | null> {
+  if (!userId) {
+    // Fallback to env for backward compatibility
+    const envKey = process.env.GHL_API_KEY;
+    const envLocationId = process.env.GHL_LOCATION_ID;
+    if (envKey) {
+      return { apiKey: envKey, locationId: envLocationId };
+    }
+    return null;
+  }
+
+  // Get user's GHL integration from database
+  const integration = await storage.getPlatformIntegration("ghl", userId);
+  if (!integration || !integration.credentials) {
+    return null;
+  }
+
+  const credentials = integration.credentials as any;
+  if (!credentials.apiKey) {
+    return null;
+  }
+
+  return {
+    apiKey: credentials.apiKey,
+    locationId: credentials.locationId,
+  };
+}
 
 interface GHLContactData {
   firstName: string;
@@ -40,13 +69,22 @@ const toGhlDate = (input?: string | Date | null): string | undefined => {
 /**
  * Creates a contact in GoHighLevel
  * @param contactData Contact information to create in GHL
+ * @param credentials Optional GHL credentials. If not provided, will try to get from database or env
+ * @param userId Optional user ID to get credentials from database
  * @returns Promise<any> GHL API response with contact ID
  */
 export async function createGHLContact(
   contactData: GHLContactData,
+  credentials?: { apiKey: string; locationId?: string },
+  userId?: number,
 ): Promise<any> {
-  if (!GHL_API_KEY) {
-    throw new Error("GHL_API_KEY environment variable is not set");
+  // Get credentials if not provided
+  if (!credentials) {
+    const creds = await getGHLCredentials(userId);
+    if (!creds) {
+      throw new Error("GHL credentials not found. Please connect your GHL account in Settings → Integrations.");
+    }
+    credentials = creds;
   }
 
   // Build customFields array in the new format
@@ -72,7 +110,7 @@ export async function createGHLContact(
   // … repeat for all your custom fields
 
   const payload = {
-    locationId: GHL_LOCATION_ID,
+    locationId: credentials.locationId || undefined,
     firstName: contactData.firstName,
     lastName: contactData.lastName,
     email: contactData.email,
@@ -83,24 +121,20 @@ export async function createGHLContact(
   };
 
   try {
-    const response = await ghlFetch(`${GHL_V2_BASE_URL}/contacts/upsert`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Version: "2021-07-28",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const raw = await response.text();
-    console.log("📩 Raw GHL response:", raw);
-
-    if (!response.ok) {
-      throw new Error(`GHL API Error: ${response.status} ${raw}`);
-    }
+    const response = await axios.post(
+      `${GHL_V2_BASE_URL}/contacts/upsert`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${credentials.apiKey}`,
+          "Content-Type": "application/json",
+          Version: "2021-07-28",
+        },
+      }
+    );
 
     console.log("✅ GHL contact created successfully:", { payload });
-    return JSON.parse(raw);
+    return response.data;
   } catch (error: any) {
     console.error("❌ Failed to create GHL contact:", {
       email: contactData.email,
@@ -163,9 +197,16 @@ export function mapStatusToGHLTag(status: string): string {
 export async function updateGHLContact(
   contactId: string,
   contactData: Partial<GHLContactData>,
+  credentials?: { apiKey: string; locationId?: string },
+  userId?: number,
 ): Promise<any> {
-  if (!GHL_API_KEY) {
-    throw new Error("GHL_API_KEY environment variable is not set");
+  // Get credentials if not provided
+  if (!credentials) {
+    const creds = await getGHLCredentials(userId);
+    if (!creds) {
+      throw new Error("GHL credentials not found. Please connect your GHL account in Settings → Integrations.");
+    }
+    credentials = creds;
   }
 
   // 1) Build customFields first
@@ -240,7 +281,7 @@ export async function updateGHLContact(
       payload,
       {
         headers: {
-          Authorization: `Bearer ${GHL_API_KEY}`,
+          Authorization: `Bearer ${credentials.apiKey}`,
           Accept: "application/json",
           "Content-Type": "application/json",
         },
@@ -265,15 +306,24 @@ export async function updateGHLContact(
  * @param contactId GHL contact ID
  * @returns Promise<any> GHL API response
  */
-export async function getGHLContact(contactId: string): Promise<any> {
-  if (!GHL_API_KEY) {
-    throw new Error("GHL_API_KEY environment variable is not set");
+export async function getGHLContact(
+  contactId: string,
+  credentials?: { apiKey: string; locationId?: string },
+  userId?: number,
+): Promise<any> {
+  // Get credentials if not provided
+  if (!credentials) {
+    const creds = await getGHLCredentials(userId);
+    if (!creds) {
+      throw new Error("GHL credentials not found. Please connect your GHL account in Settings → Integrations.");
+    }
+    credentials = creds;
   }
 
   try {
     const response = await axios.get(`${GHL_BASE_URL}/contacts/${contactId}`, {
       headers: {
-        Authorization: `Bearer ${GHL_API_KEY}`,
+        Authorization: `Bearer ${credentials.apiKey}`,
         "Content-Type": "application/json",
       },
     });
@@ -321,13 +371,18 @@ export function parseFullName(fullName: string): {
  * @returns Promise<any> GHL API response
  */
 
-export async function updateCandidateInGHL(candidate: any): Promise<any> {
+export async function updateCandidateInGHL(
+  candidate: any,
+  userId?: number,
+): Promise<any> {
   if (!candidate.ghlContactId) {
     throw new Error("Candidate must have a GHL contact ID to update");
   }
 
-  if (!GHL_API_KEY) {
-    throw new Error("GHL_API_KEY environment variable is not set");
+  // Get GHL credentials for the user
+  const credentials = await getGHLCredentials(userId);
+  if (!credentials) {
+    throw new Error("GHL credentials not found. Please connect your GHL account in Settings → Integrations.");
   }
 
   // Parse the full name into first and last name
@@ -375,7 +430,12 @@ export async function updateCandidateInGHL(candidate: any): Promise<any> {
   };
 
   try {
-    const response = await updateGHLContact(candidate.ghlContactId, updateData);
+    const response = await updateGHLContact(
+      candidate.ghlContactId,
+      updateData,
+      credentials,
+      userId,
+    );
 
     console.log("✅ Successfully updated candidate in GHL:", {
       updateData,

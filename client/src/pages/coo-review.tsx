@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import AppShell from "@/components/layout/app-shell";
 import TopBar from "@/components/layout/top-bar";
@@ -6,6 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import OfferForm from "@/components/offers/offer-form";
 import { Candidate, Interview, Evaluation } from "@/types";
 import { useMutation } from "@tanstack/react-query";
@@ -13,11 +23,22 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { shouldShowInFinalApprovals, getFinalDecisionDisplayLabel } from "@/lib/final-decision-utils";
+import { getStatusDisplay, normalizeCandidateStatus } from "@/lib/candidate-status";
 
 export default function CooReview() {
   const { toast } = useToast();
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [offerFormOpen, setOfferFormOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("all");
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    action: "talent-pool" | "reject" | null;
+    candidate: Candidate | null;
+  }>({
+    open: false,
+    action: null,
+    candidate: null,
+  });
   
   // Fetch candidates for final approvals based on your business rules:
   // Status: rejected, 90_offer_sent, 80_talent_pool OR
@@ -35,13 +56,75 @@ export default function CooReview() {
     enabled: !!candidates,
   });
   
-  // Use the filtered candidates directly (they're already filtered for Final Approvals)
-  const finalCandidates = candidates;
+  // Fetch evaluations for all interviews
+  const { data: evaluations } = useQuery<Evaluation[]>({
+    queryKey: ['/api/evaluations'],
+    enabled: !!interviews && interviews.length > 0,
+    queryFn: async () => {
+      if (!interviews) return [];
+      const evaluationPromises = interviews.map(async (interview) => {
+        try {
+          const res = await apiRequest("GET", `/api/interviews/${interview.id}/evaluation`);
+          if (res.ok) {
+            return await res.json();
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      });
+      const results = await Promise.all(evaluationPromises);
+      return results.filter((evaluation): evaluation is Evaluation => evaluation !== null);
+    },
+  });
+
+  // Combine interviews with their evaluations
+  const interviewsWithEvaluations = useMemo(() => {
+    if (!interviews || !evaluations) return interviews || [];
+    return interviews.map(interview => ({
+      ...interview,
+      evaluation: evaluations.find(evaluation => evaluation.interviewId === interview.id)
+    })) as (Interview & { evaluation?: Evaluation })[];
+  }, [interviews, evaluations]);
+  
+  // Filter candidates by active tab
+  const finalCandidates = useMemo(() => {
+    if (activeTab === "all") return candidates;
+    
+    return candidates.filter(candidate => {
+      const normalizedStatus = normalizeCandidateStatus(candidate.status);
+      
+      switch (activeTab) {
+        case "offers":
+          return normalizedStatus === "95_offer_sent";
+        case "accepted":
+          return normalizedStatus === "100_offer_accepted";
+        case "talent-pool":
+          return normalizedStatus === "90_talent_pool";
+        case "rejected":
+          return normalizedStatus === "200_rejected";
+        default:
+          return true;
+      }
+    });
+  }, [candidates, activeTab]);
+
+  // Count candidates by category for tab badges
+  const candidateCounts = useMemo(() => {
+    const counts = {
+      all: candidates.length,
+      offers: candidates.filter(c => normalizeCandidateStatus(c.status) === "95_offer_sent").length,
+      accepted: candidates.filter(c => normalizeCandidateStatus(c.status) === "100_offer_accepted").length,
+      "talent-pool": candidates.filter(c => normalizeCandidateStatus(c.status) === "90_talent_pool").length,
+      rejected: candidates.filter(c => normalizeCandidateStatus(c.status) === "200_rejected").length,
+    };
+    return counts;
+  }, [candidates]);
   
   // Function to get interviews for a specific candidate
   const getInterviewsForCandidate = (candidateId: number) => {
-    if (!interviews) return [];
-    return interviews.filter(interview => interview.candidateId === candidateId);
+    if (!interviewsWithEvaluations) return [];
+    return interviewsWithEvaluations.filter(interview => interview.candidateId === candidateId);
   };
   
   // Mutations for candidate actions
@@ -92,12 +175,53 @@ export default function CooReview() {
     setOfferFormOpen(true);
   };
   
-  const handleAddToTalentPool = (candidateId: number) => {
-    talentPoolMutation.mutate(candidateId);
+  const handleAddToTalentPool = (candidate: Candidate) => {
+    setConfirmDialog({
+      open: true,
+      action: "talent-pool",
+      candidate,
+    });
   };
   
-  const handleReject = (candidateId: number) => {
-    rejectMutation.mutate(candidateId);
+  const handleReject = (candidate: Candidate) => {
+    setConfirmDialog({
+      open: true,
+      action: "reject",
+      candidate,
+    });
+  };
+
+  const handleConfirmAction = () => {
+    if (!confirmDialog.candidate || !confirmDialog.action) return;
+
+    if (confirmDialog.action === "talent-pool") {
+      talentPoolMutation.mutate(confirmDialog.candidate.id);
+    } else if (confirmDialog.action === "reject") {
+      rejectMutation.mutate(confirmDialog.candidate.id);
+    }
+
+    setConfirmDialog({ open: false, action: null, candidate: null });
+  };
+
+  const getActionDetails = (action: "talent-pool" | "reject") => {
+    if (action === "talent-pool") {
+      return {
+        title: "Add to Talent Pool",
+        description: `Are you sure you want to add ${confirmDialog.candidate?.name} to the talent pool?`,
+        details: [
+          "A talent pool email will be sent to the candidate",
+        ],
+      };
+    } else {
+      return {
+        title: "Reject Candidate",
+        description: `Are you sure you want to reject ${confirmDialog.candidate?.name}?`,
+        details: [
+          "A rejection email will be sent to the candidate",
+        ],
+        variant: "destructive" as const,
+      };
+    }
   };
   
   return (
@@ -112,14 +236,65 @@ export default function CooReview() {
           <div className="flex justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
-        ) : finalCandidates.length === 0 ? (
+        ) : candidates.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             No candidates pending final review.
           </div>
         ) : (
           <div className="max-w-7xl mx-auto">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="mb-6">
+                <TabsTrigger value="all">
+                  All
+                  {candidateCounts.all > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {candidateCounts.all}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="offers">
+                  Offers Sent
+                  {candidateCounts.offers > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {candidateCounts.offers}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="accepted">
+                  Accepted Offers
+                  {candidateCounts.accepted > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {candidateCounts.accepted}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="talent-pool">
+                  Talent Pool
+                  {candidateCounts["talent-pool"] > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {candidateCounts["talent-pool"]}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="rejected">
+                  Rejected
+                  {candidateCounts.rejected > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {candidateCounts.rejected}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value={activeTab} className="mt-0">
+                {finalCandidates.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No candidates in this category.
+                  </div>
+                ) : (
             <ul className="space-y-6">
               {finalCandidates.map(candidate => {
+                      const statusDisplay = getStatusDisplay(candidate.status);
                 const candidateInterviews = getInterviewsForCandidate(candidate.id);
                 
                 return (
@@ -127,11 +302,16 @@ export default function CooReview() {
                     <Card className="overflow-hidden">
                       <CardHeader className="px-6 py-4 border-b border-slate-200">
                         <div className="flex items-center justify-between">
-                          <div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-1">
                             <h2 className="text-xl font-medium text-slate-900">{candidate.name}</h2>
+                              <Badge className={`${statusDisplay.bgColor} ${statusDisplay.textColor}`}>
+                                {statusDisplay.label}
+                              </Badge>
+                            </div>
                             <p className="text-sm text-slate-500">{candidate.job?.title || `Job ID: ${candidate.jobId}`}</p>
                           </div>
-                          <div className="flex items-center">
+                          <div className="flex items-center gap-2">
                             {candidateInterviews[0]?.evaluation?.overallRating && (
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-sm font-medium bg-green-100 text-green-800">
                                 Recommended: {candidateInterviews[0].evaluation.overallRating}
@@ -285,8 +465,8 @@ export default function CooReview() {
                                 </Button>
                                 <Button
                                   variant="outline"
-                                  onClick={() => handleAddToTalentPool(candidate.id)}
-                                  disabled={talentPoolMutation.isPending}
+                                  onClick={() => handleAddToTalentPool(candidate)}
+                                  disabled={talentPoolMutation.isPending || rejectMutation.isPending}
                                 >
                                   {talentPoolMutation.isPending ? (
                                     <>
@@ -299,8 +479,8 @@ export default function CooReview() {
                                 </Button>
                                 <Button
                                   variant="outline"
-                                  onClick={() => handleReject(candidate.id)}
-                                  disabled={rejectMutation.isPending}
+                                  onClick={() => handleReject(candidate)}
+                                  disabled={talentPoolMutation.isPending || rejectMutation.isPending}
                                 >
                                   {rejectMutation.isPending ? (
                                     <>
@@ -321,6 +501,9 @@ export default function CooReview() {
                 );
               })}
             </ul>
+                )}
+              </TabsContent>
+            </Tabs>
           </div>
         )}
       </div>
@@ -332,6 +515,55 @@ export default function CooReview() {
           onOpenChange={setOfferFormOpen}
         />
       )}
+
+      {/* Confirmation Dialog */}
+      <Dialog open={confirmDialog.open} onOpenChange={(open) => {
+        if (!open) {
+          setConfirmDialog({ open: false, action: null, candidate: null });
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {confirmDialog.action && getActionDetails(confirmDialog.action).title}
+            </DialogTitle>
+            <DialogDescription className="space-y-3">
+              <p>{confirmDialog.action && getActionDetails(confirmDialog.action).description}</p>
+              <div className="mt-4 space-y-2">
+                <p className="font-medium text-sm text-slate-900">What will happen:</p>
+                <ul className="list-disc list-inside space-y-1 text-sm text-slate-600">
+                  {confirmDialog.action && getActionDetails(confirmDialog.action).details.map((detail, index) => (
+                    <li key={index}>{detail}</li>
+                  ))}
+                </ul>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setConfirmDialog({ open: false, action: null, candidate: null })}
+              disabled={talentPoolMutation.isPending || rejectMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmAction}
+              variant={confirmDialog.action === "reject" ? "destructive" : "default"}
+              disabled={talentPoolMutation.isPending || rejectMutation.isPending}
+            >
+              {(talentPoolMutation.isPending || rejectMutation.isPending) ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "Confirm"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

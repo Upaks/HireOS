@@ -1,6 +1,56 @@
+# Dependencies
 node_modules
+package-lock.json
+
+# Build outputs
 dist
+build
+*.log
+
+# Environment variables (CRITICAL - contains secrets!)
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.*.local
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
 .DS_Store
+
+# Server files
 server/public
+
+# Vite
 vite.config.ts.*
 *.tar.gz
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+.cache
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Test files (optional - uncomment if you don't want test files in repo)
+# *.test.js
+# *.test.ts
+# __tests__
+
+# Debug files
+*.log
+debug-*.js
+test-*.js
+*-test.js

@@ -6,12 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2, UserPlus, Pencil, Trash2 } from "lucide-react";
+import { Loader2, UserPlus, Pencil, Trash2, Copy, CheckCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { User, UserRoles } from "@shared/schema";
@@ -23,6 +24,8 @@ const userFormSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
   email: z.string().email("Invalid email address"),
   role: z.string().min(1, "Role is required"),
+  calendarLink: z.string().url("Invalid calendar URL").optional().or(z.literal("")),
+  calendarProvider: z.enum(["calendly", "cal.com", "google", "custom"]).optional(),
 });
 
 type UserFormData = z.infer<typeof userFormSchema>;
@@ -33,6 +36,7 @@ export default function UserManagement() {
   const [showNewUserDialog, setShowNewUserDialog] = useState(false);
   const [showEditUserDialog, setShowEditUserDialog] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [webhookUrlCopied, setWebhookUrlCopied] = useState(false);
   
   // Only admin, CEO, or COO should access this page
   const canManageUsers = user?.role === 'admin' || user?.role === 'ceo' || user?.role === 'coo';
@@ -56,13 +60,18 @@ export default function UserManagement() {
   });
   
   // Form for editing an existing user
-  const editForm = useForm<Omit<UserFormData, 'password'>>({
-    resolver: zodResolver(userFormSchema.omit({ password: true })),
+  const editFormSchema = userFormSchema.omit({ password: true });
+  type EditUserFormData = z.infer<typeof editFormSchema>;
+  
+  const editForm = useForm<EditUserFormData>({
+    resolver: zodResolver(editFormSchema),
     defaultValues: {
       username: "",
       fullName: "",
       email: "",
       role: "hiringManager",
+      calendarLink: "",
+      calendarProvider: undefined,
     },
   });
   
@@ -90,6 +99,8 @@ export default function UserManagement() {
       fullName: user.fullName,
       email: user.email,
       role: user.role,
+      calendarLink: (user as any).calendarLink || "",
+      calendarProvider: (user as any).calendarProvider || "",
     });
     setShowEditUserDialog(true);
   };
@@ -167,7 +178,7 @@ export default function UserManagement() {
   };
   
   // Handle form submission for editing a user
-  const onEditSubmit = (data: Omit<UserFormData, 'password'>) => {
+  const onEditSubmit = (data: EditUserFormData) => {
     if (currentUser) {
       updateUserMutation.mutate({ id: currentUser.id, data });
     }
@@ -388,6 +399,27 @@ export default function UserManagement() {
                 )}
               />
               
+              <FormField
+                control={editForm.control}
+                name="calendarLink"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Calendar Scheduling Link</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="url" 
+                        placeholder="https://calendly.com/your-username/meeting" 
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                    <p className="text-xs text-muted-foreground">
+                      Your personal calendar link (Calendly, Cal.com, etc.). Used when sending interview invitations.
+                    </p>
+                  </FormItem>
+                )}
+              />
+              
               <DialogFooter>
                 <DialogClose asChild>
                   <Button type="button" variant="outline">Cancel</Button>
@@ -413,7 +445,7 @@ export default function UserManagement() {
       
       {/* Edit User Dialog */}
       <Dialog open={showEditUserDialog} onOpenChange={handleEditUserDialogChange}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
             <DialogDescription>
@@ -422,7 +454,8 @@ export default function UserManagement() {
           </DialogHeader>
           
           <Form {...editForm}>
-            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="flex flex-col flex-1 min-h-0">
+              <div className="space-y-4 overflow-y-auto flex-1 pr-2">
               <FormField
                 control={editForm.control}
                 name="fullName"
@@ -499,7 +532,114 @@ export default function UserManagement() {
                 )}
               />
               
-              <DialogFooter>
+              <FormField
+                control={editForm.control}
+                name="calendarLink"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Calendar Scheduling Link</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="url" 
+                        placeholder="https://calendly.com/your-username/meeting" 
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                    <p className="text-xs text-muted-foreground">
+                      Your personal calendar link (Calendly, Cal.com, etc.). Used when sending interview invitations.
+                    </p>
+                  </FormItem>
+                )}
+              />
+              
+              <div className="border-t pt-4 mt-4">
+                <h3 className="text-sm font-semibold mb-3">Calendar Sync (Optional)</h3>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Connect your calendar to automatically update interview dates when candidates book.
+                </p>
+                
+                <FormField
+                  control={editForm.control}
+                  name="calendarProvider"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Calendar Provider</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select calendar provider" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="calendly">Calendly</SelectItem>
+                          <SelectItem value="cal.com">Cal.com</SelectItem>
+                          <SelectItem value="google">Google Calendar</SelectItem>
+                          <SelectItem value="custom">Custom/Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <div className="mt-4">
+                  <FormLabel>Webhook URL</FormLabel>
+                  <div className="mt-2 flex items-center gap-2">
+                    <code className="text-xs bg-slate-50 px-3 py-2 rounded border border-slate-200 text-slate-900 flex-1 break-all font-mono">
+                      {typeof window !== 'undefined' && currentUser
+                        ? `${window.location.origin}/api/webhooks/calendar?provider=${editForm.watch("calendarProvider") || "calendly"}&userId=${currentUser.id}`
+                        : "Select a provider to see webhook URL"
+                      }
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const provider = editForm.watch("calendarProvider") || "calendly";
+                        const webhookUrl = typeof window !== 'undefined' && currentUser
+                          ? `${window.location.origin}/api/webhooks/calendar?provider=${provider}&userId=${currentUser.id}`
+                          : "";
+                        if (webhookUrl) {
+                          navigator.clipboard.writeText(webhookUrl);
+                          setWebhookUrlCopied(true);
+                          toast({
+                            title: "Webhook URL copied",
+                            description: "Webhook URL copied to clipboard",
+                          });
+                          setTimeout(() => setWebhookUrlCopied(false), 2000);
+                        }
+                      }}
+                      disabled={!editForm.watch("calendarProvider") || !currentUser}
+                      className="shrink-0"
+                    >
+                      {webhookUrlCopied ? (
+                        <>
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-4 w-4 mr-2" />
+                          Copy
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Copy this webhook URL and configure it in your calendar service settings. When candidates book, your app will automatically update the interview date.
+                  </p>
+                  {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (
+                    <p className="text-xs text-amber-600 mt-2 bg-amber-50 p-2 rounded border border-amber-200">
+                      ⚠️ <strong>Note:</strong> Webhooks won't work with localhost. Calendar services need a publicly accessible URL. Use a service like ngrok for local testing, or deploy your app to test webhooks.
+                    </p>
+                  )}
+                </div>
+              </div>
+              </div>
+              
+              <DialogFooter className="mt-4">
                 <DialogClose asChild>
                   <Button type="button" variant="outline">Cancel</Button>
                 </DialogClose>

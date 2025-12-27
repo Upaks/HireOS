@@ -16,6 +16,11 @@ export default function Analytics() {
   // Fetch funnel metrics
   const { data: funnelData, isLoading: isLoadingFunnel } = useQuery<FunnelStats>({
     queryKey: ['/api/analytics/funnel', { dateRange }],
+    queryFn: async () => {
+      const res = await fetch(`/api/analytics/funnel?dateRange=${dateRange}`);
+      if (!res.ok) throw new Error('Failed to fetch funnel data');
+      return res.json();
+    },
   });
   
   // Fetch job performance metrics

@@ -11,12 +11,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Job } from "@/types";
 import { Link, useLocation } from "wouter";
-import { CheckCircle } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { CheckCircle, Link2, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import ReactMarkdown from "react-markdown";
 import { logger } from "@/lib/logger";
+import EditJobModal from "./edit-job-modal";
+import { queryClient } from "@/lib/queryClient";
+import CandidateDetailDialog from "@/components/candidates/candidate-detail-dialog";
 
 
 const jobViewSchema = z.object({
@@ -44,7 +48,24 @@ interface JobViewModalProps {
 
 export default function JobViewModal({ open, onOpenChange, job, onClose }: JobViewModalProps) {
   const { toast } = useToast();
+  const [applicationLinkCopied, setApplicationLinkCopied] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] = useState<any>(null);
+  const [candidateDetailOpen, setCandidateDetailOpen] = useState(false);
   const loggingState = React.useRef({ validationLogged: false, submitterLogged: false, candidatesLogged: false });
+  
+  // Generate application link
+  const applicationLink = `${window.location.origin}/apply/${job.id}`;
+  
+  const handleCopyApplicationLink = () => {
+    navigator.clipboard.writeText(applicationLink);
+    setApplicationLinkCopied(true);
+    toast({
+      title: "Link copied",
+      description: "Application link copied to clipboard",
+    });
+    setTimeout(() => setApplicationLinkCopied(false), 2000);
+  };
 
   React.useEffect(() => {
     if (loggingState.current.validationLogged) return;
@@ -76,6 +97,19 @@ export default function JobViewModal({ open, onOpenChange, job, onClose }: JobVi
   const { data: candidatesData } = useQuery<any[]>({
     queryKey: ['/api/candidates', { jobId: job.id }],
     enabled: open // Only fetch when modal is open
+  });
+
+  // Fetch platforms for this job
+  const { data: platformsData } = useQuery<any[]>({
+    queryKey: ['/api/jobs', job.id, 'platforms'],
+    queryFn: async () => {
+      const res = await fetch(`/api/jobs/${job.id}/platforms`, {
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error('Failed to fetch platforms');
+      return res.json();
+    },
+    enabled: open && job.status === 'active' // Only fetch when modal is open and job is active
   });
 
   // Log candidates data fetching - in an effect to avoid re-renders
@@ -178,16 +212,18 @@ export default function JobViewModal({ open, onOpenChange, job, onClose }: JobVi
                   blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-slate-300 pl-4 italic my-3 text-slate-700" {...props} />,
 
                   // 🔧 Replace both code and pre with this:
-                  code: ({ node, inline, className, children, ...props }) =>
-                    inline ? (
-                      <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-800 font-mono text-sm" {...props}>
+                  code: (props: any) => {
+                    const { node, inline, className, children, ...rest } = props as { node?: any; inline?: boolean; className?: string; children?: React.ReactNode; [key: string]: any };
+                    return inline ? (
+                      <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-800 font-mono text-sm" {...rest}>
                         {children}
                       </code>
                     ) : (
-                      <pre className="bg-slate-100 p-3 rounded text-slate-800 font-mono text-sm my-3 whitespace-pre-wrap break-words overflow-x-auto" {...props}>
+                      <pre className="bg-slate-100 p-3 rounded text-slate-800 font-mono text-sm my-3 whitespace-pre-wrap break-words overflow-x-auto" {...rest}>
                         {children}
                       </pre>
-                    )
+                    );
+                  }
                 }}
               >{job.description}
             </ReactMarkdown>
@@ -208,6 +244,97 @@ export default function JobViewModal({ open, onOpenChange, job, onClose }: JobVi
           </div>
         )}
 
+        {/* Application Link Section */}
+        <div className="mt-4 bg-blue-50 border border-blue-200 p-4 rounded-md">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start flex-1 min-w-0">
+              <Link2 className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="ml-3 flex-1 min-w-0">
+                <p className="text-sm font-semibold text-blue-900">
+                  Application Link
+                </p>
+                <p className="text-xs text-blue-700 mt-1">
+                  Share this link in your job postings. Candidates will apply directly through HireOS.
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <code className="text-xs bg-white px-2 py-1 rounded border border-blue-200 text-blue-900 flex-1 break-all min-w-0">
+                    {applicationLink}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyApplicationLink}
+                    className="shrink-0"
+                  >
+                    {applicationLinkCopied ? (
+                      <>
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copy
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Posted Platforms Section */}
+        {platformsData && Array.isArray(platformsData) && platformsData.length > 0 && (
+          <div className="mt-4 border-t border-slate-200 pt-4">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Posted Platforms</h3>
+            <div className="space-y-2">
+              {platformsData.map((platform: any) => {
+                const getStatusColor = (status: string) => {
+                  switch (status?.toLowerCase()) {
+                    case 'posted':
+                      return 'bg-green-100 text-green-800 border-green-200';
+                    case 'pending':
+                      return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+                    case 'failed':
+                      return 'bg-red-100 text-red-800 border-red-200';
+                    default:
+                      return 'bg-slate-100 text-slate-800 border-slate-200';
+                  }
+                };
+
+                return (
+                  <div key={platform.id} className="bg-white border border-slate-200 rounded-md p-3 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3 flex-1 min-w-0">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900">{platform.platform}</p>
+                          {platform.postUrl && (
+                            <a 
+                              href={platform.postUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:underline mt-1 break-all inline-block"
+                            >
+                              {platform.postUrl}
+                            </a>
+                          )}
+                          {platform.errorMessage && (
+                            <p className="text-xs text-red-600 mt-1">{platform.errorMessage}</p>
+                          )}
+                        </div>
+                        <Badge className={`shrink-0 ${getStatusColor(platform.status)}`}>
+                          {platform.status?.charAt(0).toUpperCase() + platform.status?.slice(1) || 'Unknown'}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
  {candidatesData && Array.isArray(candidatesData) && candidatesData.length > 0 && (
           <div className="mt-4 border-t border-slate-200 pt-4">
             <h3 className="text-sm font-semibold text-slate-700 mb-3">Candidates ({candidatesData.length})</h3>
@@ -215,10 +342,17 @@ export default function JobViewModal({ open, onOpenChange, job, onClose }: JobVi
               <ul className="divide-y divide-slate-100 w-full">
                 {candidatesData.map((candidate: any) => (
                   <li key={candidate.id} className="hover:bg-slate-50 transition-colors">
-                    <Link href={`/candidates/${candidate.id}`} className="block py-3 px-4">
+                    <div 
+                      className="block py-3 px-4 cursor-pointer"
+                      onClick={() => {
+                        logger.info("Opening candidate details", { candidateId: candidate.id });
+                        setSelectedCandidate(candidate);
+                        setCandidateDetailOpen(true);
+                      }}
+                    >
                       <div className="flex items-center space-x-3">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-blue-600 truncate hover:underline">{candidate.name}</p>
+                          <p className="text-sm font-medium text-blue-600 truncate">{candidate.name}</p>
                           {candidate.email && (
                             <p className="text-xs text-slate-500 truncate mt-1">{candidate.email}</p>
                           )}
@@ -229,7 +363,7 @@ export default function JobViewModal({ open, onOpenChange, job, onClose }: JobVi
                           </Badge>
                         )}
                       </div>
-                    </Link>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -247,13 +381,40 @@ export default function JobViewModal({ open, onOpenChange, job, onClose }: JobVi
           >
             Close
           </Button>
-          <Link href={`/jobs/${job.id}/edit`}>
-            <Button onClick={() => logger.info("Navigating to edit job", { jobId: job.id })}>
+          <Button 
+            onClick={() => {
+              logger.info("Edit job clicked", { jobId: job.id });
+              setEditModalOpen(true);
+            }}
+          >
               Edit Job
             </Button>
-          </Link>
         </DialogFooter>
       </DialogContent>
+      
+      {/* Edit Job Modal */}
+      <EditJobModal
+        open={editModalOpen}
+        onOpenChange={setEditModalOpen}
+        job={job}
+        onSuccess={() => {
+          // Refresh job data when edit is successful
+          queryClient.invalidateQueries({ queryKey: [`/api/jobs/${job.id}`] });
+          queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
+        }}
+      />
+      
+      {/* Candidate Detail Dialog */}
+      {selectedCandidate && (
+        <CandidateDetailDialog
+          candidate={selectedCandidate}
+          isOpen={candidateDetailOpen}
+          onClose={() => {
+            setCandidateDetailOpen(false);
+            setSelectedCandidate(null);
+          }}
+        />
+      )}
     </Dialog>
   );
 }

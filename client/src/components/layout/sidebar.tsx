@@ -93,9 +93,9 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
       roles: [UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     },
     {
-      title: "GHL Sync",
+      title: "CRM Sync",
       icon: <RefreshCw className="h-5 w-5 mr-3" />,
-      href: "/ghl-sync",
+      href: "/crm-sync",
       roles: [UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     },
     {

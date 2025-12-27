@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/components/layout/app-shell";
 import TopBar from "@/components/layout/top-bar";
 import { Interview } from "@/types";
@@ -8,13 +8,60 @@ import { formatDistanceToNow } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { CalendarClock, Clock, User, Check, AlertCircle } from "lucide-react";
+import { CalendarClock, Clock, User, Check, AlertCircle, Trash2 } from "lucide-react";
+import React from "react";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function Interviews() {
-  // In a real implementation, we would fetch interviews from the API
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Fetch interviews from the API
   const { data: interviews = [], isLoading } = useQuery<Interview[]>({
     queryKey: ['/api/interviews'],
-    // This API endpoint is just a placeholder
+    queryFn: async () => {
+      const response = await fetch('/api/interviews', {
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to fetch interviews');
+      return await response.json();
+    }
+  });
+
+  // Delete interview mutation
+  const deleteInterviewMutation = useMutation({
+    mutationFn: async (interviewId: number) => {
+      const response = await fetch(`/api/interviews/${interviewId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to delete interview');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/interviews'] });
+      toast({
+        title: "Interview deleted",
+        description: "The cancelled interview has been removed.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete interview. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
   
   const renderInterviewStatus = (status: string) => {
@@ -56,6 +103,7 @@ export default function Interviews() {
           <TabsList className="mb-4">
             <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
             <TabsTrigger value="completed">Completed</TabsTrigger>
+            <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
             <TabsTrigger value="all">All Interviews</TabsTrigger>
           </TabsList>
           
@@ -63,9 +111,9 @@ export default function Interviews() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {isLoading ? (
                 <p className="col-span-full text-center py-8 text-slate-500">Loading interviews...</p>
-              ) : interviews.filter(i => i.status === 'scheduled').length > 0 ? (
+              ) : interviews.filter(i => i.status === 'scheduled' || i.status === 'pending').length > 0 ? (
                 interviews
-                  .filter(interview => interview.status === 'scheduled')
+                  .filter(interview => interview.status === 'scheduled' || interview.status === 'pending')
                   .map(interview => (
                     <InterviewCard 
                       key={interview.id} 
@@ -103,6 +151,30 @@ export default function Interviews() {
             </div>
           </TabsContent>
           
+          <TabsContent value="cancelled">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {isLoading ? (
+                <p className="col-span-full text-center py-8 text-slate-500">Loading interviews...</p>
+              ) : interviews.filter(i => i.status === 'cancelled').length > 0 ? (
+                interviews
+                  .filter(interview => interview.status === 'cancelled')
+                  .map(interview => (
+                    <InterviewCard 
+                      key={interview.id} 
+                      interview={interview} 
+                      renderStatus={renderInterviewStatus}
+                      onDelete={deleteInterviewMutation.mutate}
+                      isDeleting={deleteInterviewMutation.isPending}
+                    />
+                  ))
+              ) : (
+                <p className="col-span-full text-center py-8 text-slate-500">
+                  No cancelled interviews found
+                </p>
+              )}
+            </div>
+          </TabsContent>
+          
           <TabsContent value="all">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {isLoading ? (
@@ -112,7 +184,9 @@ export default function Interviews() {
                   <InterviewCard 
                     key={interview.id} 
                     interview={interview} 
-                    renderStatus={renderInterviewStatus} 
+                    renderStatus={renderInterviewStatus}
+                    onDelete={interview.status === 'cancelled' ? deleteInterviewMutation.mutate : undefined}
+                    isDeleting={deleteInterviewMutation.isPending}
                   />
                 ))
               ) : (
@@ -131,9 +205,12 @@ export default function Interviews() {
 interface InterviewCardProps {
   interview: Interview;
   renderStatus: (status: string) => React.ReactNode;
+  onDelete?: (interviewId: number) => void;
+  isDeleting?: boolean;
 }
 
-function InterviewCard({ interview, renderStatus }: InterviewCardProps) {
+function InterviewCard({ interview, renderStatus, onDelete, isDeleting }: InterviewCardProps) {
+  const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
   const scheduledDate = interview.scheduledDate ? new Date(interview.scheduledDate) : null;
   const formattedDate = scheduledDate ? 
     `${scheduledDate.toLocaleDateString()} at ${scheduledDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` 
@@ -175,16 +252,56 @@ function InterviewCard({ interview, renderStatus }: InterviewCardProps) {
             Type: {interview.type.charAt(0).toUpperCase() + interview.type.slice(1)} Interview
           </div>
           
-          <div className="pt-3 flex justify-between">
+          <div className="pt-3 flex justify-between items-center gap-2">
             <Link href={`/interviews/${interview.id}`}>
               <Button variant="outline" size="sm">View Details</Button>
             </Link>
             
-            {interview.status === 'completed' && (
-              <Link href={`/interviews/${interview.id}/evaluate`}>
-                <Button size="sm">Grade Interview</Button>
-              </Link>
-            )}
+            <div className="flex gap-2">
+              {interview.status === 'completed' && (
+                <Link href={`/interviews/${interview.id}/evaluate`}>
+                  <Button size="sm">Grade Interview</Button>
+                </Link>
+              )}
+              
+              {interview.status === 'cancelled' && onDelete && (
+                <>
+                  <Button 
+                    variant="destructive" 
+                    size="sm"
+                    onClick={() => setShowDeleteDialog(true)}
+                    disabled={isDeleting}
+                    className="p-2"
+                    title="Delete interview"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                  
+                  <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Interview?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to delete this cancelled interview? This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => {
+                            onDelete(interview.id);
+                            setShowDeleteDialog(false);
+                          }}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </CardContent>

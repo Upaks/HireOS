@@ -41,73 +41,96 @@ export function setupCandidateRoutes(app: Express) {
 
         const candidate = await storage.createCandidate(req.body);
 
-        // Sync with GoHighLevel
-        try {
-          // Only sync if candidate has a valid jobId
-          if (candidate.jobId !== null) {
+        // Sync to connected CRMs (GHL, Airtable, Google Sheets)
+        const userId = (req.user as any)?.id;
+        if (userId && candidate.jobId !== null && candidate.jobId !== undefined) {
+          try {
             const job = await storage.getJob(candidate.jobId);
-            const { firstName, lastName } = parseFullName(candidate.name);
-
-            // Build tags array
-            const tags = ["00_application_submitted"];
-            if (job?.title) {
-              const roleTag = mapJobTitleToGHLTag(job.title);
-              tags.push(roleTag);
+            if (job) {
+              (candidate as any).job = job;
             }
 
-            const ghlResponse = await createGHLContact({
-              firstName,
-              lastName,
-              email: candidate.email,
-              phone: candidate.phone || undefined,
-              location: candidate.location || undefined,
-              tags,
-              score: candidate.hiPeopleScore || undefined,
-              expectedSalary: candidate.expectedSalary || undefined,
-              experienceYears: candidate.experienceYears || undefined,
-              hiPeopleAssessmentLink: candidate.hiPeopleAssessmentLink || undefined,
-              hiPeoplePercentile: candidate.hiPeoplePercentile || undefined,
-              skills: candidate.skills && Array.isArray(candidate.skills) ? candidate.skills : []
-            });
+            // Get all connected CRM integrations for this user
+            const crmIntegrations = await storage.getCRMIntegrations(userId);
+            
+            for (const integration of crmIntegrations) {
+              if (!integration.isEnabled || integration.status !== 'connected') {
+                continue;
+              }
 
-            // Update candidate with GHL contact ID
-            const ghlContactId = ghlResponse.contact?.id;
-            if (ghlContactId) {
-              await storage.updateCandidate(candidate.id, { ghlContactId });
-              console.log(
-                `✅ Candidate ${candidate.name} synced to GHL with contact ID: ${ghlContactId}`,
-              );
+              try {
+                if (integration.platformId === 'ghl') {
+                  const { firstName, lastName } = parseFullName(candidate.name);
+                  const tags = ["00_application_submitted"];
+                  if (job?.title) {
+                    const roleTag = mapJobTitleToGHLTag(job.title);
+                    tags.push(roleTag);
+                  }
+
+                  const ghlResponse = await createGHLContact({
+                    firstName,
+                    lastName,
+                    email: candidate.email,
+                    phone: candidate.phone || undefined,
+                    location: candidate.location || undefined,
+                    tags,
+                    score: candidate.hiPeopleScore || undefined,
+                    expectedSalary: candidate.expectedSalary || undefined,
+                    experienceYears: candidate.experienceYears || undefined,
+                    hiPeopleAssessmentLink: candidate.hiPeopleAssessmentLink || undefined,
+                    hiPeoplePercentile: candidate.hiPeoplePercentile || undefined,
+                    skills: candidate.skills && Array.isArray(candidate.skills) ? candidate.skills : []
+                  });
+
+                  const ghlContactId = ghlResponse.contact?.id;
+                  if (ghlContactId) {
+                    await storage.updateCandidate(candidate.id, { ghlContactId });
+                  }
+                } else if (integration.platformId === 'airtable') {
+                  const { updateCandidateInAirtable } = await import('../airtable-integration');
+                  await updateCandidateInAirtable(candidate, userId);
+                } else if (integration.platformId === 'google-sheets') {
+                  const { createOrUpdateGoogleSheetsContact } = await import('../google-sheets-integration');
+                  await createOrUpdateGoogleSheetsContact(
+                    {
+                      id: candidate.id,
+                      name: candidate.name,
+                      email: candidate.email,
+                      phone: candidate.phone || null,
+                      location: candidate.location || null,
+                      expectedSalary: typeof candidate.expectedSalary === 'number' ? candidate.expectedSalary : (candidate.expectedSalary ? Number(candidate.expectedSalary) : null),
+                      experienceYears: typeof candidate.experienceYears === 'number' ? candidate.experienceYears : (candidate.experienceYears ? Number(candidate.experienceYears) : null),
+                      skills: Array.isArray(candidate.skills) ? candidate.skills : null,
+                      status: candidate.status,
+                      jobTitle: job?.title || undefined,
+                    },
+                    userId
+                  );
+                }
+              } catch (syncError: any) {
+                // Log but don't fail the main creation
+                await storage.createActivityLog({
+                  userId: req.user?.id ?? null,
+                  action: `${integration.platformName} sync failed`,
+                  entityType: "candidate",
+                  entityId: candidate.id,
+                  details: {
+                    candidateName: candidate.name,
+                    error: syncError.message,
+                    jobId: candidate.jobId,
+                  },
+                  timestamp: new Date(),
+                });
+              }
             }
-
-            console.log(
-              `✅ Candidate ${candidate.name} synced to GHL with tags:`,
-              tags,
-            );
+          } catch (error) {
+            // Don't fail the main creation if CRM sync fails
           }
-        } catch (ghlError: any) {
-          // Log GHL sync error but don't fail the candidate creation
-          console.error(
-            `⚠️ GHL sync failed for candidate ${candidate.name}:`,
-            ghlError.message,
-          );
-
-          await storage.createActivityLog({
-            userId: req.user?.id,
-            action: "GHL sync failed",
-            entityType: "candidate",
-            entityId: candidate.id,
-            details: {
-              candidateName: candidate.name,
-              error: ghlError.message,
-              jobId: candidate.jobId,
-            },
-            timestamp: new Date(),
-          });
         }
 
         // Log activity
         await storage.createActivityLog({
-          userId: req.user?.id,
+          userId: req.user?.id ?? null,
           action: "Added candidate",
           entityType: "candidate",
           entityId: candidate.id,
@@ -117,7 +140,7 @@ export function setupCandidateRoutes(app: Express) {
 
         // If express review is enabled, send assessment immediately
         // Otherwise, schedule it for 3 hours later
-        const job = await storage.getJob(candidate.jobId);
+        const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
         const processAfter = job?.expressReview
           ? new Date()
           : new Date(Date.now() + 3 * 60 * 60 * 1000); // 3 hours later
@@ -247,20 +270,89 @@ export function setupCandidateRoutes(app: Express) {
         updateData.lastInterviewDate = new Date(updateData.lastInterviewDate);
       }
 
-      console.log("Updating candidate with data:", updateData);
-
       // Update candidate
       const updatedCandidate = await storage.updateCandidate(
         candidate.id,
         updateData,
       );
 
+      // Sync to connected CRMs (Airtable, GHL, etc.)
+      const userId = (req.user as any)?.id;
+      if (userId) {
+        try {
+          // Get all connected CRM integrations for this user
+          const crmIntegrations = await storage.getCRMIntegrations(userId);
+          
+          for (const integration of crmIntegrations) {
+            if (!integration.isEnabled || integration.status !== 'connected') {
+              continue;
+            }
+
+            try {
+              if (integration.platformId === 'airtable') {
+                const { updateCandidateInAirtable } = await import('../airtable-integration');
+                // Get job details if available
+                if (updatedCandidate.jobId) {
+                  const job = await storage.getJob(updatedCandidate.jobId);
+                  if (job) {
+                    (updatedCandidate as any).job = job;
+                  }
+                }
+                await updateCandidateInAirtable(updatedCandidate, userId);
+              } else if (integration.platformId === 'ghl' && updatedCandidate.ghlContactId) {
+                const { updateCandidateInGHL } = await import('../ghl-integration');
+                // Get job details if available
+                if (updatedCandidate.jobId) {
+                  const job = await storage.getJob(updatedCandidate.jobId);
+                  if (job) {
+                    (updatedCandidate as any).job = job;
+                  }
+                }
+                await updateCandidateInGHL(updatedCandidate, userId);
+              } else if (integration.platformId === 'google-sheets') {
+                const { createOrUpdateGoogleSheetsContact, findRowByEmail } = await import('../google-sheets-integration');
+                // Get job details if available
+                if (updatedCandidate.jobId) {
+                  const job = await storage.getJob(updatedCandidate.jobId);
+                  if (job) {
+                    (updatedCandidate as any).job = job;
+                  }
+                }
+                // Find existing row by email, or create new one
+                const rowNumber = await findRowByEmail(updatedCandidate.email, userId);
+                await createOrUpdateGoogleSheetsContact(
+                  {
+                    id: updatedCandidate.id,
+                    name: updatedCandidate.name,
+                    email: updatedCandidate.email,
+                    phone: updatedCandidate.phone || null,
+                    location: updatedCandidate.location || null,
+                    expectedSalary: typeof updatedCandidate.expectedSalary === 'number' ? updatedCandidate.expectedSalary : (updatedCandidate.expectedSalary ? Number(updatedCandidate.expectedSalary) : null),
+                    experienceYears: typeof updatedCandidate.experienceYears === 'number' ? updatedCandidate.experienceYears : (updatedCandidate.experienceYears ? Number(updatedCandidate.experienceYears) : null),
+                    skills: Array.isArray(updatedCandidate.skills) ? updatedCandidate.skills : null,
+                    status: updatedCandidate.status,
+                    jobTitle: (updatedCandidate as any).job?.title || undefined,
+                  },
+                  userId,
+                  rowNumber || undefined
+                );
+              }
+            } catch (syncError: any) {
+              // Log but don't fail the main update - errors are logged in activity log
+            }
+          }
+        } catch (error) {
+          // Don't fail the main update if CRM sync fails
+          console.error('Error syncing to CRMs:', error);
+        }
+      }
+
       // Status change to "interview sent"
       if (
         req.body.status === "45_1st_interview_sent" &&
         req.body.status !== candidate.status
       ) {
-        const job = await storage.getJob(candidate.jobId);
+        const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
         if (job) {
           await storage.createNotification({
             type: "email",
@@ -294,7 +386,7 @@ export function setupCandidateRoutes(app: Express) {
         (req.body.finalDecisionStatus === "offer" &&
           candidate.finalDecisionStatus !== "offer")
       ) {
-        const job = await storage.getJob(candidate.jobId);
+        const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
 
         // Create offer if none exists
         let offer = await storage.getOfferByCandidate(candidate.id);
@@ -311,7 +403,7 @@ export function setupCandidateRoutes(app: Express) {
         }
 
         await storage.createActivityLog({
-          userId: req.user?.id,
+          userId: req.user?.id ?? null,
           action: "Sent offer to candidate",
           entityType: "candidate",
           entityId: candidate.id,
@@ -339,8 +431,27 @@ export function setupCandidateRoutes(app: Express) {
 
       // Log status change
       if (req.body.status && req.body.status !== candidate.status) {
+        // If candidate status changes away from interview status, cancel any scheduled interviews
+        const interviewStatuses = ["45_1st_interview_sent", "60_1st_interview_scheduled", "75_2nd_interview_scheduled"];
+        const wasInterviewStatus = interviewStatuses.includes(candidate.status);
+        const isNoLongerInterviewStatus = !interviewStatuses.includes(req.body.status);
+        
+        if (wasInterviewStatus && isNoLongerInterviewStatus) {
+          // Cancel any scheduled/pending interviews for this candidate
+          const existingInterviews = await storage.getInterviews({ candidateId: candidate.id });
+          for (const interview of existingInterviews) {
+            if (interview.status === "scheduled" || interview.status === "pending") {
+              await storage.updateInterview(interview.id, {
+                status: "cancelled",
+                notes: interview.notes ? `${interview.notes}\n\nCancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candidate status changed to ${req.body.status}`,
+                updatedAt: new Date()
+              });
+            }
+          }
+        }
+        
         await storage.createActivityLog({
-          userId: req.user?.id,
+          userId: req.user?.id ?? null,
           action: `Updated candidate status to ${req.body.status}`,
           entityType: "candidate",
           entityId: candidate.id,
@@ -356,7 +467,7 @@ export function setupCandidateRoutes(app: Express) {
       // Log evaluation update
       if (hasEvaluationFields) {
         await storage.createActivityLog({
-          userId: req.user?.id,
+          userId: req.user?.id ?? null,
           action: "Updated candidate evaluation",
           entityType: "candidate",
           entityId: candidate.id,
@@ -402,7 +513,7 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // Get job details first (needed for email and logging)
-      const job = await storage.getJob(candidate.jobId);
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
 
       // Check for valid email before sending interview invite
       if (isLikelyInvalidEmail(candidate.email)) {
@@ -412,7 +523,7 @@ export function setupCandidateRoutes(app: Express) {
 
         // Log activity about the failed interview invite
         await storage.createActivityLog({
-          userId: req.user?.id,
+          userId: req.user?.id ?? null,
           action: "Interview invite failed - invalid email",
           entityType: "candidate",
           entityId: candidate.id,
@@ -446,25 +557,89 @@ export function setupCandidateRoutes(app: Express) {
         timestamp: new Date(),
       });
 
-      // Send direct interview invitation email (immediate, no queue)
-      const emailSubject = `${candidate.name}, Let's Discuss Your Fit for Our ${job?.title} Position`;
-      const emailBody = `
-      <p>Hi ${candidate.name},</p>
+      // Get user's calendar link - REQUIRED (no fallback)
+      const user = req.user ? await storage.getUser(req.user.id) : null;
       
-      <p>It's Aaron Ready from Ready CPA. I came across your profile and would like to chat about your background and how you might fit in our <b>${job?.title}</b> position.</p>
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      // Require user to have their own calendar link set
+      if (!user.calendarLink || user.calendarLink.trim() === "") {
+        return res.status(400).json({ 
+          message: "Calendar link not configured",
+          errorType: "missing_calendar_link",
+          details: "Please set your calendar scheduling link in Settings > User Management before sending interview invitations."
+        });
+      }
+      
+      const calendarLink = user.calendarLink;
+      const senderName = user.fullName || "Team Member";
+      const companyName = "Ready CPA"; // Could also be from system config
+      
+      // Default email templates
+      const defaultSubject = `{{candidateName}}, Let's Discuss Your Fit for Our {{jobTitle}} Position`;
+      const defaultBody = `
+      <p>Hi {{candidateName}},</p>
+      
+      <p>It's {{senderName}} from {{companyName}}. I came across your profile and would like to chat about your background and how you might fit in our <b>{{jobTitle}}</b> position.</p>
       
       <p>Feel free to grab a time on my calendar when you're available:<br>
-      <a href="https://www.calendar.com/aaronready/client-meeting">Schedule your interview here</a></p>
+      <a href="{{calendarLink}}">Schedule your interview here</a></p>
       
       <p>Looking forward to connecting!</p>
       
       <p>Thanks,<br>
-      Aaron Ready, CPA<br>
-      Ready CPA</p>
+      {{senderName}}<br>
+      {{companyName}}</p>
       `;
+      
+      // Use user's custom template or default (from emailTemplates JSONB)
+      const userTemplates = (user as any).emailTemplates || {};
+      const interviewTemplate = userTemplates.interview || {};
+      const subjectTemplate = interviewTemplate.subject || defaultSubject;
+      const bodyTemplate = interviewTemplate.body || defaultBody;
+      
+      // Replace placeholders in templates
+      const emailSubject = subjectTemplate
+        .replace(/\{\{candidateName\}\}/g, candidate.name)
+        .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
+        .replace(/\{\{senderName\}\}/g, senderName)
+        .replace(/\{\{companyName\}\}/g, companyName);
+      
+      const emailBody = bodyTemplate
+        .replace(/\{\{candidateName\}\}/g, candidate.name)
+        .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
+        .replace(/\{\{senderName\}\}/g, senderName)
+        .replace(/\{\{companyName\}\}/g, companyName)
+        .replace(/\{\{calendarLink\}\}/g, calendarLink);
 
       // Use direct email sending to leverage our error handling
       await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
+
+      // Check if an interview already exists for this candidate to prevent duplicates
+      const existingInterviews = await storage.getInterviews({ candidateId: candidate.id });
+      const existingScheduledInterview = existingInterviews.find(i => i.status === "scheduled" || i.status === "pending");
+      
+      if (!existingScheduledInterview) {
+        // Create an interview record so it shows up in the Interviews tab
+        // Status is "scheduled" but without a specific date (candidate will book via calendar)
+        await storage.createInterview({
+          candidateId: candidate.id,
+          interviewerId: req.user?.id ?? null,
+          type: "video", // Default to video interview
+          status: "scheduled", // Will be updated when candidate books
+          scheduledDate: null, // Will be set when candidate books on calendar
+          notes: "Interview invitation sent - awaiting candidate to book via calendar link"
+        });
+      } else {
+        // Update existing interview instead of creating duplicate
+        await storage.updateInterview(existingScheduledInterview.id, {
+          status: "scheduled",
+          notes: "Interview invitation sent - awaiting candidate to book via calendar link",
+          updatedAt: new Date()
+        });
+      }
 
       res.json(updatedCandidate);
     } catch (error) {
@@ -490,7 +665,7 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // Get job details first
-      const job = await storage.getJob(candidate.jobId);
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
 
       // Check for valid email before adding to talent pool
       if (isLikelyInvalidEmail(candidate.email)) {
@@ -500,7 +675,7 @@ export function setupCandidateRoutes(app: Express) {
 
         // Log activity about the failed talent pool add
         await storage.createActivityLog({
-          userId: req.user?.id,
+          userId: req.user?.id ?? null,
           action: "Talent pool add failed - invalid email",
           entityType: "candidate",
           entityId: candidate.id,
@@ -535,21 +710,54 @@ export function setupCandidateRoutes(app: Express) {
         timestamp: new Date(),
       });
 
-      // Queue talent pool email (with 2-hour delay)
-      await storage.createNotification({
-        type: "email",
-        payload: {
-          recipientEmail: candidate.email,
-          subject: `Thank you for your application to ${job?.title}`,
-          template: "talent-pool",
-          context: {
-            candidateName: candidate.name,
-            jobTitle: job?.title,
-          },
-        },
-        processAfter: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours later
-        status: "pending",
-      });
+      // Get user's email templates
+      const user = req.user ? await storage.getUser(req.user.id) : null;
+      const senderName = user?.fullName || "Team Member";
+      const companyName = "Ready CPA";
+      
+      // Default email templates
+      const defaultSubject = `Thank you for your application to {{jobTitle}}`;
+      const defaultBody = `
+      <p>Hi {{candidateName}},</p>
+      
+      <p>Thank you for your interest in the {{jobTitle}} position at {{companyName}}.</p>
+      
+      <p>While we've decided to move forward with other candidates for this specific role, we were impressed with your background and would like to keep you in our talent pool for future opportunities.</p>
+      
+      <p>We'll reach out if a position opens up that matches your skills and experience.</p>
+      
+      <p>Thanks again for your interest!</p>
+      
+      <p>Best regards,<br>
+      {{senderName}}<br>
+      {{companyName}}</p>
+      `;
+      
+      // Use user's custom template or default (from emailTemplates JSONB)
+      const userTemplates = (user as any)?.emailTemplates || {};
+      const talentPoolTemplate = userTemplates.talentPool || userTemplates.talent_pool || {};
+      const subjectTemplate = talentPoolTemplate.subject || defaultSubject;
+      const bodyTemplate = talentPoolTemplate.body || defaultBody;
+      
+      // Replace placeholders in templates
+      const emailSubject = subjectTemplate
+        .replace(/\{\{candidateName\}\}/g, candidate.name)
+        .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
+        .replace(/\{\{senderName\}\}/g, senderName)
+        .replace(/\{\{companyName\}\}/g, companyName);
+      
+      const emailBody = bodyTemplate
+        .replace(/\{\{candidateName\}\}/g, candidate.name)
+        .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
+        .replace(/\{\{senderName\}\}/g, senderName)
+        .replace(/\{\{companyName\}\}/g, companyName);
+
+      // Send email immediately
+      try {
+        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
+      } catch (emailError: any) {
+        // Don't fail the request if email fails - status is already updated
+      }
 
       res.json(updatedCandidate);
     } catch (error) {
@@ -575,7 +783,7 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // Get job details first (needed for email)
-      const job = await storage.getJob(candidate.jobId);
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
 
       // IMPORTANT: First check if email exists before updating candidate status
       // Use the same email validation as in sendDirectEmail
@@ -591,7 +799,7 @@ export function setupCandidateRoutes(app: Express) {
 
         // Log activity
         await storage.createActivityLog({
-          userId: req.user?.id,
+          userId: req.user?.id ?? null,
           action: "Rejection failed - invalid email",
           entityType: "candidate",
           entityId: candidate.id,
@@ -626,83 +834,56 @@ export function setupCandidateRoutes(app: Express) {
         timestamp: new Date(),
       });
 
-      // Send the email directly (not using sendDirectEmail to avoid error throwing)
-      const emailSubject = `Update on Your ${job?.title} Application`;
-      const emailBody = `
-      <p>Hi ${candidate.name},</p>
+      // Get user's email templates
+      const user = req.user ? await storage.getUser(req.user.id) : null;
+      const senderName = user?.fullName || "Team Member";
+      const companyName = "Ready CPA";
       
-      <p>Thanks for taking the time to interview for the ${job?.title} role with us. I really enjoyed our conversation and learning about your background and experience.</p>
+      // Default email templates
+      const defaultSubject = `Update on Your {{jobTitle}} Application`;
+      const defaultBody = `
+      <p>Hi {{candidateName}},</p>
+      
+      <p>Thanks for taking the time to interview for the {{jobTitle}} role with us. I really enjoyed our conversation and learning about your background and experience.</p>
       
       <p>After careful consideration, we've decided to move forward with another candidate for this position.</p>
       
-      <p>I'd love to keep you in mind for future opportunities at Ready CPA, as your skills and experience would be a great fit for our team. Feel free to stay connected, and I'll reach out if anything opens up that matches your background.</p>
+      <p>I'd love to keep you in mind for future opportunities at {{companyName}}, as your skills and experience would be a great fit for our team. Feel free to stay connected, and I'll reach out if anything opens up that matches your background.</p>
       
       <p>Thanks again for your interest, and I wish you all the best!</p>
       
       <p>Best regards,<br>
-      Aaron Ready, CPA<br>
-      Ready CPA</p>
+      {{senderName}}<br>
+      {{companyName}}</p>
       `;
+      
+      // Use user's custom template or default (from emailTemplates JSONB)
+      const userTemplates = (user as any)?.emailTemplates || {};
+      const rejectionTemplate = userTemplates.rejection || userTemplates.reject || {};
+      const subjectTemplate = rejectionTemplate.subject || defaultSubject;
+      const bodyTemplate = rejectionTemplate.body || defaultBody;
+      
+      // Replace placeholders in templates
+      const emailSubject = subjectTemplate
+        .replace(/\{\{candidateName\}\}/g, candidate.name)
+        .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
+        .replace(/\{\{senderName\}\}/g, senderName)
+        .replace(/\{\{companyName\}\}/g, companyName);
+      
+      const emailBody = bodyTemplate
+        .replace(/\{\{candidateName\}\}/g, candidate.name)
+        .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
+        .replace(/\{\{senderName\}\}/g, senderName)
+        .replace(/\{\{companyName\}\}/g, companyName);
 
-      // Create a transporter for sending email - same as the working one in offer and interview
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: "earyljames.capitle18@gmail.com",
-          pass: "sfkp epqm pdar bowz", // Updated password
-        },
-      });
-
-      const mailOptions = {
-        from: "earyljames.capitle18@gmail.com",
-        to: candidate.email,
-        subject: emailSubject,
-        html: emailBody,
-      };
-
+      // Send email immediately using sendDirectEmail
       try {
-        await transporter.sendMail(mailOptions);
-
-        // Log a successful email send
-        console.log(
-          `✅ Rejection email sent to ${candidate.email} for job: ${job?.title}`,
-        );
-
-        // Log the email in the database
-        await db.insert(emailLogs).values({
-          recipientEmail: candidate.email,
-          subject: emailSubject,
-          template: "rejection",
-          context: { body: emailBody },
-          status: "sent",
-          sentAt: new Date(),
-          createdAt: new Date(),
-        });
-
-        // Return success with updated candidate
-        res.json(updatedCandidate);
+        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
       } catch (emailError: any) {
-        console.error("❌ Error sending rejection email:", emailError);
-
-        // Log the failure in email_logs
-        await db.insert(emailLogs).values({
-          recipientEmail: candidate.email,
-          subject: emailSubject,
-          template: "rejection",
-          context: { body: emailBody },
-          status: "failed",
-          error: String(emailError),
-          createdAt: new Date(),
-        });
-
-        // Return a success with the updated candidate but note the email failure
-        // We don't want to prevent rejection just because email failed
-        res.status(200).json({
-          message: "Candidate rejected but email failed to send",
-          emailError: String(emailError),
-          candidate: updatedCandidate,
-        });
+        // Don't fail the request if email fails - status is already updated
       }
+
+      res.json(updatedCandidate);
     } catch (error) {
       handleApiError(error, res);
     }
@@ -736,7 +917,7 @@ export function setupCandidateRoutes(app: Express) {
         }
 
         // Get job details first (needed for email template)
-        const job = await storage.getJob(candidate.jobId);
+        const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
 
         // First check if email is valid, similar to how reject works
         // Validate email exists before updating status
@@ -750,7 +931,7 @@ export function setupCandidateRoutes(app: Express) {
 
             // Log failed attempt
             await storage.createActivityLog({
-              userId: req.user?.id,
+              userId: req.user?.id ?? null,
               action: "Offer send failed - invalid email",
               entityType: "candidate",
               entityId: candidate.id,
@@ -794,7 +975,7 @@ export function setupCandidateRoutes(app: Express) {
 
           // Log activity for successful offer creation
           await storage.createActivityLog({
-            userId: req.user?.id,
+            userId: req.user?.id ?? null,
             action: "Sent offer to candidate",
             entityType: "candidate",
             entityId: candidate.id,
@@ -807,26 +988,74 @@ export function setupCandidateRoutes(app: Express) {
             timestamp: new Date(),
           });
 
-          // Send direct offer email (immediate, no queue)
-          const emailSubject = `Excited to Offer You the ${job?.title} Position`;
-          const emailBody = `
-        <p>Hi ${candidate.name},</p>
-  
-        <p>Great news — we'd love to bring you on board for the ${job?.title} position at Ready CPA. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
-  
-        <p>Here's the link to your engagement contract:
-        <a href="https://talent.firmos.app/web-manager-contract453986">[Contract Link]</a></p>
-  
-        <p>To kick things off, please schedule your onboarding call here:  <a href="https://www.calendar.com/aaronready/client-meeting">[Onboarding Calendar Link]</a></p>
-  
-        <p>If anything's unclear or you'd like to chat, don't hesitate to reach out.</p>
-  
-        <p>Welcome aboard — we're excited to get started!</p>
-  
-        <p>Best regards,<br>
-        Aaron Ready, CPA<br>
-        Ready CPA</p>
-        `;
+          // Get user's email templates
+          const user = req.user ? await storage.getUser(req.user.id) : null;
+          const senderName = user?.fullName || "Team Member";
+          const companyName = "Ready CPA";
+          
+          // Get base URL for acceptance link
+          // Use PUBLIC_BASE_URL env variable if set (for production/ngrok), otherwise use request host
+          const publicBaseUrl = process.env.PUBLIC_BASE_URL;
+          let baseUrl: string;
+          
+          if (publicBaseUrl) {
+            // Use configured public URL (remove trailing slash if present)
+            baseUrl = publicBaseUrl.replace(/\/$/, '');
+          } else {
+            // Fall back to request host (works for localhost testing)
+            const protocol = req.protocol || (req.secure ? 'https' : 'http');
+            const host = req.get('host') || 'localhost:5000';
+            baseUrl = `${protocol}://${host}`;
+          }
+          
+          const acceptanceUrl = `${baseUrl}/accept-offer/${offer.acceptanceToken}`;
+          
+          // Log acceptance URL in development (helpful for testing)
+          if (process.env.NODE_ENV !== 'production') {
+            console.log(`📧 Offer acceptance URL: ${acceptanceUrl}`);
+            console.log(`   Token: ${offer.acceptanceToken}`);
+          }
+          
+          // Default email templates
+          const defaultSubject = `Excited to Offer You the {{jobTitle}} Position`;
+          const defaultBody = `
+          <p>Hi {{candidateName}},</p>
+          
+          <p>Great news — we'd love to bring you on board for the {{jobTitle}} position at {{companyName}}. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
+          
+          <p>Here's the link to your engagement contract: <a href="{{contractLink}}">[Contract Link]</a></p>
+          
+          <p>Please review and accept your offer here: <a href="{{acceptanceUrl}}">Accept Offer</a></p>
+          
+          <p>If anything's unclear or you'd like to chat, don't hesitate to reach out.</p>
+          
+          <p>Welcome aboard — we're excited to get started!</p>
+          
+          <p>Best regards,<br>
+          {{senderName}}<br>
+          {{companyName}}</p>
+          `;
+          
+          // Use user's custom template or default (from emailTemplates JSONB)
+          const userTemplates = (user as any)?.emailTemplates || {};
+          const offerTemplate = userTemplates.offer || {};
+          const subjectTemplate = offerTemplate.subject || defaultSubject;
+          const bodyTemplate = offerTemplate.body || defaultBody;
+          
+          // Replace placeholders in templates
+          const emailSubject = subjectTemplate
+            .replace(/\{\{candidateName\}\}/g, candidate.name)
+            .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
+            .replace(/\{\{senderName\}\}/g, senderName)
+            .replace(/\{\{companyName\}\}/g, companyName);
+          
+          const emailBody = bodyTemplate
+            .replace(/\{\{candidateName\}\}/g, candidate.name)
+            .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
+            .replace(/\{\{senderName\}\}/g, senderName)
+            .replace(/\{\{companyName\}\}/g, companyName)
+            .replace(/\{\{contractLink\}\}/g, offer.contractUrl || "#")
+            .replace(/\{\{acceptanceUrl\}\}/g, acceptanceUrl);
 
           // Send the direct email
           await storage.sendDirectEmail(
@@ -893,7 +1122,7 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // Get job details
-      const job = await storage.getJob(candidate.jobId);
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
 
       // Log activity
       await storage.createActivityLog({
@@ -939,6 +1168,227 @@ export function setupCandidateRoutes(app: Express) {
       });
 
       res.json(updatedCandidate);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+
+  // Public endpoint: Get offer details by token (no auth required)
+  app.get("/api/offers/:token", async (req, res) => {
+    try {
+      const token = req.params.token;
+      if (!token) {
+        return res.status(400).json({ message: "Token is required" });
+      }
+
+      const offer = await storage.getOfferByToken(token);
+      if (!offer) {
+        return res.status(404).json({ message: "Offer not found or invalid token" });
+      }
+
+      // Check if offer is already accepted or declined
+      if (offer.status === "accepted") {
+        return res.status(400).json({ message: "This offer has already been accepted" });
+      }
+      if (offer.status === "declined") {
+        return res.status(400).json({ message: "This offer has already been declined" });
+      }
+      if (offer.status !== "sent") {
+        return res.status(400).json({ message: "This offer is not available for acceptance" });
+      }
+
+      // Get candidate and job details
+      const candidate = await storage.getCandidate(offer.candidateId);
+      if (!candidate) {
+        return res.status(404).json({ message: "Candidate not found" });
+      }
+
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+
+      // Return offer details (safe for public viewing)
+      res.json({
+        offer: {
+          id: offer.id,
+          offerType: offer.offerType,
+          compensation: offer.compensation,
+          startDate: offer.startDate,
+          notes: offer.notes,
+          contractUrl: offer.contractUrl,
+        },
+        candidate: {
+          name: candidate.name,
+          email: candidate.email,
+        },
+        job: job ? {
+          title: job.title,
+          type: job.type,
+        } : null,
+      });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+
+  // Public endpoint: Accept or decline offer by token (no auth required)
+  app.post("/api/offers/:token/respond", async (req, res) => {
+    try {
+      const token = req.params.token;
+      const { action } = req.body; // "accept" or "decline"
+
+      if (!token) {
+        return res.status(400).json({ message: "Token is required" });
+      }
+
+      if (!action || (action !== "accept" && action !== "decline")) {
+        return res.status(400).json({ message: "Action must be 'accept' or 'decline'" });
+      }
+
+      const offer = await storage.getOfferByToken(token);
+      if (!offer) {
+        return res.status(404).json({ message: "Offer not found or invalid token" });
+      }
+
+      // Check if offer is already processed
+      if (offer.status === "accepted") {
+        return res.status(400).json({ message: "This offer has already been accepted" });
+      }
+      if (offer.status === "declined") {
+        return res.status(400).json({ message: "This offer has already been declined" });
+      }
+
+      // Get candidate and job details
+      const candidate = await storage.getCandidate(offer.candidateId);
+      if (!candidate) {
+        return res.status(404).json({ message: "Candidate not found" });
+      }
+
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+
+      if (action === "accept") {
+        // Update offer status
+        await storage.updateOffer(offer.id, {
+          status: "accepted",
+        });
+
+        // Update candidate status
+        await storage.updateCandidate(offer.candidateId, {
+          status: "100_offer_accepted",
+        });
+
+        // Get the user who sent the offer (for email template)
+        const approvingUser = offer.approvedById ? await storage.getUser(offer.approvedById) : null;
+        const senderName = approvingUser?.fullName || "Team Member";
+        const companyName = "Ready CPA";
+
+        // Get onboarding calendar link from the user who sent the offer
+        const onboardingLink = approvingUser?.calendarLink || "#";
+
+        // Default onboarding email template
+        const defaultOnboardingSubject = `Welcome to {{companyName}}!`;
+        const defaultOnboardingBody = `
+        <p>Hi {{candidateName}},</p>
+        
+        <p>Welcome to {{companyName}}! We're thrilled to have you join our team as {{jobTitle}}.</p>
+        
+        <p>To get started, please complete the onboarding checklist and schedule your first day.</p>
+        
+        <p>Schedule your onboarding call here: <a href="{{onboardingLink}}">Schedule Onboarding</a></p>
+        
+        <p>If you have any questions before your start date, don't hesitate to reach out.</p>
+        
+        <p>Looking forward to working with you!</p>
+        
+        <p>Best regards,<br>
+        {{senderName}}<br>
+        {{companyName}}</p>
+        `;
+
+        // Use user's custom onboarding template or default
+        const userTemplates = (approvingUser as any)?.emailTemplates || {};
+        const onboardingTemplate = userTemplates.onboarding || {};
+        const onboardingSubjectTemplate = onboardingTemplate.subject || defaultOnboardingSubject;
+        const onboardingBodyTemplate = onboardingTemplate.body || defaultOnboardingBody;
+
+        // Replace placeholders
+        const onboardingSubject = onboardingSubjectTemplate
+          .replace(/\{\{candidateName\}\}/g, candidate.name)
+          .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
+          .replace(/\{\{senderName\}\}/g, senderName)
+          .replace(/\{\{companyName\}\}/g, companyName);
+
+        const onboardingBody = onboardingBodyTemplate
+          .replace(/\{\{candidateName\}\}/g, candidate.name)
+          .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
+          .replace(/\{\{senderName\}\}/g, senderName)
+          .replace(/\{\{companyName\}\}/g, companyName)
+          .replace(/\{\{onboardingLink\}\}/g, onboardingLink);
+
+        // Send onboarding email immediately
+        try {
+          await storage.sendDirectEmail(candidate.email, onboardingSubject, onboardingBody);
+        } catch (emailError: any) {
+          // Log error but don't fail the request
+          console.error("Error sending onboarding email:", emailError);
+        }
+
+        // Send Slack notification
+        try {
+          await storage.createNotification({
+            type: "slack",
+            payload: {
+              channel: "onboarding",
+              message: `${candidate.name} has accepted the offer for ${job?.title} position!`,
+              candidateId: candidate.id,
+              jobId: candidate.jobId,
+            },
+            processAfter: new Date(),
+            status: "pending",
+          });
+        } catch (slackError: any) {
+          // Log error but don't fail the request
+          console.error("Error creating Slack notification:", slackError);
+        }
+
+        // Log activity
+        await storage.createActivityLog({
+          userId: offer.approvedById ?? null,
+          action: "Candidate accepted offer",
+          entityType: "candidate",
+          entityId: candidate.id,
+          details: { candidateName: candidate.name, jobTitle: job?.title },
+          timestamp: new Date(),
+        });
+
+        res.json({
+          success: true,
+          message: "Offer accepted successfully. Onboarding email has been sent.",
+        });
+      } else {
+        // Decline offer
+        await storage.updateOffer(offer.id, {
+          status: "declined",
+        });
+
+        await storage.updateCandidate(offer.candidateId, {
+          status: "200_rejected",
+          finalDecisionStatus: "rejected",
+        });
+
+        // Log activity
+        await storage.createActivityLog({
+          userId: offer.approvedById ?? null,
+          action: "Candidate declined offer",
+          entityType: "candidate",
+          entityId: candidate.id,
+          details: { candidateName: candidate.name, jobTitle: job?.title },
+          timestamp: new Date(),
+        });
+
+        res.json({
+          success: true,
+          message: "Offer declined successfully.",
+        });
+      }
     } catch (error) {
       handleApiError(error, res);
     }

@@ -72,9 +72,25 @@ export function setupAuth(app: Express) {
 
   app.post("/api/register", async (req, res, next) => {
     try {
-      const existingUser = await storage.getUserByUsername(req.body.username);
-      if (existingUser) {
+      // Validate required fields
+      if (!req.body.username || !req.body.password || !req.body.email || !req.body.fullName) {
+        return res.status(400).json({ 
+          message: "Missing required fields: username, password, email, and fullName are required" 
+        });
+      }
+
+      // Check if username already exists
+      const existingUserByUsername = await storage.getUserByUsername(req.body.username);
+      if (existingUserByUsername) {
         return res.status(400).json({ message: "Username already exists" });
+      }
+
+      // Check if email already exists (by trying to get all users and checking email)
+      // Note: This is a simple check. For better performance, add getUserByEmail method to storage
+      const allUsers = await storage.getAllUsers();
+      const existingUserByEmail = allUsers.find(u => u.email === req.body.email);
+      if (existingUserByEmail) {
+        return res.status(400).json({ message: "Email already exists" });
       }
 
       // Add default role if not specified
@@ -94,7 +110,16 @@ export function setupAuth(app: Express) {
         if (err) return next(err);
         res.status(201).json(userWithoutPassword);
       });
-    } catch (error) {
+    } catch (error: any) {
+      // Handle database constraint violations (unique constraints)
+      if (error.code === '23505') { // PostgreSQL unique violation
+        if (error.constraint?.includes('username')) {
+          return res.status(400).json({ message: "Username already exists" });
+        }
+        if (error.constraint?.includes('email')) {
+          return res.status(400).json({ message: "Email already exists" });
+        }
+      }
       next(error);
     }
   });

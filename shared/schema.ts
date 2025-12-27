@@ -19,6 +19,10 @@ export const users = pgTable("users", {
   fullName: text("full_name").notNull(),
   email: text("email").notNull().unique(),
   role: text("role").notNull().default("hiringManager"),
+  calendarLink: text("calendar_link"), // Optional: User's personal calendar scheduling link
+  calendarProvider: text("calendar_provider"), // Optional: "calendly", "cal.com", "google", "custom"
+  // Email templates (stored as JSONB for flexibility)
+  emailTemplates: jsonb("email_templates"), // { interview: {subject, body}, offer: {subject, body}, ... }
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -46,6 +50,7 @@ export const jobs = pgTable("jobs", {
   expressReview: boolean("express_review"),
   submitterId: integer("submitter_id").references(() => users.id),
   postedDate: timestamp("posted_date"),
+  formTemplateId: integer("form_template_id").references(() => formTemplates.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   candidateCount: integer("candidate_count"), // Virtual field for memory storage
@@ -84,6 +89,45 @@ export const jobPlatforms = pgTable("job_platforms", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Platform Integrations (API Credentials & Connections)
+export const platformIntegrations = pgTable("platform_integrations", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }), // For user-scoped integrations (CRM/ATS). NULL for system-wide (job posting platforms)
+  platformId: text("platform_id").notNull(), // "linkedin", "onlinejobs", "ghl", "hubspot", etc.
+  platformName: text("platform_name").notNull(), // Display name: "LinkedIn", "onlinejobs.ph", "GoHighLevel", etc.
+  platformType: text("platform_type").notNull().default("builtin"), // "builtin", "custom", "crm", "ats"
+  status: text("status").notNull().default("disconnected"), // "connected", "disconnected", "error"
+  // Credentials stored as JSON (encrypted in production)
+  credentials: jsonb("credentials"), // { apiKey, apiSecret, accessToken, refreshToken, locationId, etc. }
+  // Custom platform settings
+  apiEndpoint: text("api_endpoint"), // For custom platforms
+  apiMethod: text("api_method").default("POST"), // POST, PUT, etc.
+  // OAuth fields
+  oauthToken: text("oauth_token"),
+  oauthRefreshToken: text("oauth_refresh_token"),
+  oauthExpiresAt: timestamp("oauth_expires_at"),
+  // Sync direction for CRM/ATS integrations
+  syncDirection: text("sync_direction").default("one-way"), // "one-way" (HireOS → CRM) or "two-way" (bidirectional)
+  // Error tracking
+  lastError: text("last_error"),
+  lastErrorAt: timestamp("last_error_at"),
+  // Metadata
+  isEnabled: boolean("is_enabled").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Application Form Templates
+export const formTemplates = pgTable("form_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(), // "Default Application Form", "Developer Application Form", etc.
+  description: text("description"),
+  fields: jsonb("fields").notNull(), // Array of field definitions
+  isDefault: boolean("is_default").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Candidates Table
 export const candidates = pgTable("candidates", {
   id: serial("id").primaryKey(),
@@ -112,6 +156,7 @@ export const candidates = pgTable("candidates", {
   experienceYears: integer("experience_years"),
   expectedSalary: text("expected_salary"),
   notes: text("notes"),
+  applicationData: jsonb("application_data"), // Stores custom form field answers
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   job: jsonb("job"), // Virtual field for memory storage - job relation
@@ -174,6 +219,7 @@ export const offers = pgTable("offers", {
   status: text("status").notNull().default("draft"), // draft, sent, accepted, declined, expired
   sentDate: timestamp("sent_date"),
   contractUrl: text("contract_url"),
+  acceptanceToken: text("acceptance_token").unique(), // Unique token for public offer acceptance
   approvedById: integer("approved_by_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -235,6 +281,11 @@ export type Job = typeof jobs.$inferSelect;
 export type InsertJob = z.infer<typeof insertJobSchema>;
 
 export type JobPlatform = typeof jobPlatforms.$inferSelect;
+export type PlatformIntegration = typeof platformIntegrations.$inferSelect;
+export type InsertPlatformIntegration = typeof platformIntegrations.$inferInsert;
+
+export type FormTemplate = typeof formTemplates.$inferSelect;
+export type InsertFormTemplate = typeof formTemplates.$inferInsert;
 
 export type Candidate = typeof candidates.$inferSelect;
 export type InsertCandidate = z.infer<typeof insertCandidateSchema>;

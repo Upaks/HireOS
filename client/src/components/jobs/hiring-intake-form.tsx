@@ -95,7 +95,7 @@ export default function HiringIntakeForm({ open, onOpenChange }: HiringIntakeFor
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>New Hiring Request</DialogTitle>
             <DialogDescription>
@@ -103,7 +103,7 @@ export default function HiringIntakeForm({ open, onOpenChange }: HiringIntakeFor
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-6 mt-4">
+          <div className="space-y-6 mt-4 overflow-y-auto flex-1 pr-2">
             <div>
               <Label htmlFor="job-title">Job Title</Label>
               <Input

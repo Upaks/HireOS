@@ -35,7 +35,18 @@ import {
   CalendarIcon,
 } from "lucide-react";
 import StarRating from "../ui/star-rating";
-import { getStatusesForFilter } from "@/lib/candidate-status";
+import { getStatusesForFilter, LEGACY_STATUS_MAPPING } from "@/lib/candidate-status";
+
+// Helper function to normalize candidate status (legacy -> new format)
+function normalizeCandidateStatus(status: string | null | undefined): string {
+  if (!status) return "00_application_submitted";
+  // Check if it's a legacy status and map it
+  if (LEGACY_STATUS_MAPPING[status]) {
+    return LEGACY_STATUS_MAPPING[status];
+  }
+  // If it's already in the new format, return as is
+  return status;
+}
 import { getFinalDecisionDisplayLabel } from "@/lib/final-decision-utils";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
@@ -232,7 +243,8 @@ export default function CandidateDetailDialog({
 
       // Notes and status
       setNotes(candidate.notes || "");
-      setCandidateStatus(candidate.status || "new");
+      // Normalize status to ensure it matches dropdown values
+      setCandidateStatus(normalizeCandidateStatus(candidate.status));
 
       // Assessment data
       setHiPeopleScore(candidate.hiPeopleScore);
@@ -274,37 +286,25 @@ export default function CandidateDetailDialog({
         description: "The candidate information has been updated successfully.",
       });
 
-      // Sync candidate to GHL if they have a GHL contact ID
-      if (updatedCandidate?.ghlContactId) {
-        setIsGHLSyncing(true);
-        try {
-          const syncResponse = await apiRequest(
-            "POST",
-            `/api/ghl-sync/update-candidate/${candidate.id}`,
-            {},
-          );
+      // Note: CRM sync (Airtable, GHL) is now handled automatically by the backend
+      // when the candidate is updated. No need for separate sync calls here.
 
-          if (syncResponse.ok) {
-            const syncResult = await syncResponse.json();
-            toast({
-              title: "GHL sync completed",
-              description: `Candidate details synchronized to GoHighLevel successfully.`,
-            });
-          }
-        } catch (syncError) {
-          // Don't fail the main update if GHL sync fails
-          console.log("GHL sync failed but candidate was updated:", syncError);
-          toast({
-            title: "Candidate updated",
-            description:
-              "Candidate updated successfully. GHL sync will be attempted later.",
-          });
-        } finally {
-          setIsGHLSyncing(false);
-        }
-      }
-
+      // Invalidate all candidate-related queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
+      if (candidate?.jobId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/candidates", { jobId: candidate.jobId }] });
+      }
+      
+      // Update the local candidate object if it exists
+      if (updatedCandidate) {
+        queryClient.setQueryData(["/api/candidates"], (oldData: any) => {
+          if (!oldData || !Array.isArray(oldData)) return oldData;
+          return oldData.map((c: any) => 
+            c.id === updatedCandidate.id ? updatedCandidate : c
+          );
+        });
+      }
+      
       onClose();
     },
     onError: (error: Error) => {
@@ -380,7 +380,7 @@ export default function CandidateDetailDialog({
         newStatus: "45_1st_interview_sent",
         successTitle: "Interview Invited",
         successDescription: (name) =>
-          `${name} has been invited to an interview.`,
+          `${name} has been invited to an interview and an email has been sent.`,
       },
       offer: {
         workflowAction: "offer",
@@ -398,6 +398,63 @@ export default function CandidateDetailDialog({
     setConfirmationModal((prev) => ({ ...prev, isLoading: true }));
 
     try {
+      // Special handling for interview action - call invite-to-interview endpoint
+      if (action === "interview") {
+        try {
+          const inviteResponse = await apiRequest(
+            "POST",
+            `/api/candidates/${candidate.id}/invite-to-interview`,
+            {},
+          );
+
+          if (!inviteResponse.ok) {
+            const errorData = await inviteResponse.json();
+            // Check if this is the email validation error
+            if (errorData.errorType === "non_existent_email") {
+              throw new Error("Candidate email does not exist. Cannot send interview invitation.");
+            }
+            throw new Error(errorData.message || "Failed to send interview invitation");
+          }
+
+          const updatedCandidate = await inviteResponse.json();
+          
+          // Update local state
+          setCandidateStatus(selected.newStatus);
+          
+          toast({
+            title: selected.successTitle,
+            description: selected.successDescription(candidate.name),
+          });
+
+          queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
+          if (candidate.jobId) {
+            queryClient.invalidateQueries({ queryKey: ["/api/candidates", { jobId: candidate.jobId }] });
+          }
+          closeConfirmationModal();
+          onClose();
+          return; // Exit early since invite-to-interview already updates status
+        } catch (inviteError: any) {
+          // Check if this is the missing calendar link error
+          if (inviteError.message?.includes("Calendar link not configured") || 
+              (inviteError as any)?.errorType === "missing_calendar_link") {
+            toast({
+              title: "Calendar Link Required",
+              description: "Please set your calendar scheduling link in Settings > User Management before sending interview invitations.",
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Failed to send interview invitation",
+              description: inviteError.message || "An error occurred while sending the interview invitation.",
+              variant: "destructive",
+            });
+          }
+          setConfirmationModal((prev) => ({ ...prev, isLoading: false }));
+          return;
+        }
+      }
+
+      // For non-interview actions, proceed with normal workflow
       // If there is a mapped GHL workflow, call the automation API
       if (selected.workflowAction && candidate.ghlContactId) {
         const response = await apiRequest(
@@ -419,7 +476,24 @@ export default function CandidateDetailDialog({
         await response.json();
       }
 
-      // Update local state regardless of workflow
+      // Update candidate status via PATCH endpoint for non-interview actions
+      const updateResponse = await apiRequest(
+        "PATCH",
+        `/api/candidates/${candidate.id}`,
+        {
+          status: normalizeCandidateStatus(selected.newStatus),
+          ...(selected.finalDecisionStatus && {
+            finalDecisionStatus: selected.finalDecisionStatus,
+          }),
+        },
+      );
+
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(errorData.message || "Failed to update candidate status");
+      }
+
+      // Update local state
       setCandidateStatus(selected.newStatus);
       if (selected.finalDecisionStatus) {
         setFinalDecisionStatus(selected.finalDecisionStatus as any);
@@ -431,6 +505,9 @@ export default function CandidateDetailDialog({
       });
 
       queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
+      if (candidate.jobId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/candidates", { jobId: candidate.jobId }] });
+      }
       closeConfirmationModal();
       onClose();
     } catch (error: any) {
@@ -553,7 +630,7 @@ export default function CandidateDetailDialog({
           }
         : {}),
       // Assessment and evaluation data
-      status: updatedStatus, // Use synchronized value
+      status: normalizeCandidateStatus(updatedStatus), // Normalize status before sending
       notes,
       hiPeopleScore,
       hiPeoplePercentile,
@@ -586,8 +663,14 @@ export default function CandidateDetailDialog({
 
   // Function to get resume URL for the candidate
   const getResumeUrl = () => {
+    // Use the stored resumeUrl if it exists (from application form uploads)
+    if (candidate?.resumeUrl) {
+      return candidate.resumeUrl;
+    }
+    // Fallback to constructed URL for legacy candidates
     if (!candidate?.id) return null;
-    return `https://xrzblucvpnyknupragco.supabase.co/storage/v1/object/public/resumes/candidate-${candidate.id}.pdf`;
+    // Use the correct Supabase project URL (matches your DATABASE_URL project)
+    return `https://ubpfvxmzjdspzykfnjzs.supabase.co/storage/v1/object/public/resumes/candidate-${candidate.id}.pdf`;
   };
 
   if (!candidate) return null;
