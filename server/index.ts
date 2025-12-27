@@ -10,7 +10,8 @@ if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+// Import log and serveStatic from utils (no vite dependency)
+import { serveStatic, log } from "./utils";
 import axios from 'axios';
 import { backgroundSyncService } from "./background-sync";
 
@@ -91,6 +92,9 @@ const initApp = async () => {
   // On Vercel, static files are served automatically, so we skip this
   if (process.env.VERCEL !== "1") {
     if (app.get("env") === "development") {
+      // Dynamically import setupVite only when needed (not on Vercel)
+      // This prevents vite/rollup from being bundled
+      const { setupVite } = await import("./vite");
       await setupVite(app, server);
     } else {
       serveStatic(app);
