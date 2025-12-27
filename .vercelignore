@@ -10,5 +10,5 @@ dist/public
 .idea
 *.mjs
 
-# API function source file - we use the built api/index.js instead
-api/index.ts
+# Note: api/index.ts is needed for the build script to create api/index.js
+# Vercel will use api/index.js (the built file) if it exists
