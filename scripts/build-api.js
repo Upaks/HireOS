@@ -19,6 +19,10 @@ await build({
   banner: {
     js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
   },
+  external: [
+    // Keep these external as they're provided by Vercel runtime
+    '@vercel/node',
+  ],
   logLevel: 'info',
 }).catch((error) => {
   console.error('❌ Build failed:', error);
