@@ -9,6 +9,8 @@ let handler: any = null;
 let initPromise: Promise<void> | null = null;
 
 export default async function (req: VercelRequest, res: VercelResponse) {
+  console.log(`[API] ${req.method} ${req.url}`);
+  
   // Initialize app and create handler on first request
   // Use a promise to ensure only one initialization happens at a time
   if (!handler) {
@@ -48,12 +50,15 @@ export default async function (req: VercelRequest, res: VercelResponse) {
   }
   
   try {
-    return await handler(req, res);
+    const result = await handler(req, res);
+    return result;
   } catch (error) {
     console.error('Error in handler:', error);
-    res.status(500).json({ 
-      error: 'Internal server error',
-      message: error instanceof Error ? error.message : String(error)
-    });
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 }

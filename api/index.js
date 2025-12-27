@@ -6974,6 +6974,7 @@ var server_default = app;
 var handler = null;
 var initPromise = null;
 async function api_index_default(req, res) {
+  console.log(`[API] ${req.method} ${req.url}`);
   if (!handler) {
     if (!initPromise) {
       initPromise = (async () => {
@@ -7009,13 +7010,16 @@ async function api_index_default(req, res) {
     return;
   }
   try {
-    return await handler(req, res);
+    const result = await handler(req, res);
+    return result;
   } catch (error) {
     console.error("Error in handler:", error);
-    res.status(500).json({
-      error: "Internal server error",
-      message: error instanceof Error ? error.message : String(error)
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 }
 export {
