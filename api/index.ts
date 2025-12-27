@@ -1,4 +1,5 @@
 // Vercel serverless function handler for Express app
+// This file is bundled to api/index.js during build
 // @ts-ignore - Vercel provides @vercel/node at runtime
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 // @ts-ignore - Will be installed
