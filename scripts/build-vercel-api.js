@@ -2,17 +2,20 @@ import { build } from 'esbuild';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
+import { unlink } from 'fs/promises';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = join(__dirname, '..');
+const sourceFile = join(rootDir, 'api', 'index.ts');
 const outputFile = join(rootDir, 'api', 'index.mjs');
 
-console.log(' Bundling API function for Vercel...');
-console.log(`   Entry: ${join(rootDir, 'api/index.ts')}`);
+console.log('📦 Bundling API function for Vercel...');
+console.log(`   Entry: ${sourceFile}`);
 console.log(`   Output: ${outputFile}`);
 
 await build({
-  entryPoints: [join(rootDir, 'api/index.ts')],
+  entryPoints: [sourceFile],
   bundle: true,
   platform: 'node',
   format: 'esm',
@@ -35,8 +38,16 @@ await build({
   minify: false,
   treeShaking: true,
 }).catch((error) => {
-  console.error(' Build failed:', error);
+  console.error('❌ Build failed:', error);
   process.exit(1);
 });
 
-console.log(` API function bundled successfully to ${outputFile}`);
+// Delete the TypeScript source file to avoid conflicts
+try {
+  await unlink(sourceFile);
+  console.log('   Removed source TypeScript file to avoid conflicts');
+} catch (error) {
+  // Ignore if file doesn't exist
+}
+
+console.log(`✅ API function bundled successfully to ${outputFile}`);
