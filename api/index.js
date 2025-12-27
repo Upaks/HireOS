@@ -6985,7 +6985,7 @@ async function api_index_default(req, res) {
           handler = serverless(server_default, {
             binary: ["image/*", "application/pdf"]
           });
-          console.log("Serverless handler created");
+          console.log("Serverless handler created, type:", typeof handler);
         } catch (error) {
           console.error("Failed to initialize app:", error);
           console.error("Error stack:", error instanceof Error ? error.stack : String(error));
@@ -6995,7 +6995,9 @@ async function api_index_default(req, res) {
       })();
     }
     try {
+      console.log("Waiting for initialization...");
       await initPromise;
+      console.log("Initialization complete, handler exists:", !!handler);
     } catch (error) {
       console.error("Error during initialization:", error);
       res.status(500).json({
@@ -7006,14 +7008,18 @@ async function api_index_default(req, res) {
     }
   }
   if (!handler) {
+    console.error(`[API] Handler is null for ${req.method} ${req.url}`);
     res.status(500).json({ error: "Handler not initialized" });
     return;
   }
+  console.log(`[API] Handler exists, calling for ${req.method} ${req.url}`);
   try {
     const result = await handler(req, res);
+    console.log(`[API] Handler returned for ${req.method} ${req.url}, headersSent: ${res.headersSent}, statusCode: ${res.statusCode}`);
     return result;
   } catch (error) {
-    console.error("Error in handler:", error);
+    console.error(`[API] Error in handler for ${req.method} ${req.url}:`, error);
+    console.error("Error stack:", error instanceof Error ? error.stack : String(error));
     if (!res.headersSent) {
       res.status(500).json({
         error: "Internal server error",
