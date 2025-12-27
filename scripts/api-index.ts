@@ -6,16 +6,54 @@ import serverless from 'serverless-http';
 import app, { initApp } from '../server/index';
 
 let handler: any = null;
+let initPromise: Promise<void> | null = null;
 
 export default async function (req: VercelRequest, res: VercelResponse) {
   // Initialize app and create handler on first request
+  // Use a promise to ensure only one initialization happens at a time
   if (!handler) {
-    await initApp();
-    // Configure serverless-http to preserve the request path
-    handler = serverless(app, {
-      binary: ['image/*', 'application/pdf'],
-    });
+    if (!initPromise) {
+      initPromise = (async () => {
+        try {
+          console.log('Initializing app...');
+          await initApp();
+          console.log('App initialized, creating serverless handler...');
+          handler = serverless(app, {
+            binary: ['image/*', 'application/pdf'],
+          });
+          console.log('Serverless handler created');
+        } catch (error) {
+          console.error('Failed to initialize app:', error);
+          console.error('Error stack:', error instanceof Error ? error.stack : String(error));
+          initPromise = null; // Reset on error so we can retry
+          throw error;
+        }
+      })();
+    }
+    try {
+      await initPromise;
+    } catch (error) {
+      console.error('Error during initialization:', error);
+      res.status(500).json({ 
+        error: 'Failed to initialize server',
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return;
+    }
   }
   
-  return handler(req, res);
+  if (!handler) {
+    res.status(500).json({ error: 'Handler not initialized' });
+    return;
+  }
+  
+  try {
+    return await handler(req, res);
+  } catch (error) {
+    console.error('Error in handler:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
 }

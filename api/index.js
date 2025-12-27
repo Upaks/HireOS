@@ -6948,7 +6948,7 @@ var initApp = async () => {
   });
   if (process.env.VERCEL !== "1") {
     if (app.get("env") === "development") {
-      const viteModule = await new Function('return import("./vite")')();
+      const viteModule = await eval('import("./vite")');
       await viteModule.setupVite(app, server);
     } else {
       serveStatic(app);
@@ -6972,14 +6972,51 @@ var server_default = app;
 
 // scripts/api-index.ts
 var handler = null;
+var initPromise = null;
 async function api_index_default(req, res) {
   if (!handler) {
-    await initApp();
-    handler = serverless(server_default, {
-      binary: ["image/*", "application/pdf"]
+    if (!initPromise) {
+      initPromise = (async () => {
+        try {
+          console.log("Initializing app...");
+          await initApp();
+          console.log("App initialized, creating serverless handler...");
+          handler = serverless(server_default, {
+            binary: ["image/*", "application/pdf"]
+          });
+          console.log("Serverless handler created");
+        } catch (error) {
+          console.error("Failed to initialize app:", error);
+          console.error("Error stack:", error instanceof Error ? error.stack : String(error));
+          initPromise = null;
+          throw error;
+        }
+      })();
+    }
+    try {
+      await initPromise;
+    } catch (error) {
+      console.error("Error during initialization:", error);
+      res.status(500).json({
+        error: "Failed to initialize server",
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return;
+    }
+  }
+  if (!handler) {
+    res.status(500).json({ error: "Handler not initialized" });
+    return;
+  }
+  try {
+    return await handler(req, res);
+  } catch (error) {
+    console.error("Error in handler:", error);
+    res.status(500).json({
+      error: "Internal server error",
+      message: error instanceof Error ? error.message : String(error)
     });
   }
-  return handler(req, res);
 }
 export {
   api_index_default as default

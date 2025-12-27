@@ -95,8 +95,9 @@ const initApp = async () => {
   if (process.env.VERCEL !== "1") {
     if (app.get("env") === "development") {
       // Only import setupVite in non-Vercel development environment
-      // Using Function constructor to prevent static analysis by esbuild
-      const viteModule = await new Function('return import("./vite")')();
+      // Using eval to prevent static analysis by esbuild
+      // eslint-disable-next-line no-eval
+      const viteModule = await eval('import("./vite")');
       await viteModule.setupVite(app, server);
     } else {
       serveStatic(app);
