@@ -1,6 +1,7 @@
 import { build } from 'esbuild';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { unlink } from 'fs/promises';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -35,4 +36,17 @@ await build({
 });
 
 console.log('✅ Bundled to api/index.js');
+
+// Delete the TypeScript source file to avoid conflicts with Vercel
+// Vercel doesn't allow both .ts and .js files with the same base path
+const tsFile = join(rootDir, 'api/index.ts');
+try {
+  await unlink(tsFile);
+  console.log('✅ Removed api/index.ts to avoid Vercel conflicts');
+} catch (error) {
+  // Ignore if file doesn't exist (already deleted or not present)
+  if (error.code !== 'ENOENT') {
+    console.warn('⚠️  Warning: Could not delete api/index.ts:', error.message);
+  }
+}
 
