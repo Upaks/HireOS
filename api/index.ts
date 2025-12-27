@@ -21,18 +21,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       initialized = true;
     }
     
-    // Vercel rewrites /api/* to /api/index.mjs, but Express needs the full path
-    // Preserve the original path from the request
+    // Vercel rewrites /api/* to /api/index.mjs
+    // The original request URL should be in req.url
     const expressReq = req as any;
-    if (expressReq.url && !expressReq.url.startsWith('/api')) {
-      expressReq.url = '/api' + expressReq.url;
-    }
-    if (expressReq.originalUrl && !expressReq.originalUrl.startsWith('/api')) {
-      expressReq.originalUrl = '/api' + expressReq.originalUrl;
-    }
-    if (expressReq.path && !expressReq.path.startsWith('/api')) {
-      expressReq.path = '/api' + expressReq.path;
-    }
+    
+    // Log the incoming request for debugging
+    console.log('[API Handler] Incoming request:', {
+      method: req.method,
+      url: expressReq.url,
+      path: expressReq.path,
+      originalUrl: expressReq.originalUrl,
+      query: req.query
+    });
+    
+    // Vercel should preserve the original URL, but ensure it has /api prefix
+    const originalPath = expressReq.url || expressReq.path || req.url || '/';
+    const apiPath = originalPath.startsWith('/api') ? originalPath : '/api' + (originalPath.startsWith('/') ? originalPath : '/' + originalPath);
+    
+    // Set Express request properties
+    expressReq.url = apiPath;
+    expressReq.originalUrl = apiPath;
+    expressReq.path = apiPath.split('?')[0];
+    expressReq.baseUrl = '';
+    
+    console.log('[API Handler] Processed path:', apiPath);
     
     // Handle request with Express app
     return new Promise<void>((resolve) => {
