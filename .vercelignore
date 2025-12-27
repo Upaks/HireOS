@@ -10,5 +10,6 @@ dist/public
 .idea
 *.mjs
 
-# api/index.ts is used by the build script and then deleted to avoid conflicts
-# Only api/index.js (the built file) will remain for Vercel
+# Note: api/index.ts source is now in scripts/api-index.ts to avoid Vercel conflicts
+# The build script creates api/index.js from scripts/api-index.ts
+# Vercel only sees api/index.js (no conflict!)

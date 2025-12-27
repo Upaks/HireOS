@@ -1885,7 +1885,7 @@ var init_google_sheets_integration = __esm({
   }
 });
 
-// api/index.ts
+// scripts/api-index.ts
 import serverless from "serverless-http";
 
 // server/index.ts
@@ -7045,9 +7045,9 @@ if (process.env.VERCEL !== "1") {
 }
 var server_default = app;
 
-// api/index.ts
+// scripts/api-index.ts
 var handler = null;
-async function index_default(req, res) {
+async function api_index_default(req, res) {
   if (!handler) {
     await initApp();
     handler = serverless(server_default, {
@@ -7057,5 +7057,5 @@ async function index_default(req, res) {
   return handler(req, res);
 }
 export {
-  index_default as default
+  api_index_default as default
 };
