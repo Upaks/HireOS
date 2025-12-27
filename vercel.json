@@ -4,9 +4,9 @@
   "outputDirectory": "dist/public",
   "functions": {
     "api/index.ts": {
-      "includeFiles": "server/**/*.ts,shared/**/*.ts",
       "memory": 1024,
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "server/**"
     }
   },
   "rewrites": [
@@ -20,4 +20,3 @@
     }
   ]
 }
-
