@@ -1,11 +1,7 @@
-# Don't ignore server and shared files - Vercel needs them for API functions
-!server/
-!server/**
-!shared/
-!shared/**
-!api/
+# Vercel needs server and shared files for API functions
+# Don't ignore them!
 
-# Ignore these
+# Only ignore these:
 node_modules
 .env*
 *.log
@@ -13,3 +9,4 @@ dist/public
 .vscode
 .idea
 *.mjs
+api/index.js

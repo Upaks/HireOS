@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = join(__dirname, '..');
 
-console.log('📦 Bundling API function...');
+console.log('📦 Bundling API function with all server code...');
 
 await build({
   entryPoints: [join(rootDir, 'api/index.ts')],
@@ -15,7 +15,7 @@ await build({
   format: 'esm',
   target: 'node18',
   outfile: join(rootDir, 'api/index.js'),
-  packages: 'external', // Don't bundle node_modules
+  packages: 'external',
   banner: {
     js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
   },
@@ -25,5 +25,5 @@ await build({
   process.exit(1);
 });
 
-console.log('✅ API function bundled to api/index.js');
+console.log('✅ Bundled to api/index.js');
 

@@ -1,26 +1,20 @@
-// Vercel serverless function handler for Express app
-// This file is bundled to api/index.js during build
-// @ts-ignore - Vercel provides @vercel/node at runtime
+// Vercel serverless function - uses serverless-http to wrap Express app
+// @ts-ignore
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-// @ts-ignore - Will be installed
+// @ts-ignore  
 import serverless from 'serverless-http';
+
+// Import server code - Vercel will bundle this automatically
 import app, { initApp } from '../server/index';
 
-// Initialize app once
-let appInitialized = false;
-let serverlessHandler: any = null;
+let handler: any = null;
 
-async function getHandler() {
-  if (!appInitialized) {
+export default async function (req: VercelRequest, res: VercelResponse) {
+  // Initialize app and create handler on first request
+  if (!handler) {
     await initApp();
-    appInitialized = true;
-    // Create serverless handler after app is initialized
-    serverlessHandler = serverless(app);
+    handler = serverless(app);
   }
-  return serverlessHandler;
-}
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const handler = await getHandler();
+  
   return handler(req, res);
 }
