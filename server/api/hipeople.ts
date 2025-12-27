@@ -199,7 +199,7 @@ export function setupHiPeopleRoutes(app: Express) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
-      const job = await storage.getJob(candidate.jobId);
+      const job = await storage.getJob(candidate.jobId!);
       if (!job || !job.hiPeopleLink) {
         return res.status(400).json({ message: "No HiPeople link found for this candidate's job" });
       }

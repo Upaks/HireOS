@@ -77,7 +77,7 @@ export async function syncGoogleSheetsContacts(
     }
 
     // Get headers from first contact (all contacts have same headers)
-    const headers = sheetsContacts[0].headers || [];
+    const headers = (sheetsContacts[0] as any).headers || [];
 
     // Fetch all candidates
     const candidates = await storage.getCandidates({});
@@ -221,7 +221,7 @@ export async function syncGoogleSheetsContacts(
               email: contactEmail,
               phone: sheetsPhone || null,
               location: sheetsLocation || null,
-              expectedSalary: sheetsSalary ? parseFloat(sheetsSalary) : null,
+              expectedSalary: sheetsSalary ? String(parseFloat(sheetsSalary)) : null,
               experienceYears: sheetsExp ? (typeof sheetsExp === 'number' ? sheetsExp : parseInt(sheetsExp)) : null,
               skills: skillsArray.length > 0 ? skillsArray : null,
               status: 'new',
@@ -266,7 +266,7 @@ export async function syncGoogleSheetsContacts(
           (sheetsLocationValue !== (matchingCandidate.location || null)) ||
           (sheetsSalaryValue !== (matchingCandidate.expectedSalary?.toString() || null)) ||
           (sheetsExpValue !== (matchingCandidate.experienceYears?.toString() || null)) ||
-          (sheetsSkillsValue !== (matchingCandidate.skills?.join(', ') || null));
+          (sheetsSkillsValue !== (Array.isArray(matchingCandidate.skills) ? matchingCandidate.skills.join(', ') : null));
 
         if (!hasChanges) {
           result.skipped++;
@@ -305,7 +305,7 @@ export async function syncGoogleSheetsContacts(
             name: sheetsNameValue || matchingCandidate.name,
             phone: sheetsPhoneValue || matchingCandidate.phone,
             location: sheetsLocationValue || matchingCandidate.location,
-            expectedSalary: sheetsSalaryValue ? parseFloat(sheetsSalaryValue) : matchingCandidate.expectedSalary,
+            expectedSalary: sheetsSalaryValue ? String(parseFloat(sheetsSalaryValue)) : matchingCandidate.expectedSalary,
             experienceYears: sheetsExpValue ? parseInt(sheetsExpValue) : matchingCandidate.experienceYears,
             skills: skillsArray && skillsArray.length > 0 ? skillsArray : matchingCandidate.skills,
             updatedAt: new Date(), // Update timestamp for conflict resolution
@@ -393,7 +393,7 @@ export async function createGoogleSheetsCandidatesWithJobs(
     const contactMap = new Map(sheetsContacts.map(c => [c.id, c]));
 
     // Get headers from first contact
-    const headers = sheetsContacts.length > 0 ? sheetsContacts[0].headers || [] : [];
+    const headers = sheetsContacts.length > 0 ? (sheetsContacts[0] as any).headers || [] : [];
 
     // Get field mappings
     const credentials = await getGoogleSheetsCredentials(userId);
@@ -468,7 +468,7 @@ export async function createGoogleSheetsCandidatesWithJobs(
           email: contactEmail,
           phone: sheetsPhone || null,
           location: sheetsLocation || null,
-          expectedSalary: sheetsSalary ? parseFloat(sheetsSalary) : null,
+          expectedSalary: sheetsSalary ? String(parseFloat(sheetsSalary)) : null,
           experienceYears: sheetsExp ? (typeof sheetsExp === 'number' ? sheetsExp : parseInt(sheetsExp)) : null,
           skills: skillsArray.length > 0 ? skillsArray : null,
           status: 'new',
