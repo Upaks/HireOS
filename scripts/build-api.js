@@ -15,14 +15,19 @@ await build({
   format: 'esm',
   target: 'node18',
   outfile: join(rootDir, 'api/index.js'),
+  // Bundle everything except node_modules packages
+  // Local imports (like ../server/index) will be bundled
   packages: 'external',
   banner: {
     js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
   },
   external: [
-    // Keep these external as they're provided by Vercel runtime
+    // Keep these external as they're provided by Vercel runtime or are node_modules
     '@vercel/node',
   ],
+  // Ensure all local code is bundled (not just node_modules are external)
+  // By using packages: 'external', only packages in node_modules are external
+  // Local imports should be bundled automatically
   logLevel: 'info',
 }).catch((error) => {
   console.error('❌ Build failed:', error);

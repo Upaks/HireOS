@@ -9,4 +9,6 @@ dist/public
 .vscode
 .idea
 *.mjs
-api/index.js
+
+# API function source file - we use the built api/index.js instead
+api/index.ts
