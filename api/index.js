@@ -7015,17 +7015,17 @@ async function api_index_default(req, res) {
   console.log(`[API] Handler exists, calling for ${req.method} ${req.url}`);
   try {
     const result = await handler(req, res);
-    console.log(`[API] Handler returned for ${req.method} ${req.url}, headersSent: ${res.headersSent}, statusCode: ${res.statusCode}`);
+    console.log(`[API] Handler completed for ${req.method} ${req.url}, headersSent: ${res.headersSent}`);
     return result;
   } catch (error) {
     console.error(`[API] Error in handler for ${req.method} ${req.url}:`, error);
-    console.error("Error stack:", error instanceof Error ? error.stack : String(error));
     if (!res.headersSent) {
       res.status(500).json({
         error: "Internal server error",
         message: error instanceof Error ? error.message : String(error)
       });
     }
+    throw error;
   }
 }
 export {
