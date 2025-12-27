@@ -1885,9 +1885,6 @@ var init_google_sheets_integration = __esm({
   }
 });
 
-// scripts/api-index.ts
-import serverless from "serverless-http";
-
 // server/index.ts
 import dns2 from "dns";
 import "dotenv/config";
@@ -6971,35 +6968,24 @@ if (process.env.VERCEL !== "1") {
 var server_default = app;
 
 // scripts/api-index.ts
-var handler = null;
+var appInitialized2 = false;
 var initPromise = null;
 async function api_index_default(req, res) {
-  console.log(`[API] ${req.method} ${req.url}`);
-  if (!handler) {
+  if (!appInitialized2) {
     if (!initPromise) {
       initPromise = (async () => {
         try {
-          console.log("Initializing app...");
           await initApp();
-          console.log("App initialized, creating serverless handler...");
-          handler = serverless(server_default, {
-            binary: ["image/*", "application/pdf"]
-          });
-          console.log("Serverless handler created, type:", typeof handler);
+          appInitialized2 = true;
         } catch (error) {
           console.error("Failed to initialize app:", error);
-          console.error("Error stack:", error instanceof Error ? error.stack : String(error));
-          initPromise = null;
           throw error;
         }
       })();
     }
     try {
-      console.log("Waiting for initialization...");
       await initPromise;
-      console.log("Initialization complete, handler exists:", !!handler);
     } catch (error) {
-      console.error("Error during initialization:", error);
       res.status(500).json({
         error: "Failed to initialize server",
         message: error instanceof Error ? error.message : String(error)
@@ -7007,26 +6993,15 @@ async function api_index_default(req, res) {
       return;
     }
   }
-  if (!handler) {
-    console.error(`[API] Handler is null for ${req.method} ${req.url}`);
-    res.status(500).json({ error: "Handler not initialized" });
-    return;
-  }
-  console.log(`[API] Handler exists, calling for ${req.method} ${req.url}`);
-  try {
-    const result = await handler(req, res);
-    console.log(`[API] Handler completed for ${req.method} ${req.url}, headersSent: ${res.headersSent}`);
-    return result;
-  } catch (error) {
-    console.error(`[API] Error in handler for ${req.method} ${req.url}:`, error);
-    if (!res.headersSent) {
-      res.status(500).json({
-        error: "Internal server error",
-        message: error instanceof Error ? error.message : String(error)
-      });
-    }
-    throw error;
-  }
+  return new Promise((resolve, reject) => {
+    server_default(req, res, (err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(void 0);
+      }
+    });
+  });
 }
 export {
   api_index_default as default
