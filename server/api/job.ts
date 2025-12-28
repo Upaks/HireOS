@@ -200,40 +200,14 @@ export function setupJobRoutes(app: Express) {
         status: "active",
         postedDate: new Date()
       });
-
-      // Post job to platforms
-      // Get selected platforms from request body, or default to all available
-      const requestedPlatforms = req.body.platforms || ["linkedin", "onlinejobs"];
-      
-      // Map platform IDs to display names
-      const platformMap: Record<string, string> = {
-        "linkedin": "LinkedIn",
-        "onlinejobs": "onlinejobs.ph"
-      };
-      
-      // In production, this would connect to the LinkedIn and onlinejobs.ph APIs
-      // For demonstration, we're creating platform records in the database
-      const platforms: string[] = [];
-      for (const platformId of requestedPlatforms) {
-        const platformName = platformMap[platformId] || platformId;
-        platforms.push(platformName);
-        
-        await storage.createJobPlatform({
-          jobId,
-          platform: platformName,
-          platformJobId: `${platformId}-${Math.random().toString(36).substring(2, 12)}`,
-          postUrl: `https://${platformId === "onlinejobs" ? "onlinejobs.ph" : platformId}.com/jobs/${Math.random().toString(36).substring(2, 10)}`,
-          status: "posted"
-        });
-      }
       
       // Log activity
       await storage.createActivityLog({
         userId: req.user?.id,
-        action: "Approved and posted job",
+        action: "Approved and activated job",
         entityType: "job",
         entityId: job.id,
-        details: { jobTitle: job.title, platforms },
+        details: { jobTitle: job.title },
         timestamp: new Date()
       });
 
@@ -250,10 +224,7 @@ export function setupJobRoutes(app: Express) {
         status: "pending"
       });
 
-      res.json({
-        ...updatedJob,
-        platforms: await storage.getJobPlatforms(jobId)
-      });
+      res.json(updatedJob);
     } catch (error) {
       handleApiError(error, res);
     }

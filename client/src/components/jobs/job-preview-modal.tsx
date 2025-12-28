@@ -8,15 +8,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, CheckCircle, Link2, Copy } from "lucide-react";
 import { Job } from "@/types";
-import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 interface JobPreviewModalProps {
   open: boolean;
@@ -47,37 +44,9 @@ export default function JobPreviewModal({
     setTimeout(() => setApplicationLinkCopied(false), 2000);
   };
   
-  // Fetch available platform integrations
-  const { data: integrations = [] } = useQuery<any[]>({
-    queryKey: ['/api/platform-integrations'],
-  });
-
-  // Build available platforms from integrations
-  const availablePlatforms = [
-    { id: 'linkedin', name: 'LinkedIn', enabled: integrations.some(i => i.platformId === 'linkedin' && i.status === 'connected') },
-    { id: 'onlinejobs', name: 'onlinejobs.ph', enabled: integrations.some(i => i.platformId === 'onlinejobs' && i.status === 'connected') },
-    // Add custom platforms
-    ...integrations
-      .filter(i => i.platformType === 'custom' && i.status === 'connected')
-      .map(i => ({ id: i.platformId, name: i.platformName, enabled: true }))
-  ];
-  
-  // Selected platforms state - default to all enabled platforms
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
-  
-  // Update selected platforms when integrations change
-  useEffect(() => {
-    const enabledPlatforms = availablePlatforms.filter(p => p.enabled).map(p => p.id);
-    if (enabledPlatforms.length > 0 && selectedPlatforms.length === 0) {
-      setSelectedPlatforms(enabledPlatforms);
-    }
-  }, [integrations]);
-
   const approveJobMutation = useMutation({
     mutationFn: async (jobId: number) => {
-      const res = await apiRequest("POST", `/api/jobs/${jobId}/approve`, {
-        platforms: selectedPlatforms
-      });
+      const res = await apiRequest("POST", `/api/jobs/${jobId}/approve`, {});
       return await res.json();
     },
     onSuccess: () => {
@@ -85,15 +54,15 @@ export default function JobPreviewModal({
       queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
       
       toast({
-        title: "Job posting approved",
-        description: "The job has been posted to configured platforms.",
+        title: "Job activated",
+        description: "The job has been activated and is now accepting applications.",
       });
       
       onClose();
     },
     onError: (error: Error) => {
       toast({
-        title: "Failed to approve job posting",
+        title: "Failed to activate job",
         description: error.message,
         variant: "destructive",
       });
@@ -101,14 +70,6 @@ export default function JobPreviewModal({
   });
 
   const handleApproveAndPost = () => {
-    if (selectedPlatforms.length === 0) {
-      toast({
-        title: "No platforms selected",
-        description: "Please select at least one platform to post this job.",
-        variant: "destructive",
-      });
-      return;
-    }
     approveJobMutation.mutate(job.id);
   };
 
@@ -197,45 +158,6 @@ export default function JobPreviewModal({
           </div>
         </div>
 
-        {/* Platform Selection Section */}
-        <div className="mt-4 border-t border-slate-200 pt-4">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Select Platforms to Post</h3>
-          <div className="space-y-3">
-            {availablePlatforms.map((platform) => (
-              <div key={platform.id} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`platform-${platform.id}`}
-                  checked={selectedPlatforms.includes(platform.id)}
-                  onCheckedChange={(checked) => {
-                    if (checked) {
-                      setSelectedPlatforms([...selectedPlatforms, platform.id]);
-                    } else {
-                      setSelectedPlatforms(selectedPlatforms.filter(p => p !== platform.id));
-                    }
-                  }}
-                  disabled={!platform.enabled}
-                />
-                <Label 
-                  htmlFor={`platform-${platform.id}`}
-                  className={`text-sm font-medium cursor-pointer ${
-                    !platform.enabled ? 'text-slate-400' : 'text-slate-700'
-                  }`}
-                >
-                  {platform.name}
-                  {!platform.enabled && (
-                    <span className="ml-2 text-xs text-slate-400">(Not connected)</span>
-                  )}
-                </Label>
-              </div>
-            ))}
-            {selectedPlatforms.length === 0 && (
-              <p className="text-xs text-amber-600 mt-2">
-                ⚠️ Please select at least one platform to post this job.
-              </p>
-            )}
-          </div>
-        </div>
-        
         <DialogFooter className="mt-6">
           <Button variant="outline" onClick={onClose}>
             Edit Description
@@ -247,10 +169,10 @@ export default function JobPreviewModal({
             {approveJobMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Posting...
+                Activating...
               </>
             ) : (
-              "Approve & Post Job"
+              "Activate Job"
             )}
           </Button>
         </DialogFooter>

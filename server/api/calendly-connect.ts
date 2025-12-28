@@ -47,7 +47,16 @@ export function setupCalendlyConnectRoutes(app: Express) {
         const userUri = userInfo.uri;
 
         // Step 2: Generate webhook URL
-        const webhookUrl = `${req.protocol}://${req.get("host")}/api/webhooks/calendar?provider=calendly&userId=${userId}`;
+        const host = req.get("host");
+        if (!host) {
+          console.error("[Calendly Connect] Cannot determine server host");
+          return res.status(500).json({
+            message: "Cannot determine server host. Please ensure your server is properly configured.",
+          });
+        }
+        const webhookUrl = `${req.protocol}://${host}/api/webhooks/calendar?provider=calendly&userId=${userId}`;
+        
+        console.log("[Calendly Connect] Generated webhook URL:", webhookUrl);
 
         // Step 3: Check for existing webhooks (with pagination)
         let webhookId: string | null = null;
@@ -103,16 +112,22 @@ export function setupCalendlyConnectRoutes(app: Express) {
 
         // Step 4: Create or update webhook
         if (!webhookId) {
+          // Calendly API format for user-scoped webhooks
+          // Calendly requires organization even for user-scoped webhooks
+          const webhookPayload = {
+            url: webhookUrl,
+            events: ["invitee.created"],
+            organization: orgUri,
+            user: userUri,
+            scope: "user",
+          };
+          
+          console.log("[Calendly Connect] Creating webhook with payload:", JSON.stringify(webhookPayload, null, 2));
+          
           try {
             const webhookResponse = await axios.post(
               "https://api.calendly.com/webhook_subscriptions",
-              {
-                url: webhookUrl,
-                events: ["invitee.created"],
-                organization: orgUri,
-                user: userUri,
-                scope: "user",
-              },
+              webhookPayload,
               {
                 headers: {
                   Authorization: `Bearer ${token}`,
@@ -226,10 +241,21 @@ export function setupCalendlyConnectRoutes(app: Express) {
                 });
               }
             } else {
-              // Other errors - return failure
+              // Other errors - log full error and return failure
+              const errorDetails = error.response?.data?.details || [];
+              console.error("[Calendly Connect] Webhook creation failed:", {
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+                details: JSON.stringify(errorDetails, null, 2),
+                message: error.message,
+                webhookUrl,
+                payload: webhookPayload,
+              });
               return res.status(500).json({
                 message: "Failed to create webhook. Please try again.",
                 error: error.response?.data || error.message,
+                details: errorDetails,
               });
             }
           }

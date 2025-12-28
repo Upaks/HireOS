@@ -11,7 +11,8 @@ import {
   Settings,
   LogOut,
   RefreshCw,
-  FileEdit
+  FileEdit,
+  Plug
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -79,6 +80,12 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
       icon: <BarChart3 className="h-5 w-5 mr-3" />,
       href: "/analytics",
       roles: [UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
+    },
+    {
+      title: "Integrations",
+      icon: <Plug className="h-5 w-5 mr-3" />,
+      href: "/integrations",
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     }
   ];
   

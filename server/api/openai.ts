@@ -1,26 +1,28 @@
 import axios from "axios";
 
 /**
- * OPENROUTER API INTEGRATION NOTES:
+ * JOB DESCRIPTION GENERATION - HOW IT WORKS:
  * 
- * This module implements job description generation using the OpenRouter API.
- * OpenRouter allows us to choose from a variety of LLM models with different 
- * pricing and capabilities.
+ * This uses OpenRouter AI (a service that gives access to multiple AI models like Google Gemini, OpenAI GPT, etc.)
+ * to automatically write professional job descriptions.
  * 
- * Current configuration:
- * - Model: google/gemini-2.0-flash-001 (cost-effective option with good performance)
- * - Authentication: Uses OPENAI_API_KEY environment variable
- * - API Endpoint: https://openrouter.ai/api/v1/chat/completions
+ * HOW IT WORKS:
+ * 1. When you create a job, the system takes your input (title, skills, department, etc.)
+ * 2. It sends this info to OpenRouter AI with instructions to write a job description
+ * 3. The AI generates a complete, professional job description with all sections
+ * 4. If the AI thinks your job title could be better, it suggests an improved one
  * 
- * For authentication:
+ * WHAT HAPPENS IF NO API KEY IS SET:
+ * - The system will create a basic, simple job description instead
+ * - It won't use AI, just creates: "# [Job Title]\n\nWe are looking for a talented [Job Title] to join our team."
+ * - This is a fallback so the system still works without AI
+ * 
+ * TO ENABLE AI GENERATION:
  * 1. Create an account at https://openrouter.ai/
  * 2. Generate an API key
- * 3. Set the OPENAI_API_KEY environment variable with this value
+ * 3. Set the OPENAI_API_KEY environment variable with your OpenRouter API key
  * 
- * Alternative models to consider:
- * - openai/gpt-4o (higher quality but more expensive)
- * - openai/gpt-3.5-turbo (very cost-effective)
- * - anthropic/claude-2 (good for longer content)
+ * Current AI Model: google/gemini-2.0-flash-001 (fast and cost-effective)
  */
 
 /**

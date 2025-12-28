@@ -21,6 +21,7 @@ import CRMSyncPage from "@/pages/crm-sync";
 import Forms from "@/pages/forms";
 import ApplyPage from "@/pages/apply";
 import AcceptOfferPage from "@/pages/accept-offer";
+import Integrations from "@/pages/integrations";
 import { ThemeProvider } from "next-themes";
 import { UserRoles } from "@shared/schema";
 
@@ -91,6 +92,12 @@ function Router() {
         path="/crm-sync" 
         component={CRMSyncPage}
         roles={[UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]}
+      />
+      
+      {/* Integrations page - accessible to all authenticated users */}
+      <ProtectedRoute 
+        path="/integrations" 
+        component={Integrations}
       />
       
       {/* Public routes - no authentication required */}

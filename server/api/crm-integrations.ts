@@ -260,21 +260,32 @@ export function setupCRMIntegrationRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      // Determine redirect URI - prefer env variable, otherwise use request
-      let redirectUri = process.env.GOOGLE_REDIRECT_URI;
+      // Determine redirect URI - use request host to match current ngrok tunnel
+      // Check for X-Forwarded-Proto header (set by ngrok/proxy)
+      const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
+      // Check for X-Forwarded-Host header (set by ngrok/proxy)
+      const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5000';
+      let redirectUri = `${protocol}://${host}/api/crm-integrations/google-sheets/callback`;
       
-      if (!redirectUri) {
-        // Auto-detect from request (works with ngrok and localhost)
-        // req.protocol will be 'https' if behind ngrok/proxy, 'http' for localhost
-        const protocol = req.protocol || (req.secure ? 'https' : 'http');
-        const host = req.get('host') || 'localhost:5000';
-        redirectUri = `${protocol}://${host}/api/crm-integrations/google-sheets/callback`;
-      } else {
-        // If env variable is set, ensure it has /api in the path
-        // Fix common mistake where /api is missing
-        if (!redirectUri.includes('/api/crm-integrations')) {
-          // Try to fix it by inserting /api before /crm-integrations
-          redirectUri = redirectUri.replace(/\/crm-integrations/, '/api/crm-integrations');
+      // If env variable is set and matches current host, use it (for production)
+      // Otherwise, use the dynamically detected host (for ngrok/localhost)
+      const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
+      if (envRedirectUri) {
+        try {
+          const envUrl = new URL(envRedirectUri);
+          const currentUrl = new URL(redirectUri);
+          // Only use env variable if it matches the current host (production scenario)
+          // For ngrok, always use the current request host
+          if (envUrl.hostname === currentUrl.hostname || 
+              (!host.includes('ngrok') && !host.includes('localhost'))) {
+            redirectUri = envRedirectUri;
+            // Ensure it has /api in the path
+            if (!redirectUri.includes('/api/crm-integrations')) {
+              redirectUri = redirectUri.replace(/\/crm-integrations/, '/api/crm-integrations');
+            }
+          }
+        } catch (e) {
+          // Invalid env URL, use dynamically detected one
         }
       }
       
@@ -298,7 +309,7 @@ export function setupCRMIntegrationRoutes(app: Express) {
         state: JSON.stringify({ userId: (req.user as any).id }), // Pass user ID in state
       });
 
-      res.json({ authUrl, redirectUri }); // Include redirectUri in response for debugging
+      res.json({ authUrl });
     } catch (error) {
       handleApiError(error, res);
     }
@@ -324,18 +335,31 @@ export function setupCRMIntegrationRoutes(app: Express) {
 
       // Use the same redirect URI logic as the auth endpoint
       // MUST match exactly what was used in the auth endpoint
-      let redirectUri = process.env.GOOGLE_REDIRECT_URI;
+      // Check for X-Forwarded-Proto header (set by ngrok/proxy)
+      const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
+      // Check for X-Forwarded-Host header (set by ngrok/proxy)
+      const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5000';
+      let redirectUri = `${protocol}://${host}/api/crm-integrations/google-sheets/callback`;
       
-      if (!redirectUri) {
-        const protocol = req.protocol || (req.secure ? 'https' : 'http');
-        const host = req.get('host') || 'localhost:5000';
-        redirectUri = `${protocol}://${host}/api/crm-integrations/google-sheets/callback`;
-      } else {
-        // If env variable is set, ensure it has /api in the path
-        // Fix common mistake where /api is missing
-        if (!redirectUri.includes('/api/crm-integrations')) {
-          // Try to fix it by inserting /api before /crm-integrations
-          redirectUri = redirectUri.replace(/\/crm-integrations/, '/api/crm-integrations');
+      // If env variable is set and matches current host, use it (for production)
+      // Otherwise, use the dynamically detected host (for ngrok/localhost)
+      const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
+      if (envRedirectUri) {
+        try {
+          const envUrl = new URL(envRedirectUri);
+          const currentUrl = new URL(redirectUri);
+          // Only use env variable if it matches the current host (production scenario)
+          // For ngrok, always use the current request host
+          if (envUrl.hostname === currentUrl.hostname || 
+              (!host.includes('ngrok') && !host.includes('localhost'))) {
+            redirectUri = envRedirectUri;
+            // Ensure it has /api in the path
+            if (!redirectUri.includes('/api/crm-integrations')) {
+              redirectUri = redirectUri.replace(/\/crm-integrations/, '/api/crm-integrations');
+            }
+          }
+        } catch (e) {
+          // Invalid env URL, use dynamically detected one
         }
       }
       

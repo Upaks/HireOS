@@ -35,7 +35,7 @@ const AVAILABLE_CRMS = [
   // { id: "pipedrive", name: "Pipedrive", description: "Sync candidates with Pipedrive CRM" },
 ];
 
-export default function CRMIntegrations() {
+export default function CRMIntegrations({ singlePlatform }: { singlePlatform?: string }) {
   const { toast } = useToast();
   const [showConnectDialog, setShowConnectDialog] = useState<string | null>(null);
   const [showSettingsDialog, setShowSettingsDialog] = useState<string | null>(null);
@@ -116,17 +116,24 @@ export default function CRMIntegrations() {
     );
   }
 
+  // Filter to show only the requested platform if singlePlatform is provided
+  const platformsToShow = singlePlatform 
+    ? AVAILABLE_CRMS.filter(crm => crm.id === singlePlatform)
+    : AVAILABLE_CRMS;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-slate-900 mb-2">CRM & ATS Integrations</h3>
-        <p className="text-sm text-slate-500 mb-4">
-          Connect your CRM or ATS to automatically sync candidate data. Each user can connect their own accounts.
-        </p>
-      </div>
+      {!singlePlatform && (
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">CRM & ATS Integrations</h3>
+          <p className="text-sm text-slate-500 mb-4">
+            Connect your CRM or ATS to automatically sync candidate data. Each user can connect their own accounts.
+          </p>
+        </div>
+      )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {AVAILABLE_CRMS.map((crm) => {
+      <div className={singlePlatform ? "grid gap-4 grid-cols-1" : "grid gap-4 md:grid-cols-2"}>
+        {platformsToShow.map((crm) => {
           const integration = getIntegrationForPlatform(crm.id);
           const isConnected = integration?.status === "connected";
 
@@ -228,7 +235,7 @@ export default function CRMIntegrations() {
 }
 
 // Connect CRM Dialog Component
-function ConnectCRMDialog({
+export function ConnectCRMDialog({
   platformId,
   platformName,
   integration,
@@ -545,13 +552,14 @@ function ConnectCRMDialog({
 }
 
 // CRM Settings Dialog Component
-function CRMSettingsDialog({
+export function CRMSettingsDialog({
   platformId,
   platformName,
   integration,
   open,
   onOpenChange,
   onUpdate,
+  onDisconnect,
 }: {
   platformId: string;
   platformName: string;
@@ -559,6 +567,7 @@ function CRMSettingsDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUpdate: (data: any) => void;
+  onDisconnect?: () => void;
 }) {
   const [syncDirection, setSyncDirection] = useState<"one-way" | "two-way">(
     integration?.syncDirection || "one-way"
@@ -611,12 +620,15 @@ function CRMSettingsDialog({
             )}
           </TabsList>
           <TabsContent value="general" className="space-y-4 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Enable Integration</Label>
-                <p className="text-xs text-slate-500">Turn sync on or off</p>
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-slate-50">
+              <div className="flex-1">
+                <Label className="text-base font-medium">Enable Integration</Label>
+                <p className="text-xs text-slate-500 mt-1">
+                  When <strong>enabled</strong>: Candidate data will sync automatically between HireOS and {platformName}.<br/>
+                  When <strong>disabled</strong>: The connection stays active but syncing is paused. You can re-enable it anytime.
+                </p>
               </div>
-              <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
+              <Switch checked={isEnabled} onCheckedChange={setIsEnabled} className="ml-4" />
             </div>
             <div>
               <Label>Sync Direction</Label>
@@ -666,13 +678,27 @@ function CRMSettingsDialog({
               </>
             )}
             
-            <DialogFooter className="mt-4">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSave}>
-                Save Settings
-              </Button>
+            <DialogFooter className="mt-4 flex justify-between items-center">
+              {onDisconnect && integration && (
+                <Button 
+                  variant="destructive" 
+                  onClick={() => {
+                    if (confirm(`Are you sure you want to disconnect ${platformName}? This will stop all syncing and remove the connection.`)) {
+                      onDisconnect();
+                    }
+                  }}
+                >
+                  Disconnect
+                </Button>
+              )}
+              <div className="flex gap-2 ml-auto">
+                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSave}>
+                  Save Settings
+                </Button>
+              </div>
             </DialogFooter>
           </TabsContent>
           {platformId === "airtable" && (
