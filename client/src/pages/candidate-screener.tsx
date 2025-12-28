@@ -358,6 +358,9 @@ export default function CandidateScreener() {
                         Assessment
                       </th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Match Score
+                      </th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                         Applied On
                       </th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">

@@ -57,6 +57,34 @@ export default function CandidateListItem({ candidate, index }: CandidateListIte
         </td>
 
         <td className="px-4 py-3 whitespace-nowrap">
+          {candidate.matchScore !== null && candidate.matchScore !== undefined ? (
+            <div className="flex items-center">
+              <div className="w-24 bg-slate-200 rounded-full h-2 mr-2">
+                <div
+                  className={`h-2 rounded-full ${
+                    candidate.matchScore >= 80 ? 'bg-green-500' :
+                    candidate.matchScore >= 60 ? 'bg-yellow-500' :
+                    candidate.matchScore >= 40 ? 'bg-orange-500' :
+                    'bg-red-500'
+                  }`}
+                  style={{ width: `${candidate.matchScore}%` }}
+                ></div>
+              </div>
+              <span className={`text-xs font-medium ${
+                candidate.matchScore >= 80 ? 'text-green-600' :
+                candidate.matchScore >= 60 ? 'text-yellow-600' :
+                candidate.matchScore >= 40 ? 'text-orange-600' :
+                'text-red-600'
+              }`}>
+                {candidate.matchScore}%
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs text-slate-500">N/A</span>
+          )}
+        </td>
+
+        <td className="px-4 py-3 whitespace-nowrap">
           {candidate.createdAt ? (
             <span className="text-xs text-slate-600">
               {format(new Date(candidate.createdAt), 'MMM d, yyyy')}

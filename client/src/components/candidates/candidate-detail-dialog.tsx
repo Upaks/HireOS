@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Candidate } from "@/types";
 import {
@@ -142,6 +142,17 @@ export default function CandidateDetailDialog({
   const [isUploading, setIsUploading] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [isGHLSyncing, setIsGHLSyncing] = useState(false);
+  const [isParsingResume, setIsParsingResume] = useState(false);
+
+  // Fetch fresh candidate data to get latest parsedResumeData and matchScore
+  const { data: freshCandidate } = useQuery<Candidate>({
+    queryKey: [`/api/candidates/${candidate?.id}`],
+    enabled: isOpen && !!candidate?.id,
+    refetchOnMount: true,
+  });
+
+  // Use fresh candidate data if available, fallback to prop
+  const displayCandidate = freshCandidate || candidate;
 
   // Confirmation modal state
   const [confirmationModal, setConfirmationModal] = useState<{
@@ -218,56 +229,57 @@ export default function CandidateDetailDialog({
       user?.role === "admin") &&
     !isRejected;
 
-  // Update form fields when candidate changes
+  // Update form fields when candidate changes (use displayCandidate for fresh data)
   useEffect(() => {
-    if (candidate) {
+    const candidateToUse = displayCandidate || candidate;
+    if (candidateToUse) {
       // Candidate details
-      setName(candidate.name || "");
-      setEmail(candidate.email || "");
-      setPhone(candidate.phone || "");
-      setLocation(candidate.location || "");
-      setExperienceYears(candidate.experienceYears);
-      setExpectedSalary(candidate.expectedSalary || "");
+      setName(candidateToUse.name || "");
+      setEmail(candidateToUse.email || "");
+      setPhone(candidateToUse.phone || "");
+      setLocation(candidateToUse.location || "");
+      setExperienceYears(candidateToUse.experienceYears);
+      setExpectedSalary(candidateToUse.expectedSalary || "");
 
       // Handle skills data - ensure it's an array
-      if (Array.isArray(candidate.skills)) {
-        setSkills(candidate.skills);
+      if (Array.isArray(candidateToUse.skills)) {
+        setSkills(candidateToUse.skills);
       } else if (
-        typeof candidate.skills === "object" &&
-        candidate.skills !== null
+        typeof candidateToUse.skills === "object" &&
+        candidateToUse.skills !== null
       ) {
-        setSkills(Object.keys(candidate.skills));
+        setSkills(Object.keys(candidateToUse.skills));
       } else {
         setSkills([]);
       }
 
       // Notes and status
-      setNotes(candidate.notes || "");
+      setNotes(candidateToUse.notes || "");
       // Normalize status to ensure it matches dropdown values
-      setCandidateStatus(normalizeCandidateStatus(candidate.status));
+      setCandidateStatus(normalizeCandidateStatus(candidateToUse.status));
 
       // Assessment data
-      setHiPeopleScore(candidate.hiPeopleScore);
-      setHiPeoplePercentile(candidate.hiPeoplePercentile);
+      setHiPeopleScore(candidateToUse.hiPeopleScore);
+      setHiPeoplePercentile(candidateToUse.hiPeoplePercentile);
       setHiPeopleAssessmentLink(
-        (candidate as any).hiPeopleAssessmentLink || "",
+        (candidateToUse as any).hiPeopleAssessmentLink || "",
       );
 
       // Evaluation data
-      setTechnicalProficiency(candidate.technicalProficiency);
-      setLeadershipInitiative(candidate.leadershipInitiative);
-      setProblemSolving(candidate.problemSolving);
-      setCommunicationSkills(candidate.communicationSkills);
-      setCulturalFit(candidate.culturalFit);
-      setFinalDecisionStatus(candidate.finalDecisionStatus || null);
+      setTechnicalProficiency(candidateToUse.technicalProficiency);
+      setLeadershipInitiative(candidateToUse.leadershipInitiative);
+      setProblemSolving(candidateToUse.problemSolving);
+      setCommunicationSkills(candidateToUse.communicationSkills);
+      setCulturalFit(candidateToUse.culturalFit);
+      setFinalDecisionStatus(candidateToUse.finalDecisionStatus || null);
       setFinalDecisionTouched(false); // Reset touch state when candidate changes
       setLastInterviewDate(
-        (candidate as any).lastInterviewDate
-          ? new Date((candidate as any).lastInterviewDate)
+        (candidateToUse as any).lastInterviewDate
+          ? new Date((candidateToUse as any).lastInterviewDate)
           : undefined,
       );
     }
-  }, [candidate]);
+  }, [displayCandidate, candidate]);
 
   // Update candidate mutation
   const updateCandidateMutation = useMutation({
@@ -578,13 +590,17 @@ export default function CandidateDetailDialog({
 
       toast({
         title: "Resume uploaded",
-        description: "The resume has been attached to the candidate's profile.",
+        description: "The resume has been attached. AI parsing will start automatically...",
       });
 
-      queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
+      // Refetch candidate data after a delay to get parsed data
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: [`/api/candidates/${candidate.id}`] });
+        queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
+      }, 3000);
+
       setResumeFile(null);
     } catch (error: any) {
-      console.error("Resume upload error:", error);
       toast({
         title: "Upload failed",
         description: error?.message || "Failed to upload the resume.",
@@ -707,6 +723,22 @@ export default function CandidateDetailDialog({
             <span className="text-sm text-muted-foreground">
               {candidate.location || "No location"}
             </span>
+            {displayCandidate?.matchScore !== null && displayCandidate?.matchScore !== undefined && (
+              <>
+                <span className="text-sm text-muted-foreground">•</span>
+                <Badge 
+                  variant="secondary" 
+                  className={`text-xs ${
+                    displayCandidate.matchScore >= 80 ? 'bg-green-100 text-green-700' :
+                    displayCandidate.matchScore >= 60 ? 'bg-yellow-100 text-yellow-700' :
+                    displayCandidate.matchScore >= 40 ? 'bg-orange-100 text-orange-700' :
+                    'bg-red-100 text-red-700'
+                  }`}
+                >
+                  Match: {displayCandidate.matchScore}%
+                </Badge>
+              </>
+            )}
             {candidate.ghlContactId && (
               <>
                 <span className="text-sm text-muted-foreground">•</span>
@@ -722,8 +754,9 @@ export default function CandidateDetailDialog({
           {/* Left side: Candidate information in a scrollable container */}
           <div className="w-[400px] border-r overflow-y-auto p-4">
             <Tabs defaultValue="evaluation" className="w-full">
-              <TabsList className="grid grid-cols-3 mb-4">
+              <TabsList className="grid grid-cols-4 mb-4">
                 <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
+                <TabsTrigger value="ai">AI Insights</TabsTrigger>
                 <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="notes">Notes</TabsTrigger>
               </TabsList>
@@ -976,6 +1009,250 @@ export default function CandidateDetailDialog({
                       />
                     </div>
                   </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="ai" className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-medium mb-4">AI Match Score</h3>
+                  {displayCandidate?.matchScore !== null && displayCandidate?.matchScore !== undefined ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Match Score</span>
+                        <span className={`text-2xl font-bold ${
+                          displayCandidate.matchScore >= 80 ? 'text-green-600' :
+                          displayCandidate.matchScore >= 60 ? 'text-yellow-600' :
+                          displayCandidate.matchScore >= 40 ? 'text-orange-600' :
+                          'text-red-600'
+                        }`}>
+                          {displayCandidate.matchScore}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div
+                          className={`h-3 rounded-full transition-all ${
+                            displayCandidate.matchScore >= 80 ? 'bg-green-500' :
+                            displayCandidate.matchScore >= 60 ? 'bg-yellow-500' :
+                            displayCandidate.matchScore >= 40 ? 'bg-orange-500' :
+                            'bg-red-500'
+                          }`}
+                          style={{ width: `${displayCandidate.matchScore}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {displayCandidate.matchScore >= 80 ? 'Excellent match - Strong candidate' :
+                         displayCandidate.matchScore >= 60 ? 'Good match - Consider for interview' :
+                         displayCandidate.matchScore >= 40 ? 'Moderate match - Review carefully' :
+                         'Low match - May not be suitable'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground p-4 border rounded-lg">
+                      <p>No match score calculated yet.</p>
+                      <p className="mt-1 text-xs">Match score is calculated automatically when a resume is uploaded and a job is assigned.</p>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-medium">Resume Parsing Results</h3>
+                    {displayCandidate?.resumeUrl && !displayCandidate?.parsedResumeData && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isParsingResume}
+                        onClick={async () => {
+                          if (!displayCandidate?.resumeUrl || !displayCandidate?.id) return;
+                          setIsParsingResume(true);
+                          try {
+                            toast({
+                              title: "Parsing resume...",
+                              description: "AI is extracting information from the resume.",
+                            });
+                            const response = await apiRequest("POST", "/api/ai/parse-resume", {
+                              resumeUrl: displayCandidate.resumeUrl,
+                              candidateId: displayCandidate.id,
+                            });
+                            const result = await response.json();
+                            if (result.success) {
+                              toast({
+                                title: "Resume parsed successfully",
+                                description: "Candidate information has been extracted and updated.",
+                              });
+                              // Refetch candidate data after a short delay
+                              setTimeout(() => {
+                                queryClient.invalidateQueries({ queryKey: [`/api/candidates/${displayCandidate.id}`] });
+                                queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
+                              }, 1000);
+                            }
+                          } catch (error: any) {
+                            toast({
+                              title: "Failed to parse resume",
+                              description: error.message || "Please try again later.",
+                              variant: "destructive",
+                            });
+                          } finally {
+                            setIsParsingResume(false);
+                          }
+                        }}
+                      >
+                        {isParsingResume ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Parsing...
+                          </>
+                        ) : (
+                          "Parse Resume"
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                  {displayCandidate?.parsedResumeData ? (
+                    <div className="space-y-3 text-sm">
+                      {displayCandidate.parsedResumeData.name && (
+                        <div className="p-3 border rounded-lg">
+                          <div className="font-medium text-muted-foreground mb-1">Name</div>
+                          <div>{displayCandidate.parsedResumeData.name}</div>
+                        </div>
+                      )}
+                      {displayCandidate.parsedResumeData.email && (
+                        <div className="p-3 border rounded-lg">
+                          <div className="font-medium text-muted-foreground mb-1">Email</div>
+                          <div>{displayCandidate.parsedResumeData.email}</div>
+                        </div>
+                      )}
+                      {displayCandidate.parsedResumeData.phone && (
+                        <div className="p-3 border rounded-lg">
+                          <div className="font-medium text-muted-foreground mb-1">Phone</div>
+                          <div>{displayCandidate.parsedResumeData.phone}</div>
+                        </div>
+                      )}
+                      {displayCandidate.parsedResumeData.location && (
+                        <div className="p-3 border rounded-lg">
+                          <div className="font-medium text-muted-foreground mb-1">Location</div>
+                          <div>{displayCandidate.parsedResumeData.location}</div>
+                        </div>
+                      )}
+                      {displayCandidate.parsedResumeData.skills && Array.isArray(displayCandidate.parsedResumeData.skills) && displayCandidate.parsedResumeData.skills.length > 0 && (
+                        <div className="p-3 border rounded-lg">
+                          <div className="font-medium text-muted-foreground mb-2">Skills</div>
+                          <div className="flex flex-wrap gap-2">
+                            {displayCandidate.parsedResumeData.skills.map((skill: string, idx: number) => (
+                              <Badge key={idx} variant="secondary">{skill}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {displayCandidate.parsedResumeData.experienceYears && (
+                        <div className="p-3 border rounded-lg">
+                          <div className="font-medium text-muted-foreground mb-1">Experience (Years)</div>
+                          <div>{displayCandidate.parsedResumeData.experienceYears}</div>
+                        </div>
+                      )}
+                      {displayCandidate.parsedResumeData.education && (
+                        <div className="p-4 border rounded-lg bg-slate-50">
+                          <div className="font-medium text-slate-900 mb-3 flex items-center">
+                            <span className="mr-2">🎓</span>
+                            Education
+                          </div>
+                          <div className="space-y-3">
+                            {Array.isArray(displayCandidate.parsedResumeData.education) ? (
+                              displayCandidate.parsedResumeData.education.map((edu: any, idx: number) => (
+                                <div key={idx} className="pl-6 border-l-2 border-primary/30">
+                                  <div className="font-semibold text-slate-900">{edu.degree || edu.title || 'Degree'}</div>
+                                  <div className="text-sm text-slate-700">{edu.institution || edu.school || 'Institution'}</div>
+                                  {edu.location && (
+                                    <div className="text-xs text-slate-500">{edu.location}</div>
+                                  )}
+                                  {edu.dateRange && (
+                                    <div className="text-xs text-slate-500 mt-1">{edu.dateRange}</div>
+                                  )}
+                                  {(edu.startDate || edu.endDate) && (
+                                    <div className="text-xs text-slate-500 mt-1">
+                                      {edu.startDate} {edu.endDate ? `- ${edu.endDate}` : '- Present'}
+                                    </div>
+                                  )}
+                                </div>
+                              ))
+                            ) : typeof displayCandidate.parsedResumeData.education === 'object' ? (
+                              <div className="pl-6 border-l-2 border-primary/30">
+                                <div className="font-semibold text-slate-900">{displayCandidate.parsedResumeData.education.degree || displayCandidate.parsedResumeData.education.title || 'Degree'}</div>
+                                <div className="text-sm text-slate-700">{displayCandidate.parsedResumeData.education.institution || displayCandidate.parsedResumeData.education.school || 'Institution'}</div>
+                                {displayCandidate.parsedResumeData.education.location && (
+                                  <div className="text-xs text-slate-500">{displayCandidate.parsedResumeData.education.location}</div>
+                                )}
+                                {(displayCandidate.parsedResumeData.education.startDate || displayCandidate.parsedResumeData.education.endDate) && (
+                                  <div className="text-xs text-slate-500 mt-1">
+                                    {displayCandidate.parsedResumeData.education.startDate} {displayCandidate.parsedResumeData.education.endDate ? `- ${displayCandidate.parsedResumeData.education.endDate}` : '- Present'}
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      )}
+                      {displayCandidate.parsedResumeData.experience && (
+                        <div className="p-4 border rounded-lg bg-slate-50">
+                          <div className="font-medium text-slate-900 mb-3 flex items-center">
+                            <span className="mr-2">💼</span>
+                            Work Experience
+                          </div>
+                          <div className="space-y-4 max-h-96 overflow-y-auto">
+                            {Array.isArray(displayCandidate.parsedResumeData.experience) ? (
+                              displayCandidate.parsedResumeData.experience.map((exp: any, idx: number) => (
+                                <div key={idx} className="pl-6 border-l-2 border-primary/30">
+                                  <div className="font-semibold text-slate-900">{exp.title || exp.position || 'Position'}</div>
+                                  <div className="text-sm text-slate-700 font-medium">{exp.company || exp.employer || 'Company'}</div>
+                                  {(exp.startDate || exp.endDate) && (
+                                    <div className="text-xs text-slate-500 mt-1">
+                                      {exp.startDate} {exp.endDate ? `- ${exp.endDate}` : '- Present'}
+                                    </div>
+                                  )}
+                                  {exp.location && (
+                                    <div className="text-xs text-slate-500">{exp.location}</div>
+                                  )}
+                                  {exp.description && (
+                                    <div className="text-sm text-slate-600 mt-2">{exp.description}</div>
+                                  )}
+                                  {exp.responsibilities && Array.isArray(exp.responsibilities) && exp.responsibilities.length > 0 && (
+                                    <ul className="text-sm text-slate-600 mt-2 list-disc list-inside space-y-1">
+                                      {exp.responsibilities.map((resp: string, respIdx: number) => (
+                                        <li key={respIdx}>{resp}</li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              ))
+                            ) : typeof displayCandidate.parsedResumeData.experience === 'object' ? (
+                              <div className="pl-6 border-l-2 border-primary/30">
+                                <div className="font-semibold text-slate-900">{displayCandidate.parsedResumeData.experience.title || displayCandidate.parsedResumeData.experience.position || 'Position'}</div>
+                                <div className="text-sm text-slate-700 font-medium">{displayCandidate.parsedResumeData.experience.company || displayCandidate.parsedResumeData.experience.employer || 'Company'}</div>
+                                {(displayCandidate.parsedResumeData.experience.startDate || displayCandidate.parsedResumeData.experience.endDate) && (
+                                  <div className="text-xs text-slate-500 mt-1">
+                                    {displayCandidate.parsedResumeData.experience.startDate} {displayCandidate.parsedResumeData.experience.endDate ? `- ${displayCandidate.parsedResumeData.experience.endDate}` : '- Present'}
+                                  </div>
+                                )}
+                                {displayCandidate.parsedResumeData.experience.description && (
+                                  <div className="text-sm text-slate-600 mt-2">{displayCandidate.parsedResumeData.experience.description}</div>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground p-4 border rounded-lg">
+                      <p>No resume data parsed yet.</p>
+                      <p className="mt-1 text-xs">Upload a resume PDF to automatically extract candidate information using AI.</p>
+                      {!user?.openRouterApiKey && (
+                        <p className="mt-2 text-xs text-amber-600">
+                          ⚠️ OpenRouter API key not configured. Add it in Settings → System Configuration → AI Configuration.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 

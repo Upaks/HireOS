@@ -273,21 +273,34 @@ export default function CandidateCard({ candidate }: CandidateCardProps) {
           {candidate.skills && (
             <div className="mb-4">
               <h4 className="text-sm font-medium text-slate-900 mb-1">Key Skills</h4>
-              <div className="flex flex-wrap gap-2">
-                {Array.isArray(candidate.skills)
-                  ? candidate.skills.map((skill, index) => (
-                      <Badge key={index} variant="secondary" className="bg-blue-100 text-blue-800">
-                        {skill}
-                      </Badge>
-                    ))
-                  : typeof candidate.skills === 'object' && candidate.skills !== null
-                    ? Object.keys(candidate.skills).map((skill) => (
-                        <Badge key={skill} variant="secondary" className="bg-blue-100 text-blue-800">
+              <div className="flex flex-wrap gap-2 items-center">
+                {(() => {
+                  const skillsArray = Array.isArray(candidate.skills)
+                    ? candidate.skills
+                    : typeof candidate.skills === 'object' && candidate.skills !== null
+                      ? Object.keys(candidate.skills)
+                      : [];
+                  
+                  if (skillsArray.length === 0) {
+                    return <span className="text-sm text-slate-500">No skills listed</span>;
+                  }
+                  
+                  const displaySkills = skillsArray.slice(0, 2);
+                  const hasMore = skillsArray.length > 2;
+                  
+                  return (
+                    <>
+                      {displaySkills.map((skill, index) => (
+                        <Badge key={index} variant="secondary" className="bg-blue-100 text-blue-800">
                           {skill}
                         </Badge>
-                      ))
-                    : <span className="text-sm text-slate-500">No skills listed</span>
-                }
+                      ))}
+                      {hasMore && (
+                        <span className="text-sm text-slate-500">+{skillsArray.length - 2} more</span>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           )}

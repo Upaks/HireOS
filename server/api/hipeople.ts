@@ -54,7 +54,6 @@ export async function scrapeHipeople(
     const candidateName = testData?.applicant_name || "Sample Candidate";
     const candidateEmail = testData?.applicant_email || "sample@example.com";
 
-    console.log(`🟡 Sending request to HiPeople scraper for ${candidateName} (${candidateEmail})`);
 
     const response = await axios.post(HIPEOPLE_SCRAPER_URL, null, {
       params: {
@@ -64,7 +63,6 @@ export async function scrapeHipeople(
       timeout: 30000
     });
 
-    console.log("✅ HiPeople scraper response:", JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error) {
     console.error("❌ HiPeople scraping error:", error);
@@ -124,7 +122,6 @@ export function setupHiPeopleRoutes(app: Express) {
         
         // Call the HiPeople scraper - we'll use the first candidate's data for the initial request
         const hiPeopleResults = await scrapeHipeople(job.hiPeopleLink, candidateTestData[0]);
-        console.log("📥 Results from HiPeople scraper:", hiPeopleResults);
         
         if (!hiPeopleResults.length) {
           return res.status(404).json({ message: "No assessment results found" });

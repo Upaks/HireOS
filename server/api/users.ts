@@ -23,6 +23,7 @@ const updateUserSchema = z.object({
   calendarProvider: z.enum(["calendly", "cal.com", "google", "custom"]).optional(),
   calendlyToken: z.string().optional(),
   calendlyWebhookId: z.string().optional(),
+  openRouterApiKey: z.string().optional(),
   emailTemplates: z.record(z.any()).optional(), // JSONB field for all email templates
 });
 

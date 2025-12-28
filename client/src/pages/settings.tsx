@@ -151,7 +151,7 @@ export default function Settings() {
   
   // Update user mutation
   const updateUserMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number, data: Omit<UserFormData, 'password'> }) => {
+    mutationFn: async ({ id, data }: { id: number, data: Partial<Omit<UserFormData, 'password'> & { openRouterApiKey?: string }> }) => {
       const response = await apiRequest("PATCH", `/api/users/${id}`, data);
       return await response.json();
     },
@@ -301,17 +301,89 @@ export default function Settings() {
           </TabsContent>
           
           <TabsContent value="system">
-            <Card>
-              <CardHeader>
-                <CardTitle>System Configuration</CardTitle>
-                <CardDescription>Manage system-wide settings and preferences</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-center py-12 text-slate-500">
-                  System configuration settings coming soon
-                </p>
-              </CardContent>
-            </Card>
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>AI Configuration</CardTitle>
+                  <CardDescription>
+                    Configure OpenRouter API key for AI-powered features (resume parsing, candidate matching)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="openrouter-key">OpenRouter API Key</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="openrouter-key"
+                        type="password"
+                        placeholder={user?.openRouterApiKey ? "••••••••••••••••" : "Enter your OpenRouter API key"}
+                        defaultValue={user?.openRouterApiKey || ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value && user) {
+                            updateUserMutation.mutate({
+                              id: user.id,
+                              data: { openRouterApiKey: value }
+                            });
+                          }
+                        }}
+                        onBlur={(e) => {
+                          const value = e.target.value;
+                          if (value && user && value !== user.openRouterApiKey) {
+                            updateUserMutation.mutate({
+                              id: user.id,
+                              data: { openRouterApiKey: value }
+                            });
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          if (user) {
+                            updateUserMutation.mutate({
+                              id: user.id,
+                              data: { openRouterApiKey: "" }
+                            });
+                          }
+                        }}
+                        disabled={!user?.openRouterApiKey || updateUserMutation.isPending}
+                      >
+                        {updateUserMutation.isPending ? "Saving..." : "Clear"}
+                      </Button>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {user?.openRouterApiKey ? (
+                        <span className="text-green-600">✓ API key configured</span>
+                      ) : (
+                        <span className="text-amber-600">⚠ API key not configured. AI features will be disabled.</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Get your API key from{" "}
+                      <a
+                        href="https://openrouter.ai/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        openrouter.ai/keys
+                      </a>
+                      . Your key is stored securely and only used for AI features.
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-blue-50 p-4 border border-blue-200">
+                    <h4 className="font-semibold text-sm mb-2">AI Features Enabled:</h4>
+                    <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                      <li>Automatic resume parsing (extracts skills, experience, education)</li>
+                      <li>AI-powered candidate matching (scores candidates against job requirements)</li>
+                      <li>Auto-fill candidate profiles from resume data</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
           
           <TabsContent value="integrations">

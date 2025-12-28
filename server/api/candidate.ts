@@ -41,8 +41,75 @@ export function setupCandidateRoutes(app: Express) {
 
         const candidate = await storage.createCandidate(req.body);
 
-        // Sync to connected CRMs (GHL, Airtable, Google Sheets)
+        // Auto-parse resume if URL is provided and user has OpenRouter API key
         const userId = (req.user as any)?.id;
+        if (userId && candidate.resumeUrl) {
+          try {
+            const user = await storage.getUser(userId);
+            if (user?.openRouterApiKey) {
+              // Parse resume in background (don't block the response)
+              import('./resume-parser').then(async ({ parseResume }) => {
+                try {
+                  const parsedData = await parseResume(candidate.resumeUrl!, user.openRouterApiKey!);
+                  const updates: any = {
+                    parsedResumeData: parsedData,
+                  };
+                  
+                  // Auto-fill empty fields
+                  if (parsedData.phone && !candidate.phone) {
+                    updates.phone = parsedData.phone;
+                  }
+                  if (parsedData.location && !candidate.location) {
+                    updates.location = parsedData.location;
+                  }
+                  if (parsedData.skills && parsedData.skills.length > 0) {
+                    updates.skills = parsedData.skills;
+                  }
+                  if (parsedData.experienceYears) {
+                    updates.experienceYears = parsedData.experienceYears;
+                  }
+                  
+                  await storage.updateCandidate(candidate.id, updates);
+                  
+                  // Auto-calculate match score if jobId exists
+                  if (candidate.jobId) {
+                    try {
+                      const { calculateMatchScore } = await import('./ai-matching');
+                      const job = await storage.getJob(candidate.jobId);
+                      if (job) {
+                        const matchResult = await calculateMatchScore(
+                          {
+                            name: candidate.name,
+                            skills: parsedData.skills || null,
+                            experienceYears: parsedData.experienceYears || null,
+                            parsedResumeData: parsedData,
+                          },
+                          {
+                            title: job.title,
+                            skills: job.skills,
+                            type: job.type,
+                            department: job.department,
+                            description: job.description,
+                          },
+                          user.openRouterApiKey!
+                        );
+                        await storage.updateCandidate(candidate.id, { matchScore: matchResult.score });
+                      }
+                    } catch (matchError) {
+                      console.error("Error auto-calculating match score:", matchError);
+                    }
+                  }
+                } catch (parseError) {
+                  console.error("Error auto-parsing resume:", parseError);
+                }
+              });
+            }
+          } catch (error) {
+            console.error("Error setting up auto-parse:", error);
+          }
+        }
+
+        // Sync to connected CRMs (GHL, Airtable, Google Sheets)
         if (userId && candidate.jobId !== null && candidate.jobId !== undefined) {
           try {
             const job = await storage.getJob(candidate.jobId);
@@ -276,8 +343,80 @@ export function setupCandidateRoutes(app: Express) {
         updateData,
       );
 
-      // Sync to connected CRMs (Airtable, GHL, etc.)
+      // Auto-parse resume if resumeUrl was just added/updated and user has OpenRouter API key
       const userId = (req.user as any)?.id;
+      if (userId && req.body.resumeUrl && req.body.resumeUrl !== candidate.resumeUrl) {
+        try {
+          const user = await storage.getUser(userId);
+          if (user?.openRouterApiKey) {
+            // Parse resume in background (don't block the response)
+            import('./resume-parser').then(async ({ parseResume }) => {
+              try {
+                const parsedData = await parseResume(req.body.resumeUrl, user.openRouterApiKey!);
+                const updates: any = {
+                  parsedResumeData: parsedData,
+                };
+                
+                // Auto-fill empty fields (don't overwrite existing data)
+                if (parsedData.phone && !updatedCandidate.phone) {
+                  updates.phone = parsedData.phone;
+                }
+                if (parsedData.location && !updatedCandidate.location) {
+                  updates.location = parsedData.location;
+                }
+                if (parsedData.skills && parsedData.skills.length > 0) {
+                  // Merge with existing skills if any
+                  const existingSkills = Array.isArray(updatedCandidate.skills) ? updatedCandidate.skills : [];
+                  const skillsSet = new Set([...existingSkills, ...parsedData.skills]);
+                  updates.skills = Array.from(skillsSet);
+                }
+                if (parsedData.experienceYears && !updatedCandidate.experienceYears) {
+                  updates.experienceYears = parsedData.experienceYears;
+                }
+                
+                await storage.updateCandidate(updatedCandidate.id, updates);
+                
+                // Auto-calculate match score if jobId exists
+                if (updatedCandidate.jobId) {
+                  try {
+                    const { calculateMatchScore } = await import('./ai-matching');
+                    const job = await storage.getJob(updatedCandidate.jobId);
+                    if (job) {
+                      const finalCandidate = await storage.getCandidate(updatedCandidate.id);
+                      const matchResult = await calculateMatchScore(
+                        {
+                          name: finalCandidate!.name,
+                          skills: finalCandidate!.skills as string[] | null,
+                          experienceYears: finalCandidate!.experienceYears,
+                          parsedResumeData: parsedData,
+                          applicationData: finalCandidate!.applicationData,
+                        },
+                        {
+                          title: job.title,
+                          skills: job.skills,
+                          type: job.type,
+                          department: job.department,
+                          description: job.description,
+                        },
+                        user.openRouterApiKey!
+                      );
+                      await storage.updateCandidate(updatedCandidate.id, { matchScore: matchResult.score });
+                    }
+                  } catch (matchError) {
+                    console.error("Error auto-calculating match score:", matchError);
+                  }
+                }
+              } catch (parseError) {
+                console.error("Error auto-parsing resume:", parseError);
+              }
+            });
+          }
+        } catch (error) {
+          console.error("Error setting up auto-parse:", error);
+        }
+      }
+
+      // Sync to connected CRMs (Airtable, GHL, etc.)
       if (userId) {
         try {
           // Get all connected CRM integrations for this user
@@ -923,9 +1062,6 @@ export function setupCandidateRoutes(app: Express) {
         // Validate email exists before updating status
         try {
           if (isLikelyInvalidEmail(candidate.email)) {
-            console.log(
-              `❌ Rejected likely non-existent email: ${candidate.email}`,
-            );
 
             // Do not update candidate status or create offer for invalid email
 
@@ -1010,11 +1146,6 @@ export function setupCandidateRoutes(app: Express) {
           
           const acceptanceUrl = `${baseUrl}/accept-offer/${offer.acceptanceToken}`;
           
-          // Log acceptance URL in development (helpful for testing)
-          if (process.env.NODE_ENV !== 'production') {
-            console.log(`📧 Offer acceptance URL: ${acceptanceUrl}`);
-            console.log(`   Token: ${offer.acceptanceToken}`);
-          }
           
           // Default email templates
           const defaultSubject = `Excited to Offer You the {{jobTitle}} Position`;

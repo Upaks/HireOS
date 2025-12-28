@@ -116,8 +116,6 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
         resumeUrl: null, // We'll update this after file upload
       };
 
-      // Add debugging
-      console.log("Sending candidate data:", payload);
       
       // Send data to API
       const response = await fetch("/api/candidates", {
@@ -132,14 +130,8 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
       if (!response.ok) {
         try {
           const errorData = await response.json();
-          console.error("Server error response:", errorData);
-          // Log validation errors if they exist
-          if (errorData.errors) {
-            console.error("Validation errors:", errorData.errors);
-          }
           throw new Error(errorData.message || `Failed to add candidate: ${response.status} ${response.statusText}`);
         } catch (parseError) {
-          console.error("Error parsing server response:", parseError);
           throw new Error(`Failed to add candidate: ${response.status} ${response.statusText}`);
         }
       }
@@ -186,10 +178,14 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
           
           toast({
             title: "Resume uploaded",
-            description: "The resume has been attached to the candidate's profile.",
+            description: "The resume has been attached. AI is parsing the resume and calculating match score...",
           });
+          
+          // Refresh after a delay to show parsed data
+          setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: ['/api/candidates'] });
+          }, 5000);
         } catch (err: any) {
-          console.error("Resume upload failed:", err);
           toast({
             title: "Resume upload failed",
             description: err?.message || "The candidate was added but we couldn't upload the resume.",

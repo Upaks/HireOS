@@ -4,6 +4,7 @@ export interface User {
   fullName: string;
   email: string;
   role: string;
+  openRouterApiKey?: string;
   createdAt: string;
 }
 
@@ -63,6 +64,8 @@ export interface Candidate {
   experienceYears?: number;
   expectedSalary?: string;
   notes?: string;
+  matchScore?: number;
+  parsedResumeData?: any;
   createdAt: string;
   updatedAt: string;
   ghlContactId?: string;

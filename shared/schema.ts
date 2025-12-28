@@ -23,6 +23,7 @@ export const users = pgTable("users", {
   calendarProvider: text("calendar_provider"), // Optional: "calendly", "cal.com", "google", "custom"
   calendlyToken: text("calendly_token"), // Optional: Encrypted Calendly Personal Access Token
   calendlyWebhookId: text("calendly_webhook_id"), // Optional: Calendly webhook subscription ID
+  openRouterApiKey: text("openrouter_api_key"), // Optional: OpenRouter API key for AI features (resume parsing, matching)
   // Email templates (stored as JSONB for flexibility)
   emailTemplates: jsonb("email_templates"), // { interview: {subject, body}, offer: {subject, body}, ... }
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -159,6 +160,8 @@ export const candidates = pgTable("candidates", {
   expectedSalary: text("expected_salary"),
   notes: text("notes"),
   applicationData: jsonb("application_data"), // Stores custom form field answers
+  matchScore: integer("match_score"), // AI-generated match score (0-100) against job requirements
+  parsedResumeData: jsonb("parsed_resume_data"), // Extracted data from resume parsing (education, experience details, etc.)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   job: jsonb("job"), // Virtual field for memory storage - job relation

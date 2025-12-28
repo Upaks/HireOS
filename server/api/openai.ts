@@ -75,7 +75,6 @@ export async function generateJobDescription(jobData: {
     
     prompt += "Additionally, if you think the job title could be improved or modernized, suggest a better title in a separate suggestion at the end of your response using the format: SUGGESTED_TITLE: [your title suggestion].";
     
-    console.log("Sending job description prompt to OpenRouter...");
     
     // OpenRouter endpoint and configuration
     const url = 'https://openrouter.ai/api/v1/chat/completions';
