@@ -12,7 +12,8 @@ import {
   LogOut,
   RefreshCw,
   FileEdit,
-  Plug
+  Plug,
+  X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -146,13 +147,25 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
   
   return (
     <div className={sidebarClasses}>
-      <div className="flex flex-col flex-1">
-        <div className="px-4 py-6 border-b border-sidebar-border">
-          <h1 className="text-xl font-semibold">HireOS</h1>
-          <p className="text-xs text-sidebar-foreground/70 mt-1">Automated Hiring Platform</p>
+      <div className="flex flex-col flex-1 min-h-0">
+        <div className="px-4 py-6 border-b border-sidebar-border flex items-center justify-between flex-shrink-0">
+          <div>
+            <h1 className="text-xl font-semibold">HireOS</h1>
+            <p className="text-xs text-sidebar-foreground/70 mt-1">Automated Hiring Platform</p>
+          </div>
+          {mobileMenuOpen && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+              onClick={onCloseMobileMenu}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          )}
         </div>
         
-        <nav className="flex-1 px-2 py-4 space-y-1">
+        <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto min-h-0">
           {filteredNavItems.map((item) => (
             <Link 
               key={item.href} 
@@ -204,7 +217,7 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
           )}
         </nav>
         
-        <div className="px-4 py-4 border-t border-sidebar-border">
+        <div className="px-4 py-4 border-t border-sidebar-border flex-shrink-0">
           <div className="flex items-center">
             <div className="flex-shrink-0">
               <div className="h-8 w-8 rounded-full bg-sidebar-accent flex items-center justify-center text-white font-medium">

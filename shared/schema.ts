@@ -24,6 +24,10 @@ export const users = pgTable("users", {
   calendlyToken: text("calendly_token"), // Optional: Encrypted Calendly Personal Access Token
   calendlyWebhookId: text("calendly_webhook_id"), // Optional: Calendly webhook subscription ID
   openRouterApiKey: text("openrouter_api_key"), // Optional: OpenRouter API key for AI features (resume parsing, matching)
+  slackWebhookUrl: text("slack_webhook_url"), // Optional: User's Slack webhook URL for notifications
+  slackNotificationScope: text("slack_notification_scope"), // Optional: "all_users" or "specific_roles"
+  slackNotificationRoles: jsonb("slack_notification_roles"), // Optional: Array of roles to notify if scope is "specific_roles"
+  slackNotificationEvents: jsonb("slack_notification_events"), // Optional: Array of events to notify about ["interview_scheduled", "offer_accepted", "offer_sent", "job_posted", "new_application"]
   // Email templates (stored as JSONB for flexibility)
   emailTemplates: jsonb("email_templates"), // { interview: {subject, body}, offer: {subject, body}, ... }
   createdAt: timestamp("created_at").defaultNow().notNull(),

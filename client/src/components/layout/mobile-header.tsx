@@ -29,9 +29,7 @@ export default function MobileHeader({ title }: MobileHeaderProps) {
             className="text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
             onClick={toggleMobileMenu}
           >
-            {mobileMenuOpen ? (
-              <X className="h-6 w-6" />
-            ) : (
+            {!mobileMenuOpen && (
               <Menu className="h-6 w-6" />
             )}
           </Button>

@@ -99,6 +99,12 @@ export interface IStorage {
   
   // Direct email sending (bypasses notification queue)
   sendDirectEmail(to: string, subject: string, body: string): Promise<void>;
+  
+  // Direct Slack notification (no queue, immediate send)
+  sendSlackNotification(userId: number, message: string): Promise<void>;
+  
+  // Get users who should receive Slack notifications based on scope
+  getUsersForSlackNotification(triggerUserId: number, eventType: string): Promise<User[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -815,7 +821,7 @@ export class DatabaseStorage implements IStorage {
 
     // Pre-validate the email address before attempting to send
     if (isLikelyInvalidEmail(to)) {
-      console.error(`❌ Rejected likely non-existent email: ${to}`);
+      // Email validation failed - candidate email does not exist
       
       // Log the failure in email_logs
       await db
@@ -867,8 +873,6 @@ export class DatabaseStorage implements IStorage {
           createdAt: new Date()
         });
     } catch (error: unknown) {
-      console.error('❌ Error sending direct email:', error);
-      
       // Check if this is an email address not found error
       const errorMessage = error instanceof Error ? error.message : String(error);
       const isNonExistentEmailError = 
@@ -901,6 +905,67 @@ export class DatabaseStorage implements IStorage {
       (enhancedError as any).originalError = errorMessage;
       
       throw enhancedError; // Rethrow enhanced error after logging
+    }
+  }
+
+  // Direct Slack notification (no queue, immediate send)
+  async sendSlackNotification(userId: number, message: string): Promise<void> {
+    try {
+      const user = await this.getUser(userId);
+      if (!user || !user.slackWebhookUrl) {
+        return; // User hasn't configured Slack, silently skip
+      }
+
+      const axios = await import('axios');
+      await axios.default.post(user.slackWebhookUrl, {
+        text: message,
+      });
+    } catch (error) {
+      // Log error but don't throw - Slack failures shouldn't break the main flow
+      console.error(`Failed to send Slack notification to user ${userId}:`, error);
+    }
+  }
+
+  // Get users who should receive Slack notifications based on scope
+  async getUsersForSlackNotification(triggerUserId: number, eventType: string): Promise<User[]> {
+    const triggerUser = await this.getUser(triggerUserId);
+    if (!triggerUser) {
+      return [];
+    }
+
+    // Check if trigger user has Slack configured and wants this event type
+    const userEvents = triggerUser.slackNotificationEvents as string[] | null;
+    if (!triggerUser.slackWebhookUrl || !userEvents?.includes(eventType)) {
+      return []; // User doesn't want this event type
+    }
+
+    const scope = triggerUser.slackNotificationScope;
+    
+    if (scope === "all_users") {
+      // Get all users with Slack configured and this event enabled
+      const allUsers = await db.select().from(users);
+      return allUsers.filter(user => {
+        if (!user.slackWebhookUrl) return false;
+        const events = user.slackNotificationEvents as string[] | null;
+        return events?.includes(eventType) || false;
+      });
+    } else if (scope === "specific_roles") {
+      // Get users with specific roles
+      const allowedRoles = triggerUser.slackNotificationRoles as string[] | null;
+      if (!allowedRoles || allowedRoles.length === 0) {
+        return [triggerUser]; // Default to just the trigger user
+      }
+      
+      const allUsers = await db.select().from(users);
+      return allUsers.filter(user => {
+        if (!user.slackWebhookUrl) return false;
+        if (!allowedRoles.includes(user.role)) return false;
+        const events = user.slackNotificationEvents as string[] | null;
+        return events?.includes(eventType) || false;
+      });
+    } else {
+      // Default: only notify the user who triggered the event
+      return [triggerUser];
     }
   }
 }

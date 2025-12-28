@@ -8,6 +8,7 @@ import { generateJobDescription } from "./openai";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
 import { count } from "drizzle-orm";
+import { notifySlackUsers } from "../slack-notifications";
 
 export function setupJobRoutes(app: Express) {
   // Create a new job draft
@@ -211,18 +212,16 @@ export function setupJobRoutes(app: Express) {
         timestamp: new Date()
       });
 
-      // Add a notification to send a Slack message
-      // In production this would trigger a Slack webhook
-      await storage.createNotification({
-        type: "slack",
-        payload: {
-          channel: "hiring-updates",
-          message: `Job posted: ${job.title} by ${req.user?.fullName}`,
-          jobId: job.id
-        },
-        processAfter: new Date(),
-        status: "pending"
-      });
+      // Send Slack notification for job posted
+      if (req.user?.id) {
+        const user = await storage.getUser(req.user.id);
+        if (user) {
+          await notifySlackUsers(req.user.id, "job_posted", {
+            job: updatedJob,
+            user,
+          });
+        }
+      }
 
       res.json(updatedJob);
     } catch (error) {

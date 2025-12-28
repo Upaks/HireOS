@@ -55,8 +55,6 @@ export function setupCalendlyConnectRoutes(app: Express) {
           });
         }
         const webhookUrl = `${req.protocol}://${host}/api/webhooks/calendar?provider=calendly&userId=${userId}`;
-        
-        console.log("[Calendly Connect] Generated webhook URL:", webhookUrl);
 
         // Step 3: Check for existing webhooks (with pagination)
         let webhookId: string | null = null;
@@ -121,8 +119,6 @@ export function setupCalendlyConnectRoutes(app: Express) {
             user: userUri,
             scope: "user",
           };
-          
-          console.log("[Calendly Connect] Creating webhook with payload:", JSON.stringify(webhookPayload, null, 2));
           
           try {
             const webhookResponse = await axios.post(

@@ -2,6 +2,7 @@ import { Express } from "express";
 import { storage } from "../storage";
 import { handleApiError } from "./utils";
 import { isLikelyInvalidEmail } from "../email-validator";
+import { notifySlackUsers } from "../slack-notifications";
 
 // Calendar provider types
 type CalendarProvider = "calendly" | "cal.com" | "google" | "custom";
@@ -146,6 +147,17 @@ async function updateInterviewFromBooking(
       });
     }
 
+    // Send Slack notification for interview scheduled
+    const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+    const updatedInterview = await storage.getInterview(scheduledInterview.id);
+    if (updatedInterview && candidate && job && userId) {
+      await notifySlackUsers(userId, "interview_scheduled", {
+        candidate,
+        job,
+        interview: updatedInterview,
+      });
+    }
+
     return true;
   } catch (error) {
     console.error("Error updating interview from calendar booking:", error);
@@ -209,7 +221,6 @@ async function handleCalendlyWebhook(req: any, res: any) {
     if (updated) {
       res.status(200).json({ message: "Interview updated successfully" });
     } else {
-      console.log(`[Calendly Webhook] No matching candidate found for: ${candidateEmail}`);
       res.status(200).json({ message: "No matching candidate found. Please ensure the candidate exists in HireOS with this email address." });
     }
   } catch (error) {

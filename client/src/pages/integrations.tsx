@@ -14,13 +14,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Loader2, CheckCircle, ExternalLink, Settings } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CRMIntegrations, { CRMSettingsDialog, ConnectCRMDialog } from "@/components/integrations/crm-integrations";
+import SlackConfigForm from "@/components/integrations/slack-config";
 
 interface Integration {
   id: string;
   name: string;
   description: string;
   logo?: string;
-  category: "calendar" | "ai" | "crm";
+  category: "calendar" | "ai" | "crm" | "notification";
   requiresAdmin?: boolean;
   connected: boolean;
   configComponent?: React.ReactNode;
@@ -32,6 +33,7 @@ export default function Integrations() {
   const [activeTab, setActiveTab] = useState<"discover" | "manage">("discover");
   const [selectedIntegration, setSelectedIntegration] = useState<string | null>(null);
   const [showCRMConnectDialog, setShowCRMConnectDialog] = useState<string | null>(null);
+  const [showSlackDialog, setShowSlackDialog] = useState(false);
 
   // Fetch Calendly connection status
   const { data: calendlyStatus, refetch: refetchCalendlyStatus } = useQuery<{ connected: boolean; webhookUrl: string | null }>({
@@ -181,6 +183,13 @@ export default function Integrations() {
       category: "crm",
       connected: isGHLConnected,
     },
+    {
+      id: "slack",
+      name: "Slack",
+      description: "Get real-time notifications in Slack for interviews, offers, job postings, and new applications.",
+      category: "notification",
+      connected: !!user?.slackWebhookUrl,
+    },
   ];
 
   // Filter integrations based on tab
@@ -227,6 +236,8 @@ export default function Integrations() {
                 // For CRM integrations, open connect dialog
                 if (integration.category === "crm") {
                   setShowCRMConnectDialog(integration.id);
+                } else if (integration.id === "slack") {
+                  setShowSlackDialog(true);
                 } else {
                   setSelectedIntegration(integration.id);
                 }
@@ -347,6 +358,59 @@ export default function Integrations() {
               onRemove={() => updateOpenRouterMutation.mutate("")}
               isLoading={updateOpenRouterMutation.isPending}
               onCancel={() => setSelectedIntegration(null)}
+            />
+          </DialogContent>
+        </Dialog>
+
+        {/* Slack Integration Dialog */}
+        <Dialog open={showSlackDialog || selectedIntegration === "slack"} onOpenChange={(open) => {
+          if (!open) {
+            setShowSlackDialog(false);
+            setSelectedIntegration(null);
+          }
+        }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Slack Integration</DialogTitle>
+              <DialogDescription>
+                Connect your Slack workspace to receive real-time notifications for interviews, offers, job postings, and new applications.
+              </DialogDescription>
+            </DialogHeader>
+            <SlackConfigForm
+              user={user}
+              onSave={async (data) => {
+                const res = await apiRequest("PATCH", `/api/users/${user?.id}`, data);
+                await res.json();
+                queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+                toast({
+                  title: "Slack settings saved",
+                  description: "Your Slack integration has been configured.",
+                });
+                setShowSlackDialog(false);
+                setSelectedIntegration(null);
+                setTimeout(() => window.location.reload(), 500);
+              }}
+              onRemove={async () => {
+                const res = await apiRequest("PATCH", `/api/users/${user?.id}`, {
+                  slackWebhookUrl: null,
+                  slackNotificationScope: null,
+                  slackNotificationRoles: null,
+                  slackNotificationEvents: null,
+                });
+                await res.json();
+                queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+                toast({
+                  title: "Slack disconnected",
+                  description: "Your Slack integration has been removed.",
+                });
+                setShowSlackDialog(false);
+                setSelectedIntegration(null);
+                setTimeout(() => window.location.reload(), 500);
+              }}
+              onCancel={() => {
+                setShowSlackDialog(false);
+                setSelectedIntegration(null);
+              }}
             />
           </DialogContent>
         </Dialog>
@@ -566,6 +630,14 @@ function getIntegrationLogo(integrationId: string) {
       return (
         <div className="h-8 w-8 bg-blue-600 rounded flex items-center justify-center">
           <span className="text-white font-bold text-xs">GHL</span>
+        </div>
+      );
+    case "slack":
+      return (
+        <div className="h-8 w-8 bg-[#4A154B] rounded flex items-center justify-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+            <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 5.042a2.528 2.528 0 0 1-2.52-2.52A2.528 2.528 0 0 1 18.956 0a2.528 2.528 0 0 1 2.523 2.522v2.52h-2.523zM18.956 6.313a2.528 2.528 0 0 1 2.523 2.521 2.528 2.528 0 0 1-2.523 2.521h-6.313A2.528 2.528 0 0 1 10.121 8.834a2.528 2.528 0 0 1 2.522-2.521h6.313zM13.478 18.956a2.528 2.528 0 0 1 2.522 2.523A2.528 2.528 0 0 1 13.478 24a2.528 2.528 0 0 1-2.521-2.522v-2.523h2.521zM12.207 18.956a2.528 2.528 0 0 1-2.522-2.523 2.528 2.528 0 0 1 2.522-2.52h6.313A2.528 2.528 0 0 1 21.042 16.433a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+          </svg>
         </div>
       );
     default:

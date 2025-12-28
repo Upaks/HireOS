@@ -11,6 +11,7 @@ import {
   parseFullName,
 } from "../ghl-integration";
 import { Candidate } from "@shared/schema";
+import { notifySlackUsers } from "../slack-notifications";
 
 export function setupCandidateRoutes(app: Express) {
   // Create a new candidate
@@ -41,8 +42,19 @@ export function setupCandidateRoutes(app: Express) {
 
         const candidate = await storage.createCandidate(req.body);
 
-        // Auto-parse resume if URL is provided and user has OpenRouter API key
+        // Send Slack notification for new application
         const userId = (req.user as any)?.id;
+        if (userId && candidate.jobId) {
+          const job = await storage.getJob(candidate.jobId);
+          if (job) {
+            await notifySlackUsers(userId, "new_application", {
+              candidate,
+              job,
+            });
+          }
+        }
+
+        // Auto-parse resume if URL is provided and user has OpenRouter API key
         if (userId && candidate.resumeUrl) {
           try {
             const user = await storage.getUser(userId);
@@ -1109,6 +1121,20 @@ export function setupCandidateRoutes(app: Express) {
             contractUrl: `https://firmos.ai/contracts/${candidateId}-${Date.now()}.pdf`,
           });
 
+          // Send Slack notification for offer sent
+          if (req.user?.id) {
+            const user = await storage.getUser(req.user.id);
+            const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+            if (user && job) {
+              await notifySlackUsers(req.user.id, "offer_sent", {
+                candidate: updatedCandidate,
+                job,
+                offer,
+                user,
+              });
+            }
+          }
+
           // Log activity for successful offer creation
           await storage.createActivityLog({
             userId: req.user?.id ?? null,
@@ -1265,18 +1291,18 @@ export function setupCandidateRoutes(app: Express) {
         timestamp: new Date(),
       });
 
-      // Send Slack notification
-      await storage.createNotification({
-        type: "slack",
-        payload: {
-          channel: "onboarding",
-          message: `${candidate.name} has accepted the offer for ${job?.title} position!`,
-          candidateId: candidate.id,
-          jobId: candidate.jobId,
-        },
-        processAfter: new Date(),
-        status: "pending",
-      });
+      // Send Slack notification for offer accepted
+      if (offer && offer.approvedById) {
+        const user = await storage.getUser(offer.approvedById);
+        if (user && job) {
+          await notifySlackUsers(offer.approvedById, "offer_accepted", {
+            candidate,
+            job,
+            offer,
+            user,
+          });
+        }
+      }
 
       // Queue onboarding email
       await storage.createNotification({

@@ -24,6 +24,10 @@ const updateUserSchema = z.object({
   calendlyToken: z.string().optional(),
   calendlyWebhookId: z.string().optional(),
   openRouterApiKey: z.string().optional(),
+  slackWebhookUrl: z.string().url("Invalid Slack webhook URL").optional().or(z.literal("")),
+  slackNotificationScope: z.enum(["all_users", "specific_roles"]).optional(),
+  slackNotificationRoles: z.array(z.string()).optional(),
+  slackNotificationEvents: z.array(z.string()).optional(),
   emailTemplates: z.record(z.any()).optional(), // JSONB field for all email templates
 });
 
