@@ -1,8 +1,6 @@
 import axios from "axios";
 import { createRequire } from "module";
 
-const require = createRequire(import.meta.url);
-
 /**
  * RESUME PARSING SERVICE
  * 
@@ -37,7 +35,8 @@ export interface ParsedResumeData {
  */
 async function extractTextFromPDF(pdfBuffer: Buffer): Promise<string> {
   try {
-    // Use createRequire to load CommonJS module pdf-parse
+    // Use createRequire to load CommonJS module pdf-parse (create it inside function to avoid module-level conflicts)
+    const require = createRequire(import.meta.url);
     const pdfParseModule = require('pdf-parse');
     // pdf-parse v2.4.5 uses PDFParse class - instantiate it with the buffer
     const PDFParse = pdfParseModule.PDFParse;
