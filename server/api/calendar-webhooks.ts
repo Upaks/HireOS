@@ -101,6 +101,7 @@ async function updateInterviewFromBooking(
     // Find scheduled interview for this candidate
     // If userId is provided, prioritize interviews where this user is the interviewer
     const interviews = await storage.getInterviews({ candidateId: candidate.id });
+    
     let scheduledInterview = interviews.find(
       i => (i.status === "scheduled" || i.status === "pending")
     );
@@ -115,8 +116,17 @@ async function updateInterviewFromBooking(
       }
     }
 
+    // If no interview exists, create one automatically
     if (!scheduledInterview) {
-      return false;
+      const newInterview = await storage.createInterview({
+        candidateId: candidate.id,
+        type: "video",
+        status: "scheduled",
+        scheduledDate: scheduledDate,
+        interviewerId: userId || null,
+        notes: `Automatically created from ${provider} booking on ${new Date().toISOString()}`,
+      });
+      scheduledInterview = newInterview;
     }
 
     // Update interview with scheduled date
@@ -151,8 +161,11 @@ async function handleCalendlyWebhook(req: any, res: any) {
     const payload = req.body;
     const userId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
 
-    // Calendly webhook structure: 
-    // { event: "invitee.created", payload: { email, name, scheduled_event: { start_time, ... } } }
+    // Log webhook received (minimal logging)
+
+    // Calendly webhook structure can vary:
+    // Option 1: { event: "invitee.created", payload: { ... } }
+    // Option 2: { event: "invitee.created", payload: { invitee: { email, ... }, scheduled_event: { start_time, ... } } }
     const eventType = payload.event;
     
     // Only process "invitee.created" events (when someone books)
@@ -161,24 +174,26 @@ async function handleCalendlyWebhook(req: any, res: any) {
     }
 
     // Extract invitee data from payload
-    // The payload itself contains the invitee info (email, name) and scheduled_event
     const inviteeData = payload.payload;
     
     if (!inviteeData) {
+      console.error('[Calendly Webhook] Missing payload data');
       return res.status(400).json({ message: "Missing payload data" });
     }
 
-    // Get email and name from payload
-    const candidateEmail = inviteeData.email;
+    // Get email - could be in inviteeData.email or inviteeData.invitee.email
+    const candidateEmail = inviteeData.email || inviteeData.invitee?.email;
     
     if (!candidateEmail) {
+      console.error('[Calendly Webhook] Missing email in payload');
       return res.status(400).json({ message: "Missing email in payload" });
     }
 
-    // Get scheduled event data
-    const scheduledEvent = inviteeData.scheduled_event;
+    // Get scheduled event data - could be in inviteeData.scheduled_event or payload.scheduled_event
+    const scheduledEvent = inviteeData.scheduled_event || payload.scheduled_event;
     
     if (!scheduledEvent || !scheduledEvent.start_time) {
+      console.error('[Calendly Webhook] Missing scheduled_event.start_time');
       return res.status(400).json({ message: "Missing scheduled_event.start_time" });
     }
 
@@ -194,9 +209,11 @@ async function handleCalendlyWebhook(req: any, res: any) {
     if (updated) {
       res.status(200).json({ message: "Interview updated successfully" });
     } else {
-      res.status(200).json({ message: "No matching candidate or interview found" });
+      console.log(`[Calendly Webhook] No matching candidate found for: ${candidateEmail}`);
+      res.status(200).json({ message: "No matching candidate found. Please ensure the candidate exists in HireOS with this email address." });
     }
   } catch (error) {
+    console.error('[Calendly Webhook] Error:', error);
     handleApiError(error, res);
   }
 }

@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { uploadResume } from "@/lib/supabase";
+// Removed uploadResume - using backend endpoint instead
 import { queryClient } from "@/lib/queryClient";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -146,14 +146,32 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
       
       const newCandidate = await response.json();
       
-      // Handle file upload if provided
+      // Handle file upload if provided - USING BACKEND ENDPOINT
       if (data.resumeFile && newCandidate.id) {
         try {
           setIsUploading(true);
-          const resumeUrl = await uploadResume(data.resumeFile, newCandidate.id);
+          
+          // Upload via backend endpoint to avoid JWT/authentication issues
+          const formData = new FormData();
+          formData.append('resume', data.resumeFile);
+          formData.append('candidateId', newCandidate.id.toString());
+          
+          const uploadResponse = await fetch('/api/upload/resume', {
+            method: 'POST',
+            body: formData,
+            credentials: 'include',
+          });
+
+          if (!uploadResponse.ok) {
+            const errorData = await uploadResponse.json().catch(() => ({ message: 'Upload failed' }));
+            throw new Error(errorData.message || `Upload failed: ${uploadResponse.statusText}`);
+          }
+
+          const uploadResult = await uploadResponse.json();
+          const resumeUrl = uploadResult.url;
           
           // Update the candidate with the resume URL
-          await fetch(`/api/candidates/${newCandidate.id}`, {
+          const updateResponse = await fetch(`/api/candidates/${newCandidate.id}`, {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
@@ -162,15 +180,19 @@ export default function AddCandidateForm({ open, onOpenChange }: AddCandidateFor
             credentials: "include"
           });
           
+          if (!updateResponse.ok) {
+            throw new Error("Failed to save resume URL to candidate");
+          }
+          
           toast({
             title: "Resume uploaded",
             description: "The resume has been attached to the candidate's profile.",
           });
-        } catch (err) {
+        } catch (err: any) {
           console.error("Resume upload failed:", err);
           toast({
             title: "Resume upload failed",
-            description: "The candidate was added but we couldn't upload the resume.",
+            description: err?.message || "The candidate was added but we couldn't upload the resume.",
             variant: "destructive",
           });
         } finally {

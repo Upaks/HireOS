@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
@@ -37,6 +38,9 @@ export default function UserManagement() {
   const [showEditUserDialog, setShowEditUserDialog] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [webhookUrlCopied, setWebhookUrlCopied] = useState(false);
+  const [showCalendlyConnect, setShowCalendlyConnect] = useState(false);
+  const [calendlyToken, setCalendlyToken] = useState("");
+  const [calendlyStatus, setCalendlyStatus] = useState<{ connected: boolean; webhookUrl: string | null } | null>(null);
   
   // Only admin, CEO, or COO should access this page
   const canManageUsers = user?.role === 'admin' || user?.role === 'ceo' || user?.role === 'coo';
@@ -151,6 +155,82 @@ export default function UserManagement() {
     },
   });
   
+  // Fetch Calendly connection status
+  const { data: calendlyStatusData, refetch: refetchCalendlyStatus } = useQuery<{ connected: boolean; webhookUrl: string | null }>({
+    queryKey: ['/api/calendly/status'],
+    enabled: !!user,
+    refetchOnMount: true,
+  });
+
+  useEffect(() => {
+    if (calendlyStatusData) {
+      setCalendlyStatus(calendlyStatusData);
+    }
+  }, [calendlyStatusData]);
+
+  // Refetch status when edit dialog opens
+  useEffect(() => {
+    if (showEditUserDialog && user) {
+      refetchCalendlyStatus();
+    }
+  }, [showEditUserDialog, user, refetchCalendlyStatus]);
+
+  // Connect Calendly mutation
+  const connectCalendlyMutation = useMutation({
+    mutationFn: async (token: string) => {
+      const res = await apiRequest("POST", "/api/calendly/connect", { token });
+      return await res.json();
+    },
+    onSuccess: async () => {
+      // Invalidate queries first
+      queryClient.invalidateQueries({ queryKey: ['/api/calendly/status'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      // Wait a bit for the database to update, then refetch
+      setTimeout(async () => {
+        await refetchCalendlyStatus();
+      }, 500);
+      toast({
+        title: "Calendly connected!",
+        description: "Your Calendly calendar is now connected. Interview dates will update automatically when candidates book.",
+      });
+      setShowCalendlyConnect(false);
+      setCalendlyToken("");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to connect Calendly",
+        description: error.message || "Please check your token and try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Disconnect Calendly mutation
+  const disconnectCalendlyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/calendly/disconnect", {});
+      return await res.json();
+    },
+    onSuccess: async () => {
+      // Invalidate and refetch to get updated status
+      await queryClient.invalidateQueries({ queryKey: ['/api/calendly/status'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      // Refetch status immediately to update UI
+      await refetchCalendlyStatus();
+      toast({
+        title: "Calendly disconnected",
+        description: "Your Calendly calendar has been disconnected.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to disconnect",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Delete user mutation
   const deleteUserMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -556,86 +636,114 @@ export default function UserManagement() {
               <div className="border-t pt-4 mt-4">
                 <h3 className="text-sm font-semibold mb-3">Calendar Sync (Optional)</h3>
                 <p className="text-xs text-muted-foreground mb-4">
-                  Connect your calendar to automatically update interview dates when candidates book.
+                  Connect your Calendly calendar to automatically update interview dates when candidates book.
                 </p>
                 
-                <FormField
-                  control={editForm.control}
-                  name="calendarProvider"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Calendar Provider</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ""}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select calendar provider" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="calendly">Calendly</SelectItem>
-                          <SelectItem value="cal.com">Cal.com</SelectItem>
-                          <SelectItem value="google">Google Calendar</SelectItem>
-                          <SelectItem value="custom">Custom/Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <div className="mt-4">
-                  <FormLabel>Webhook URL</FormLabel>
-                  <div className="mt-2 flex items-center gap-2">
-                    <code className="text-xs bg-slate-50 px-3 py-2 rounded border border-slate-200 text-slate-900 flex-1 break-all font-mono">
-                      {typeof window !== 'undefined' && currentUser
-                        ? `${window.location.origin}/api/webhooks/calendar?provider=${editForm.watch("calendarProvider") || "calendly"}&userId=${currentUser.id}`
-                        : "Select a provider to see webhook URL"
-                      }
-                    </code>
+                {calendlyStatus?.connected ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
+                      <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-green-900 dark:text-green-100">
+                          Calendly Connected
+                        </p>
+                        <p className="text-xs text-green-700 dark:text-green-300">
+                          Interview dates will update automatically when candidates book.
+                        </p>
+                      </div>
+                    </div>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        const provider = editForm.watch("calendarProvider") || "calendly";
-                        const webhookUrl = typeof window !== 'undefined' && currentUser
-                          ? `${window.location.origin}/api/webhooks/calendar?provider=${provider}&userId=${currentUser.id}`
-                          : "";
-                        if (webhookUrl) {
-                          navigator.clipboard.writeText(webhookUrl);
-                          setWebhookUrlCopied(true);
-                          toast({
-                            title: "Webhook URL copied",
-                            description: "Webhook URL copied to clipboard",
-                          });
-                          setTimeout(() => setWebhookUrlCopied(false), 2000);
-                        }
-                      }}
-                      disabled={!editForm.watch("calendarProvider") || !currentUser}
-                      className="shrink-0"
+                      onClick={() => disconnectCalendlyMutation.mutate()}
+                      disabled={disconnectCalendlyMutation.isPending}
+                      className="w-full"
                     >
-                      {webhookUrlCopied ? (
+                      {disconnectCalendlyMutation.isPending ? (
                         <>
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Copied
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Disconnecting...
                         </>
                       ) : (
-                        <>
-                          <Copy className="h-4 w-4 mr-2" />
-                          Copy
-                        </>
+                        "Disconnect Calendly"
                       )}
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Copy this webhook URL and configure it in your calendar service settings. When candidates book, your app will automatically update the interview date.
-                  </p>
-                  {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (
-                    <p className="text-xs text-amber-600 mt-2 bg-amber-50 p-2 rounded border border-amber-200">
-                      ⚠️ <strong>Note:</strong> Webhooks won't work with localhost. Calendar services need a publicly accessible URL. Use a service like ngrok for local testing, or deploy your app to test webhooks.
+                ) : (
+                  <div className="space-y-3">
+                    <Button
+                      type="button"
+                      onClick={() => setShowCalendlyConnect(true)}
+                      className="w-full"
+                    >
+                      Connect Calendly
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      We'll automatically set up the webhook for you. You just need to provide your Calendly Personal Access Token.
                     </p>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {/* Calendly Connect Dialog */}
+                <Dialog open={showCalendlyConnect} onOpenChange={setShowCalendlyConnect}>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Connect Calendly</DialogTitle>
+                      <DialogDescription>
+                        Enter your Calendly Personal Access Token to automatically set up calendar sync.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="calendly-token">Calendly Personal Access Token</Label>
+                        <Input
+                          id="calendly-token"
+                          type="password"
+                          placeholder="eyJraWQiOi..."
+                          value={calendlyToken}
+                          onChange={(e) => setCalendlyToken(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Get your token from{" "}
+                          <a
+                            href="https://calendly.com/integrations/api_webhooks"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary underline"
+                          >
+                            Calendly Integrations
+                          </a>
+                          {" "}→ Personal Access Tokens
+                        </p>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setShowCalendlyConnect(false);
+                          setCalendlyToken("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => connectCalendlyMutation.mutate(calendlyToken)}
+                        disabled={!calendlyToken || connectCalendlyMutation.isPending}
+                      >
+                        {connectCalendlyMutation.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Connecting...
+                          </>
+                        ) : (
+                          "Connect"
+                        )}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
               </div>
               

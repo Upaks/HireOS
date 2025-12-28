@@ -21,6 +21,8 @@ const updateUserSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters").optional(),
   calendarLink: z.string().url("Invalid calendar URL").optional().or(z.literal("")),
   calendarProvider: z.enum(["calendly", "cal.com", "google", "custom"]).optional(),
+  calendlyToken: z.string().optional(),
+  calendlyWebhookId: z.string().optional(),
   emailTemplates: z.record(z.any()).optional(), // JSONB field for all email templates
 });
 

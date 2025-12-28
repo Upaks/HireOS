@@ -21,6 +21,8 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("hiringManager"),
   calendarLink: text("calendar_link"), // Optional: User's personal calendar scheduling link
   calendarProvider: text("calendar_provider"), // Optional: "calendly", "cal.com", "google", "custom"
+  calendlyToken: text("calendly_token"), // Optional: Encrypted Calendly Personal Access Token
+  calendlyWebhookId: text("calendly_webhook_id"), // Optional: Calendly webhook subscription ID
   // Email templates (stored as JSONB for flexibility)
   emailTemplates: jsonb("email_templates"), // { interview: {subject, body}, offer: {subject, body}, ... }
   createdAt: timestamp("created_at").defaultNow().notNull(),

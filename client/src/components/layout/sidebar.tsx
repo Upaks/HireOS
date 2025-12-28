@@ -9,9 +9,9 @@ import {
   BarChart3, 
   CheckCircle,
   Settings,
-  Activity,
   LogOut,
-  RefreshCw
+  RefreshCw,
+  FileEdit
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -69,6 +69,12 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
       roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     },
     {
+      title: "Forms",
+      icon: <FileEdit className="h-5 w-5 mr-3" />,
+      href: "/forms",
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
+    },
+    {
       title: "Analytics",
       icon: <BarChart3 className="h-5 w-5 mr-3" />,
       href: "/analytics",
@@ -97,12 +103,6 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
       icon: <RefreshCw className="h-5 w-5 mr-3" />,
       href: "/crm-sync",
       roles: [UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
-    },
-    {
-      title: "Telemetry",
-      icon: <Activity className="h-5 w-5 mr-3" />,
-      href: "/admin",
-      roles: [UserRoles.ADMIN]
     }
   ];
   

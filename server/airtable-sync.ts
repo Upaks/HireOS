@@ -96,12 +96,17 @@ export async function syncAirtableContacts(
           );
         }
 
-        // If no email match, try matching by name
-        if (!matchingCandidate && contactName) {
+        // If no email match, try matching by name (but only if emails are safe)
+        // This prevents matching wrong candidates when emails don't match
+        if (!matchingCandidate && contactName && contactEmail) {
           const normalizedAirtableName = normalizeName(contactName);
-          matchingCandidate = candidates.find(candidate => 
-            normalizeName(candidate.name) === normalizedAirtableName
-          );
+          matchingCandidate = candidates.find(candidate => {
+            const nameMatches = normalizeName(candidate.name) === normalizedAirtableName;
+            // Only match by name if candidate has no email OR if emails are the same
+            // This prevents overwriting emails when matching by name
+            const emailSafe = !candidate.email || candidate.email.toLowerCase() === contactEmail.toLowerCase();
+            return nameMatches && emailSafe;
+          });
         }
 
         if (!matchingCandidate) {
@@ -292,10 +297,11 @@ export async function syncAirtableContacts(
           updateData.name = contactName.trim();
         }
         
-        // Update email if different (but be careful - email is used for matching!)
-        if (contactEmail && contactEmail.toLowerCase() !== matchingCandidate.email.toLowerCase()) {
-          updateData.email = contactEmail.trim();
-        }
+        // IMPORTANT: Never update email from CRM sync to prevent overwriting user changes
+        // Email should only be changed manually in HireOS to preserve user edits
+        // if (contactEmail && contactEmail.toLowerCase() !== matchingCandidate.email.toLowerCase()) {
+        //   updateData.email = contactEmail.trim();
+        // }
         
         // Update phone if different (reuse values from earlier comparison)
         if (airtablePhoneValue && airtablePhoneValue !== matchingCandidate.phone) {
@@ -522,7 +528,6 @@ export async function createAirtableCandidatesWithJobs(
           reason: `Created with job ID: ${assignment.jobId || 'none'}`,
         });
 
-        console.log(`✅ Created candidate "${newCandidate.name}" with job ID ${assignment.jobId || 'none'}`);
       } catch (error: any) {
         result.errors.push(`Failed to create candidate ${assignment.contactId}: ${error.message}`);
         result.details.push({

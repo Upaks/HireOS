@@ -551,7 +551,25 @@ export default function CandidateDetailDialog({
 
     try {
       setIsUploading(true);
-      const resumeUrl = await uploadResume(resumeFile, candidate.id);
+      
+      // Use backend endpoint to avoid JWT/authentication issues with client-side Supabase
+      const formData = new FormData();
+      formData.append('resume', resumeFile);
+      formData.append('candidateId', candidate.id.toString());
+      
+      const uploadResponse = await fetch('/api/upload/resume', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json().catch(() => ({ message: 'Upload failed' }));
+        throw new Error(errorData.message || `Upload failed: ${uploadResponse.statusText}`);
+      }
+
+      const uploadResult = await uploadResponse.json();
+      const resumeUrl = uploadResult.url;
 
       // Update candidate with resume URL
       await apiRequest("PATCH", `/api/candidates/${candidate.id}`, {
@@ -566,9 +584,10 @@ export default function CandidateDetailDialog({
       queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
       setResumeFile(null);
     } catch (error: any) {
+      console.error("Resume upload error:", error);
       toast({
         title: "Upload failed",
-        description: error.message || "Failed to upload the resume.",
+        description: error?.message || "Failed to upload the resume.",
         variant: "destructive",
       });
     } finally {

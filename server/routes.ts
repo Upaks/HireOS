@@ -18,6 +18,7 @@ import { setupFormTemplateRoutes } from "./api/form-templates";
 import { setupApplicationRoutes } from "./api/applications";
 import { setupStorageRoutes } from "./api/storage";
 import { setupCalendarWebhookRoutes } from "./api/calendar-webhooks";
+import { setupCalendlyConnectRoutes } from "./api/calendly-connect";
 import { storage } from "./storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -42,6 +43,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupApplicationRoutes(app);
   setupStorageRoutes(app);
   setupCalendarWebhookRoutes(app);
+  setupCalendlyConnectRoutes(app);
 
   // We're using the rebuild-users.ts script to create users now
   // The script creates users for each role with the password "justtesting"

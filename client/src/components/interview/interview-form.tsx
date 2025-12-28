@@ -116,18 +116,19 @@ export default function InterviewForm({
             />
           </div>
           
-          {interviewType === "video" && (
-            <div className="space-y-2">
-              <Label htmlFor="video-url">Video URL (if available)</Label>
-              <Input 
-                id="video-url"
-                type="url"
-                placeholder="https://..."
-                value={videoUrl}
-                onChange={(e) => setVideoUrl(e.target.value)}
-              />
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label htmlFor="video-url">Interview Recording URL (Optional)</Label>
+            <Input 
+              id="video-url"
+              type="url"
+              placeholder="https://zoom.us/recording/... or https://youtube.com/..."
+              value={videoUrl}
+              onChange={(e) => setVideoUrl(e.target.value)}
+            />
+            <p className="text-xs text-slate-500">
+              Paste the recording link here after the interview. Works with Zoom, Google Meet, YouTube, Vimeo, etc.
+            </p>
+          </div>
           
           <div className="space-y-2">
             <Label htmlFor="notes">Notes</Label>

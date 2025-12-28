@@ -72,18 +72,12 @@ export class BackgroundSyncService {
                 if (integration.platformId === 'google-sheets') {
                   // Run Google Sheets sync (only updates, skip new candidates to avoid duplicates)
                   const result = await executeGoogleSheetsSync(user.id, undefined, true);
-                  if (result.updated > 0) {
-                    console.log(`[Background Sync] ${integration.platformName}: Updated ${result.updated} candidate(s)`);
-                  }
                   if (result.errors.length > 0) {
                     console.error(`[Background Sync] ${integration.platformName} error:`, result.errors[0]);
                   }
                 } else if (integration.platformId === 'airtable') {
                   // Run Airtable sync (only updates, skip new candidates)
                   const result = await executeAirtableSync(user.id, undefined, true);
-                  if (result.updated > 0) {
-                    console.log(`[Background Sync] ${integration.platformName}: Updated ${result.updated} candidate(s)`);
-                  }
                   if (result.errors.length > 0) {
                     console.error(`[Background Sync] ${integration.platformName} error:`, result.errors[0]);
                   }

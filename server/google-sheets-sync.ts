@@ -114,12 +114,17 @@ export async function syncGoogleSheetsContacts(
           );
         }
 
-        // If no email match, try matching by name
-        if (!matchingCandidate && contactName) {
+        // If no email match, try matching by name (but only if both have emails and they're different)
+        // This prevents matching wrong candidates when emails don't match
+        if (!matchingCandidate && contactName && contactEmail) {
           const normalizedSheetsName = normalizeName(contactName);
-          matchingCandidate = candidates.find(candidate => 
-            normalizeName(candidate.name) === normalizedSheetsName
-          );
+          matchingCandidate = candidates.find(candidate => {
+            const nameMatches = normalizeName(candidate.name) === normalizedSheetsName;
+            // Only match by name if candidate has no email OR if emails are the same
+            // This prevents overwriting emails when matching by name
+            const emailSafe = !candidate.email || candidate.email.toLowerCase() === contactEmail.toLowerCase();
+            return nameMatches && emailSafe;
+          });
         }
 
         if (!matchingCandidate) {
@@ -301,8 +306,11 @@ export async function syncGoogleSheetsContacts(
                 : Array.isArray(sheetsSkillsValue) ? sheetsSkillsValue : [])
             : null;
 
+          // IMPORTANT: Never update email from CRM sync to prevent overwriting user changes
+          // Only update other fields - email should only be changed manually in HireOS
           await storage.updateCandidate(matchingCandidate.id, {
             name: sheetsNameValue || matchingCandidate.name,
+            // email: NOT UPDATED - preserve email changes made in HireOS
             phone: sheetsPhoneValue || matchingCandidate.phone,
             location: sheetsLocationValue || matchingCandidate.location,
             expectedSalary: sheetsSalaryValue ? String(parseFloat(sheetsSalaryValue)) : matchingCandidate.expectedSalary,

@@ -22,8 +22,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import UserManagement from "@/components/users/user-management";
 import PlatformIntegrations from "@/components/integrations/platform-integrations";
 import CRMIntegrations from "@/components/integrations/crm-integrations";
-import FormBuilder from "@/components/forms/form-builder";
 import EmailTemplates from "@/components/settings/email-templates";
+import TelemetryContent from "@/components/settings/telemetry-content";
 
 // Form schema for creating a new user
 const userFormSchema = z.object({
@@ -286,8 +286,10 @@ export default function Settings() {
             <TabsTrigger value="users">User Management</TabsTrigger>
             <TabsTrigger value="emails">Email Templates</TabsTrigger>
             <TabsTrigger value="system">System Configuration</TabsTrigger>
-            <TabsTrigger value="forms">Application Forms</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
+            {user?.role === 'admin' && (
+              <TabsTrigger value="telemetry">Telemetry</TabsTrigger>
+            )}
           </TabsList>
           
           <TabsContent value="users">
@@ -308,18 +310,6 @@ export default function Settings() {
                 <p className="text-center py-12 text-slate-500">
                   System configuration settings coming soon
                 </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="forms">
-            <Card>
-              <CardHeader>
-                <CardTitle>Application Form Builder</CardTitle>
-                <CardDescription>Create and customize application forms for job postings</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <FormBuilder />
               </CardContent>
             </Card>
           </TabsContent>
@@ -346,6 +336,12 @@ export default function Settings() {
               </Card>
             </div>
           </TabsContent>
+
+          {user?.role === 'admin' && (
+            <TabsContent value="telemetry">
+              <TelemetryContent />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
       

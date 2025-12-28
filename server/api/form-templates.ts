@@ -3,18 +3,33 @@ import { storage } from "../storage";
 import { handleApiError } from "./utils";
 import { z } from "zod";
 
-// Field type definitions
+// Field type definitions - Enhanced with more field types
 const fieldSchema = z.object({
   id: z.string(),
-  type: z.enum(["text", "email", "phone", "textarea", "number", "select", "file", "checkbox"]),
+  type: z.enum([
+    "text", "email", "phone", "textarea", "number", "select", "multiselect",
+    "radio", "checkbox", "file", "date", "time", "datetime", "rating", 
+    "scale", "url", "section", "pagebreak"
+  ]),
   label: z.string(),
+  description: z.string().optional(),
   placeholder: z.string().optional(),
   required: z.boolean().default(false),
-  options: z.array(z.string()).optional(), // For select/checkbox fields
+  options: z.array(z.string()).optional(), // For select, multiselect, radio, checkbox fields
   validation: z.object({
     min: z.number().optional(),
     max: z.number().optional(),
+    minLength: z.number().optional(),
+    maxLength: z.number().optional(),
     pattern: z.string().optional(),
+  }).optional(),
+  settings: z.object({
+    allowMultiple: z.boolean().optional(),
+    accept: z.string().optional(),
+    min: z.number().optional(),
+    max: z.number().optional(),
+    step: z.number().optional(),
+    rows: z.number().optional(),
   }).optional(),
 });
 

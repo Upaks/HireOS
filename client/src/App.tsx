@@ -18,6 +18,7 @@ import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 import AdminPage from "@/pages/admin";
 import CRMSyncPage from "@/pages/crm-sync";
+import Forms from "@/pages/forms";
 import ApplyPage from "@/pages/apply";
 import AcceptOfferPage from "@/pages/accept-offer";
 import { ThemeProvider } from "next-themes";
@@ -49,6 +50,13 @@ function Router() {
       
       {/* Interview grading for all authenticated users */}
       <ProtectedRoute path="/interviews/:id" component={InterviewGrading} />
+      
+      {/* Forms page - accessible to all authenticated users */}
+      <ProtectedRoute 
+        path="/forms" 
+        component={Forms}
+        roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]}
+      />
       
       {/* Final reviews for COO, CEO, Director and Admin only */}
       <ProtectedRoute 

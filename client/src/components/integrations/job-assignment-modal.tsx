@@ -92,7 +92,7 @@ export default function JobAssignmentModal({
   const handleJobChange = (contactId: string, jobId: string) => {
     setJobAssignments(prev => ({
       ...prev,
-      [contactId]: jobId === 'none' ? null : parseInt(jobId),
+      [contactId]: parseInt(jobId),
     }));
   };
 
@@ -117,7 +117,7 @@ export default function JobAssignmentModal({
   };
 
   const handleBulkAssign = (jobId: string) => {
-    const jobIdNum = jobId === 'none' ? null : parseInt(jobId);
+    const jobIdNum = parseInt(jobId);
     const newAssignments = { ...jobAssignments };
     selectedCandidates.forEach(contactId => {
       newAssignments[contactId] = jobIdNum;
@@ -126,11 +126,16 @@ export default function JobAssignmentModal({
   };
 
   const handleConfirm = () => {
-    // Only include selected candidates
-    const assignments = Array.from(selectedCandidates).map(contactId => ({
-      contactId,
-      jobId: jobAssignments[contactId] ?? null,
-    }));
+    // Only include selected candidates with valid job assignments
+    const assignments = Array.from(selectedCandidates)
+      .filter(contactId => {
+        const jobId = jobAssignments[contactId];
+        return jobId !== null && jobId !== undefined;
+      })
+      .map(contactId => ({
+        contactId,
+        jobId: jobAssignments[contactId]!,
+      }));
     onConfirm(assignments);
   };
 
@@ -143,7 +148,12 @@ export default function JobAssignmentModal({
         <DialogHeader>
           <DialogTitle>Assign Jobs to New Candidates</DialogTitle>
           <DialogDescription>
-            Select which candidates to import and assign them to job postings. Unselected candidates will be skipped.
+            Select which candidates to import and assign them to job postings. Each candidate must be assigned to a job. Unselected candidates will be skipped.
+            {activeJobs.length === 0 && (
+              <span className="block mt-2 text-destructive font-medium">
+                No active jobs available. Please create a job posting first.
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -180,7 +190,6 @@ export default function JobAssignmentModal({
                           {job.title}
                         </SelectItem>
                       ))}
-                      <SelectItem value="none">No Job (Unassigned)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -214,12 +223,12 @@ export default function JobAssignmentModal({
                     </div>
                     <div className="w-[250px]">
                       <Select
-                        value={assignedJobId?.toString() || 'none'}
+                        value={assignedJobId?.toString() || ''}
                         onValueChange={(value) => handleJobChange(candidate.contactId, value)}
-                        disabled={!isSelected || isLoadingJobs}
+                        disabled={!isSelected || isLoadingJobs || activeJobs.length === 0}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select job..." />
+                          <SelectValue placeholder={activeJobs.length === 0 ? "No jobs available" : "Select job..."} />
                         </SelectTrigger>
                         <SelectContent>
                           {activeJobs.map(job => (
@@ -227,7 +236,6 @@ export default function JobAssignmentModal({
                               {job.title}
                             </SelectItem>
                           ))}
-                          <SelectItem value="none">No Job (Unassigned)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -248,7 +256,7 @@ export default function JobAssignmentModal({
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={isLoading || selectedCount === 0}
+            disabled={isLoading || selectedCount === 0 || activeJobs.length === 0}
           >
             {isLoading ? (
               <>
