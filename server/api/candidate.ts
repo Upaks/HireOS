@@ -13,6 +13,51 @@ import {
 import { Candidate } from "@shared/schema";
 import { notifySlackUsers } from "../slack-notifications";
 import { createNotification } from "./notifications";
+import { sanitizeEmailContent, sanitizeTextInput } from "../security/sanitize";
+import { SecureLogger } from "../security/logger";
+import { canModifyCandidate, canAccessCandidate } from "../security/authorization";
+
+// SECURITY: Get company name from environment variable
+function getCompanyName(): string {
+  return process.env.COMPANY_NAME || "Company";
+}
+
+// SECURITY: Get contract URL template from environment variable
+function getContractUrl(candidateId: number): string {
+  const baseUrl = process.env.CONTRACT_BASE_URL || "https://talent.firmos.app";
+  const template = process.env.CONTRACT_URL_TEMPLATE || `${baseUrl}/web-manager-contract{candidateId}`;
+  return template.replace('{candidateId}', candidateId.toString());
+}
+
+// SECURITY: Helper function to sanitize and replace email template placeholders
+function sanitizeAndReplaceTemplate(
+  template: string,
+  candidateName: string,
+  jobTitle: string,
+  senderName: string,
+  companyName: string,
+  additionalReplacements?: Record<string, string>
+): string {
+  const safeCandidateName = sanitizeTextInput(candidateName);
+  const safeJobTitle = sanitizeTextInput(jobTitle);
+  const safeSenderName = sanitizeTextInput(senderName);
+  const safeCompanyName = sanitizeTextInput(companyName);
+  
+  let result = template
+    .replace(/\{\{candidateName\}\}/g, safeCandidateName)
+    .replace(/\{\{jobTitle\}\}/g, safeJobTitle)
+    .replace(/\{\{senderName\}\}/g, safeSenderName)
+    .replace(/\{\{companyName\}\}/g, safeCompanyName);
+  
+  // Apply additional replacements if provided
+  if (additionalReplacements) {
+    for (const [key, value] of Object.entries(additionalReplacements)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+    }
+  }
+  
+  return result;
+}
 
 export function setupCandidateRoutes(app: Express) {
   // Create a new candidate
@@ -289,6 +334,12 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(400).json({ message: "Invalid candidate ID" });
       }
 
+      // SECURITY: Check authorization
+      const hasAccess = await canAccessCandidate(req.user!.id, candidateId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied to this candidate" });
+      }
+
       const candidate = await storage.getCandidate(candidateId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
@@ -324,7 +375,15 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
-      // Permissions check for evaluation fields
+      // SECURITY: Check authorization to access this candidate
+      if (req.isAuthenticated()) {
+        const hasAccess = await canAccessCandidate(req.user!.id, candidate.id);
+        if (!hasAccess) {
+          return res.status(403).json({ message: "Access denied to this candidate" });
+        }
+      }
+
+      // SECURITY: Check permissions for evaluation fields
       const hasEvaluationFields =
         req.body.technicalProficiency !== undefined ||
         req.body.leadershipInitiative !== undefined ||
@@ -334,14 +393,14 @@ export function setupCandidateRoutes(app: Express) {
         req.body.hiPeopleScore !== undefined ||
         req.body.hiPeoplePercentile !== undefined;
 
-      if (
-        hasEvaluationFields &&
-        !["ceo", "coo", "director", "admin"].includes(req.user?.role || "")
-      ) {
-        return res.status(403).json({
-          message:
-            "Only CEO, COO, or Director can update candidate evaluation criteria",
-        });
+      if (hasEvaluationFields && req.user) {
+        const canModify = canModifyCandidate(req.user, req.body);
+        if (!canModify) {
+          return res.status(403).json({
+            message:
+              "Only CEO, COO, Director, or Admin can update candidate evaluation criteria",
+          });
+        }
       }
 
       // Prepare update data
@@ -506,23 +565,31 @@ export function setupCandidateRoutes(app: Express) {
       ) {
         const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
         if (job) {
+          // SECURITY: Get user info for email template
+          const user = req.user ? await storage.getUser(req.user.id) : null;
+          const senderName = user?.fullName || "Team Member";
+          const companyName = getCompanyName();
+          
+          // SECURITY: Sanitize email content
+          const emailBody = sanitizeEmailContent(`
+            Hi ${sanitizeTextInput(candidate.name)},<br><br>
+            It's ${sanitizeTextInput(senderName)} from ${sanitizeTextInput(companyName)}. I came across your profile and would like to chat about your background and how you might fit in our <b>${sanitizeTextInput(job.title)}</b> position.<br><br>
+            Feel free to grab a time on my calendar when you're available:<br>
+            <a href="${user?.calendarLink || '#'}">Schedule your interview here</a><br><br>
+            Looking forward to connecting!<br><br>
+            Thanks,<br>
+            ${sanitizeTextInput(senderName)}<br>
+            ${sanitizeTextInput(companyName)}
+          `.trim());
+          
           await storage.createNotification({
             type: "email",
             payload: {
               recipientEmail: candidate.email,
-              subject: `${candidate.name}, Let's Discuss Your Fit for Our ${job.title} Position`,
+              subject: `${sanitizeTextInput(candidate.name)}, Let's Discuss Your Fit for Our ${sanitizeTextInput(job.title)} Position`,
               template: "custom",
               context: {
-                body: `
-                  Hi ${candidate.name},<br><br>
-                  It's Aaron Ready from Ready CPA. I came across your profile and would like to chat about your background and how you might fit in our <b>${job.title}</b> position.<br><br>
-                  Feel free to grab a time on my calendar when you're available:<br>
-                  <a href="https://www.calendar.com/aaronready/client-meeting">Schedule your interview here</a><br><br>
-                  Looking forward to connecting!<br><br>
-                  Thanks,<br>
-                  Aaron Ready, CPA<br>
-                  Ready CPA
-                `.trim(),
+                body: emailBody,
               },
             },
             processAfter: new Date(),
@@ -550,7 +617,7 @@ export function setupCandidateRoutes(app: Express) {
             status: "sent",
             sentDate: new Date(),
             approvedById: req.user?.id,
-            contractUrl: `https://talent.firmos.app/web-manager-contract453986`,
+            contractUrl: getContractUrl(candidate.id), // SECURITY: From environment variable
           });
         }
 
@@ -563,21 +630,26 @@ export function setupCandidateRoutes(app: Express) {
           timestamp: new Date(),
         });
 
-        // Send offer email
-        const emailSubject = `Excited to Offer You the ${job?.title} Position`;
-        const emailBody = `
-          <p>Hi ${candidate.name},</p>
-          <p>Great news — we'd love to bring you on board for the ${job?.title} position at Ready CPA. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
+        // SECURITY: Get user info and sanitize email content
+        const user = req.user ? await storage.getUser(req.user.id) : null;
+        const senderName = user?.fullName || "Team Member";
+        const companyName = getCompanyName();
+        
+        // SECURITY: Sanitize email content
+        const emailSubject = sanitizeTextInput(`Excited to Offer You the ${job?.title || "Position"} Position`);
+        const emailBody = sanitizeEmailContent(`
+          <p>Hi ${sanitizeTextInput(candidate.name)},</p>
+          <p>Great news — we'd love to bring you on board for the ${sanitizeTextInput(job?.title || "position")} position at ${sanitizeTextInput(companyName)}. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
           <p>Here's the link to your engagement contract:
-          <a href="https://talent.firmos.app/web-manager-contract453986">[Contract Link]</a></p>
+          <a href="${getContractUrl(candidate.id)}">[Contract Link]</a></p>
           <p>To kick things off, please schedule your onboarding call here:
-          <a href="https://www.calendar.com/aaronready/client-meeting">[Onboarding Calendar Link]</a></p>
+          <a href="${user?.calendarLink || '#'}">[Onboarding Calendar Link]</a></p>
           <p>If anything's unclear or you'd like to chat, don't hesitate to reach out.</p>
           <p>Welcome aboard — we're excited to get started!</p>
           <p>Best regards,<br>
-          Aaron Ready, CPA<br>
-          Ready CPA</p>
-        `;
+          ${sanitizeTextInput(senderName)}<br>
+          ${sanitizeTextInput(companyName)}</p>
+        `);
         await storage.sendDirectEmail(candidate.email, emailSubject, emailBody, req.user?.id);
       }
 
@@ -727,7 +799,7 @@ export function setupCandidateRoutes(app: Express) {
       
       const calendarLink = user.calendarLink;
       const senderName = user.fullName || "Team Member";
-      const companyName = "Ready CPA"; // Could also be from system config
+      const companyName = getCompanyName(); // SECURITY: From environment variable
       
       // Default email templates
       const defaultSubject = `{{candidateName}}, Let's Discuss Your Fit for Our {{jobTitle}} Position`;
@@ -752,19 +824,29 @@ export function setupCandidateRoutes(app: Express) {
       const subjectTemplate = interviewTemplate.subject || defaultSubject;
       const bodyTemplate = interviewTemplate.body || defaultBody;
       
+      // SECURITY: Sanitize input before replacing placeholders
+      const safeCandidateName = sanitizeTextInput(candidate.name);
+      const safeJobTitle = sanitizeTextInput(job?.title || "the position");
+      const safeSenderName = sanitizeTextInput(senderName);
+      const safeCompanyName = sanitizeTextInput(companyName);
+      
       // Replace placeholders in templates
       const emailSubject = subjectTemplate
-        .replace(/\{\{candidateName\}\}/g, candidate.name)
-        .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
-        .replace(/\{\{senderName\}\}/g, senderName)
-        .replace(/\{\{companyName\}\}/g, companyName);
+        .replace(/\{\{candidateName\}\}/g, safeCandidateName)
+        .replace(/\{\{jobTitle\}\}/g, safeJobTitle)
+        .replace(/\{\{senderName\}\}/g, safeSenderName)
+        .replace(/\{\{companyName\}\}/g, safeCompanyName);
       
-      const emailBody = bodyTemplate
-        .replace(/\{\{candidateName\}\}/g, candidate.name)
-        .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
-        .replace(/\{\{senderName\}\}/g, senderName)
-        .replace(/\{\{companyName\}\}/g, companyName)
+      // SECURITY: Sanitize email body HTML
+      let emailBody = bodyTemplate
+        .replace(/\{\{candidateName\}\}/g, safeCandidateName)
+        .replace(/\{\{jobTitle\}\}/g, safeJobTitle)
+        .replace(/\{\{senderName\}\}/g, safeSenderName)
+        .replace(/\{\{companyName\}\}/g, safeCompanyName)
         .replace(/\{\{calendarLink\}\}/g, calendarLink);
+      
+      // Sanitize the final HTML content
+      emailBody = sanitizeEmailContent(emailBody);
 
       // Use direct email sending to leverage our error handling
       await storage.sendDirectEmail(candidate.email, emailSubject, emailBody, req.user?.id);
@@ -879,7 +961,7 @@ export function setupCandidateRoutes(app: Express) {
       // Get user's email templates
       const user = req.user ? await storage.getUser(req.user.id) : null;
       const senderName = user?.fullName || "Team Member";
-      const companyName = "Ready CPA";
+      const companyName = getCompanyName(); // SECURITY: From environment variable
       
       // Default email templates
       const defaultSubject = `Thank you for your application to {{jobTitle}}`;
@@ -905,18 +987,25 @@ export function setupCandidateRoutes(app: Express) {
       const subjectTemplate = talentPoolTemplate.subject || defaultSubject;
       const bodyTemplate = talentPoolTemplate.body || defaultBody;
       
-      // Replace placeholders in templates
-      const emailSubject = subjectTemplate
-        .replace(/\{\{candidateName\}\}/g, candidate.name)
-        .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
-        .replace(/\{\{senderName\}\}/g, senderName)
-        .replace(/\{\{companyName\}\}/g, companyName);
+      // SECURITY: Sanitize and replace placeholders in templates
+      const emailSubject = sanitizeAndReplaceTemplate(
+        subjectTemplate,
+        candidate.name,
+        job?.title || "the position",
+        senderName,
+        companyName
+      );
       
-      const emailBody = bodyTemplate
-        .replace(/\{\{candidateName\}\}/g, candidate.name)
-        .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
-        .replace(/\{\{senderName\}\}/g, senderName)
-        .replace(/\{\{companyName\}\}/g, companyName);
+      let emailBody = sanitizeAndReplaceTemplate(
+        bodyTemplate,
+        candidate.name,
+        job?.title || "the position",
+        senderName,
+        companyName
+      );
+      
+      // SECURITY: Sanitize HTML content
+      emailBody = sanitizeEmailContent(emailBody);
 
       // Send email immediately
       try {
@@ -1003,7 +1092,7 @@ export function setupCandidateRoutes(app: Express) {
       // Get user's email templates
       const user = req.user ? await storage.getUser(req.user.id) : null;
       const senderName = user?.fullName || "Team Member";
-      const companyName = "Ready CPA";
+      const companyName = getCompanyName(); // SECURITY: From environment variable
       
       // Default email templates
       const defaultSubject = `Update on Your {{jobTitle}} Application`;
@@ -1029,18 +1118,25 @@ export function setupCandidateRoutes(app: Express) {
       const subjectTemplate = rejectionTemplate.subject || defaultSubject;
       const bodyTemplate = rejectionTemplate.body || defaultBody;
       
-      // Replace placeholders in templates
-      const emailSubject = subjectTemplate
-        .replace(/\{\{candidateName\}\}/g, candidate.name)
-        .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
-        .replace(/\{\{senderName\}\}/g, senderName)
-        .replace(/\{\{companyName\}\}/g, companyName);
+      // SECURITY: Sanitize and replace placeholders in templates
+      const emailSubject = sanitizeAndReplaceTemplate(
+        subjectTemplate,
+        candidate.name,
+        job?.title || "the position",
+        senderName,
+        companyName
+      );
       
-      const emailBody = bodyTemplate
-        .replace(/\{\{candidateName\}\}/g, candidate.name)
-        .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
-        .replace(/\{\{senderName\}\}/g, senderName)
-        .replace(/\{\{companyName\}\}/g, companyName);
+      let emailBody = sanitizeAndReplaceTemplate(
+        bodyTemplate,
+        candidate.name,
+        job?.title || "the position",
+        senderName,
+        companyName
+      );
+      
+      // SECURITY: Sanitize HTML content
+      emailBody = sanitizeEmailContent(emailBody);
 
       // Send email immediately using sendDirectEmail
       try {
@@ -1214,20 +1310,26 @@ export function setupCandidateRoutes(app: Express) {
           const subjectTemplate = offerTemplate.subject || defaultSubject;
           const bodyTemplate = offerTemplate.body || defaultBody;
           
-          // Replace placeholders in templates
-          const emailSubject = subjectTemplate
-            .replace(/\{\{candidateName\}\}/g, candidate.name)
-            .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
-            .replace(/\{\{senderName\}\}/g, senderName)
-            .replace(/\{\{companyName\}\}/g, companyName);
+          // SECURITY: Sanitize and replace placeholders in templates
+          const emailSubject = sanitizeAndReplaceTemplate(
+            subjectTemplate,
+            candidate.name,
+            job?.title || "the position",
+            senderName,
+            companyName
+          );
           
-          const emailBody = bodyTemplate
-            .replace(/\{\{candidateName\}\}/g, candidate.name)
-            .replace(/\{\{jobTitle\}\}/g, job?.title || "the position")
-            .replace(/\{\{senderName\}\}/g, senderName)
-            .replace(/\{\{companyName\}\}/g, companyName)
-            .replace(/\{\{contractLink\}\}/g, offer.contractUrl || "#")
-            .replace(/\{\{acceptanceUrl\}\}/g, acceptanceUrl);
+          let emailBody = sanitizeAndReplaceTemplate(
+            bodyTemplate,
+            candidate.name,
+            job?.title || "the position",
+            senderName,
+            companyName,
+            { contractLink: offer.contractUrl || "#", acceptanceUrl }
+          );
+          
+          // SECURITY: Sanitize HTML content
+          emailBody = sanitizeEmailContent(emailBody);
 
           // Send the direct email
           await storage.sendDirectEmail(
@@ -1465,7 +1567,7 @@ export function setupCandidateRoutes(app: Express) {
         // Get the user who sent the offer (for email template)
         const approvingUser = offer.approvedById ? await storage.getUser(offer.approvedById) : null;
         const senderName = approvingUser?.fullName || "Team Member";
-        const companyName = "Ready CPA";
+        const companyName = getCompanyName(); // SECURITY: From environment variable
 
         // Get onboarding calendar link from the user who sent the offer
         const onboardingLink = approvingUser?.calendarLink || "#";

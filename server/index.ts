@@ -2,9 +2,15 @@
 import dns from 'dns';
 dns.setDefaultResultOrder('ipv4first');
 
-// Disable TLS certificate validation for Supabase connections
-if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+// SECURITY FIX: Only disable TLS validation in development for local testing
+// In production, proper SSL certificates must be used
+if (process.env.NODE_ENV !== 'production' && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+  console.warn('⚠️  WARNING: TLS certificate validation disabled in development mode only');
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+} else if (process.env.NODE_ENV === 'production') {
+  // Force TLS validation in production
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+  console.log('✅ TLS certificate validation enabled for production');
 }
 
 import "dotenv/config";
@@ -14,14 +20,49 @@ import { registerRoutes } from "./routes";
 import { serveStatic, log } from "./utils";
 import axios from 'axios';
 import { backgroundSyncService } from "./background-sync";
+import helmet from "helmet";
+import { apiRateLimiter } from "./security/rate-limit";
+import { SecureLogger } from "./security/logger";
+import { sanitizeForLogging } from "./security/sanitize";
+import { csrfTokenMiddleware, csrfProtection } from "./security/csrf";
 
 const app = express();
 
 // Trust proxy for correct protocol detection (needed for ngrok, production, etc.)
 app.set("trust proxy", 1);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+// SECURITY: Add security headers
+// Relaxed CSP in development to allow Vite HMR and development tools
+app.use(helmet({
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles for UI components
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https:"],
+    },
+  } : false, // Disable strict CSP in development
+  hsts: {
+    maxAge: 31536000, // 1 year
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
+// SECURITY: Add rate limiting to all API routes
+app.use("/api", apiRateLimiter);
+
+// SECURITY: Add request size limits to prevent DoS
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+
+// SECURITY: Add CSRF token middleware (before routes)
+// NOTE: Currently disabled until frontend is updated to send CSRF tokens
+// To enable: Set ENABLE_CSRF=true in environment variables
+if (process.env.ENABLE_CSRF === 'true') {
+  app.use(csrfTokenMiddleware);
+}
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -37,16 +78,27 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
+      // SECURITY: Sanitize response before logging
+      const sanitizedResponse = capturedJsonResponse 
+        ? sanitizeForLogging(capturedJsonResponse)
+        : undefined;
+      
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      if (sanitizedResponse) {
+        const responseStr = JSON.stringify(sanitizedResponse);
+        if (responseStr.length > 200) {
+          logLine += ` :: ${responseStr.slice(0, 199)}…`;
+        } else {
+          logLine += ` :: ${responseStr}`;
+        }
       }
 
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
+      // Use secure logger for API requests
+      if (res.statusCode >= 400) {
+        SecureLogger.error(`API ${req.method} ${path}`, { status: res.statusCode, duration });
+      } else {
+        SecureLogger.debug(`API ${req.method} ${path}`, { status: res.statusCode, duration });
       }
-
-      log(logLine);
     }
   });
 
@@ -68,7 +120,7 @@ app.post('/send-message', async (req, res) => {
 
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error('Error sending message to Slack:', error);
+    SecureLogger.error('Error sending message to Slack', { error: error instanceof Error ? error.message : String(error) });
     res.status(500).json({ success: false, error: 'Failed to send message to Slack' });
   }
 });
@@ -84,7 +136,19 @@ const initApp = async () => {
   // ✅ Global error handler (keep it after route registration)
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    // SECURITY: Don't expose internal error messages in production
+    const message = process.env.NODE_ENV === 'production' 
+      ? (status >= 500 ? "Internal Server Error" : err.message || "An error occurred")
+      : (err.message || "Internal Server Error");
+    
+    // SECURITY: Log error server-side (sanitized)
+    SecureLogger.error("Unhandled error", { 
+      status, 
+      path: _req.path, 
+      method: _req.method,
+      error: err.message 
+    });
+    
     res.status(status).json({ message });
   });
 

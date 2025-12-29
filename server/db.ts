@@ -1,7 +1,13 @@
-// Disable TLS certificate validation for Supabase connections
-// This is needed because Supabase uses self-signed certificates in some cases
-if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+// SECURITY FIX: Only disable TLS validation in development for local testing
+// In production, proper SSL certificates must be used
+// Supabase uses valid SSL certificates - we should validate them in production
+if (process.env.NODE_ENV !== 'production' && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+  console.warn('⚠️  WARNING: TLS certificate validation disabled in development mode only');
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+} else if (process.env.NODE_ENV === 'production') {
+  // Force TLS validation in production
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+  console.log('✅ TLS certificate validation enabled for production');
 }
 
 import { Pool } from 'pg';
@@ -25,10 +31,10 @@ const isSupabase = dbUrl.includes('supabase.co') || dbUrl.includes('pooler.supab
 
 export const pool = new Pool({ 
   connectionString: dbUrl,
-  // Force SSL config for Supabase - rejectUnauthorized: false allows self-signed certs
-  // This is required for Supabase's SSL certificates
+  // SECURITY FIX: Validate SSL certificates in production
+  // Supabase uses valid SSL certificates - we should validate them
   ssl: isSupabase ? { 
-    rejectUnauthorized: false
+    rejectUnauthorized: process.env.NODE_ENV === 'production' // Validate in production
   } : (dbUrl.includes('sslmode=require') ? true : undefined),
   connectionTimeoutMillis: 15000,
   idleTimeoutMillis: 30000,

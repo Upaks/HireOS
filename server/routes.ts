@@ -22,10 +22,19 @@ import { setupGmailIntegrationRoutes } from "./api/gmail-integration";
 import { setupCommentRoutes } from "./api/comments";
 import { setupNotificationRoutes } from "./api/notifications";
 import { storage } from "./storage";
+import { csrfProtection } from "./security/csrf";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup authentication
   setupAuth(app);
+
+  // SECURITY: Apply CSRF protection to all state-changing API routes
+  // NOTE: Currently disabled until frontend is updated to send CSRF tokens
+  // To enable: Set ENABLE_CSRF=true in environment variables
+  // Frontend must send CSRF token in X-CSRF-Token header or _csrf in body/query
+  if (process.env.ENABLE_CSRF === 'true') {
+    app.use("/api", csrfProtection);
+  }
 
   // Setup API routes
   setupJobRoutes(app);

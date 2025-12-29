@@ -2,14 +2,19 @@
 import dns from 'dns';
 dns.setDefaultResultOrder('ipv4first');
 
-if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+// SECURITY FIX: Only disable TLS validation in development for local testing
+if (process.env.NODE_ENV !== 'production' && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+} else if (process.env.NODE_ENV === 'production') {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
 }
 
 import { Express } from "express";
 import multer from 'multer';
 import { createClient } from '@supabase/supabase-js';
 import { handleApiError } from "./utils";
+import { validateFile } from "../security/file-upload";
+import { SecureLogger } from "../security/logger";
 
 // Extract Supabase URL from DATABASE_URL if SUPABASE_URL is not set
 function getSupabaseUrl(): string {
@@ -73,6 +78,20 @@ export function setupStorageRoutes(app: Express) {
 
       if (!req.file) {
         return res.status(400).json({ message: "No file provided" });
+      }
+
+      // SECURITY: Validate file before processing
+      const validation = await validateFile(req.file, req);
+      if (!validation.valid) {
+        SecureLogger.warn("File upload rejected", { 
+          reason: validation.error, 
+          filename: req.file.originalname,
+          size: req.file.size,
+          ip: req.ip 
+        });
+        return res.status(400).json({ 
+          message: validation.error || "File validation failed" 
+        });
       }
 
       const { candidateId } = req.body;

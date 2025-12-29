@@ -4,6 +4,15 @@ import { storage } from "../storage";
 import { UserRoles, insertUserSchema } from "@shared/schema";
 import { handleApiError, validateRequest } from "./utils";
 import { hashPassword } from "../auth";
+import { SecureLogger } from "../security/logger";
+
+// SECURITY: Strong password requirements
+const passwordSchema = z.string()
+  .min(12, "Password must be at least 12 characters")
+  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+  .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+  .regex(/[0-9]/, "Password must contain at least one number")
+  .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character");
 
 // Create a schema for user updates
 const updateUserSchema = z.object({
@@ -18,7 +27,7 @@ const updateUserSchema = z.object({
     UserRoles.DIRECTOR,
     UserRoles.ADMIN
   ]).optional(),
-  password: z.string().min(6, "Password must be at least 6 characters").optional(),
+  password: passwordSchema.optional(),
   calendarLink: z.string().url("Invalid calendar URL").optional().or(z.literal("")),
   calendarProvider: z.enum(["calendly", "cal.com", "google", "custom"]).optional(),
   calendlyToken: z.string().optional(),
@@ -90,6 +99,18 @@ export function setupUserRoutes(app: Express) {
         return res.status(400).json({ message: "Username already exists" });
       }
 
+      // SECURITY: Validate password strength before hashing
+      try {
+        passwordSchema.parse(req.body.password);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            message: "Password does not meet security requirements",
+            errors: error.errors.map(err => err.message)
+          });
+        }
+      }
+
       // Hash the password
       const hashedPassword = await hashPassword(req.body.password);
 
@@ -101,7 +122,8 @@ export function setupUserRoutes(app: Express) {
       // Remove password from response
       const { password, ...userWithoutPassword } = user;
 
-      // Log activity
+      // Log activity (sanitized)
+      SecureLogger.info("User created", { userId: user.id, username: user.username, role: user.role });
       await storage.createActivityLog({
         userId: req.user?.id,
         action: "Created user",
@@ -137,9 +159,20 @@ export function setupUserRoutes(app: Express) {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // If password is being updated, hash it
+      // If password is being updated, validate and hash it
       let updateData = {...req.body};
       if (updateData.password) {
+        // SECURITY: Validate password strength
+        try {
+          passwordSchema.parse(updateData.password);
+        } catch (error) {
+          if (error instanceof z.ZodError) {
+            return res.status(400).json({
+              message: "Password does not meet security requirements",
+              errors: error.errors.map(err => err.message)
+            });
+          }
+        }
         updateData.password = await hashPassword(updateData.password);
       }
 

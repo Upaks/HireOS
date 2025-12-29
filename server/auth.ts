@@ -6,6 +6,9 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser, UserRoles } from "@shared/schema";
+import { authRateLimiter } from "./security/rate-limit";
+import { SecureLogger } from "./security/logger";
+import { z } from "zod";
 
 declare global {
   namespace Express {
@@ -28,14 +31,36 @@ async function comparePasswords(supplied: string, stored: string) {
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
+// SECURITY: Validate password strength
+const passwordSchema = z.string()
+  .min(12, "Password must be at least 12 characters")
+  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+  .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+  .regex(/[0-9]/, "Password must contain at least one number")
+  .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character");
+
 export function setupAuth(app: Express) {
+  // SECURITY: Validate SESSION_SECRET
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret || sessionSecret === "hireos-development-secret") {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("SESSION_SECRET must be set to a strong random value in production");
+    }
+    SecureLogger.warn("Using default SESSION_SECRET - this is insecure for production!");
+  }
+  if (sessionSecret && sessionSecret.length < 32) {
+    SecureLogger.warn("SESSION_SECRET should be at least 32 characters for security");
+  }
+
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || "hireos-development-secret",
+    secret: sessionSecret || "hireos-development-secret",
     resave: false,
     saveUninitialized: false,
     store: storage.sessionStore,
     cookie: {
       secure: process.env.NODE_ENV === "production",
+      httpOnly: true, // SECURITY: Prevent XSS access to cookies
+      sameSite: 'strict', // SECURITY: Prevent CSRF attacks
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
     }
   };
@@ -70,13 +95,27 @@ export function setupAuth(app: Express) {
     }
   });
 
-  app.post("/api/register", async (req, res, next) => {
+  // SECURITY: Add rate limiting to authentication endpoints
+  app.post("/api/register", authRateLimiter, async (req, res, next) => {
     try {
       // Validate required fields
       if (!req.body.username || !req.body.password || !req.body.email || !req.body.fullName) {
         return res.status(400).json({ 
           message: "Missing required fields: username, password, email, and fullName are required" 
         });
+      }
+
+      // SECURITY: Validate password strength
+      try {
+        passwordSchema.parse(req.body.password);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            message: "Password does not meet security requirements",
+            errors: error.errors.map(err => err.message)
+          });
+        }
+        return res.status(400).json({ message: "Invalid password format" });
       }
 
       // Check if username already exists
@@ -106,11 +145,17 @@ export function setupAuth(app: Express) {
       // Remove password from response
       const { password, ...userWithoutPassword } = user;
 
+      // SECURITY: Log registration (sanitized)
+      SecureLogger.info("User registered", { userId: user.id, username: user.username, email: user.email });
+
       req.login(user, (err) => {
         if (err) return next(err);
         res.status(201).json(userWithoutPassword);
       });
     } catch (error: any) {
+      // SECURITY: Don't log sensitive data
+      SecureLogger.error("Registration error", { error: error.message });
+      
       // Handle database constraint violations (unique constraints)
       if (error.code === '23505') { // PostgreSQL unique violation
         if (error.constraint?.includes('username')) {
@@ -124,10 +169,21 @@ export function setupAuth(app: Express) {
     }
   });
 
-  app.post("/api/login", (req, res, next) => {
+  // SECURITY: Add rate limiting to login endpoint
+  app.post("/api/login", authRateLimiter, (req, res, next) => {
     passport.authenticate("local", (err: Error | null, user: SelectUser | false, info: { message: string } | undefined) => {
-      if (err) return next(err);
-      if (!user) return res.status(401).json({ message: info?.message || "Authentication failed" });
+      if (err) {
+        SecureLogger.error("Login error", { error: err.message });
+        return next(err);
+      }
+      if (!user) {
+        // SECURITY: Log failed login attempts (but don't log password)
+        SecureLogger.warn("Failed login attempt", { username: req.body.username, ip: req.ip });
+        return res.status(401).json({ message: info?.message || "Authentication failed" });
+      }
+
+      // SECURITY: Log successful login (sanitized)
+      SecureLogger.info("User logged in", { userId: user.id, username: user.username });
 
       req.login(user, (err: Error | null) => {
         if (err) return next(err);
