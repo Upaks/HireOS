@@ -56,6 +56,25 @@ export function encrypt(plaintext: string): string {
  * Decrypt sensitive data
  * Expects format: iv:authTag:encryptedData (all base64)
  */
+/**
+ * Check if a string is valid base64
+ */
+function isValidBase64(str: string): boolean {
+  try {
+    // Base64 strings should only contain A-Z, a-z, 0-9, +, /, and = for padding
+    // And should be a multiple of 4 in length (after padding)
+    const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
+    if (!base64Regex.test(str)) {
+      return false;
+    }
+    // Try to decode it
+    Buffer.from(str, 'base64');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function decrypt(ciphertext: string): string {
   if (!ENCRYPTION_KEY) {
     // In development, return as-is if not encrypted
@@ -65,18 +84,45 @@ export function decrypt(ciphertext: string): string {
     throw new Error('ENCRYPTION_KEY must be set in production');
   }
 
-  if (!ciphertext || !ciphertext.includes(':')) {
-    // Not encrypted (legacy data or development)
+  // If empty or null, return as-is
+  if (!ciphertext) {
     return ciphertext;
   }
 
+  // Check if it looks like encrypted data (format: base64:base64:base64)
+  const parts = ciphertext.split(':');
+  
+  // Encrypted data must have exactly 3 parts, all base64
+  if (parts.length !== 3) {
+    // Not encrypted (legacy data) - return as-is
+    return ciphertext;
+  }
+
+  // Verify all parts are valid base64 (encrypted data format)
+  const [ivPart, authTagPart, encryptedPart] = parts;
+  if (!isValidBase64(ivPart) || !isValidBase64(authTagPart) || !isValidBase64(encryptedPart)) {
+    // Not encrypted (legacy data that happens to contain ':') - return as-is
+    return ciphertext;
+  }
+
+  // Additional check: IV should be 16 bytes (24 base64 chars), authTag should be 16 bytes
+  try {
+    const iv = Buffer.from(ivPart, 'base64');
+    const authTag = Buffer.from(authTagPart, 'base64');
+    
+    // Valid encrypted data should have 16-byte IV and 16-byte authTag
+    if (iv.length !== 16 || authTag.length !== 16) {
+      // Not encrypted - return as-is
+      return ciphertext;
+    }
+  } catch {
+    // Not encrypted - return as-is
+    return ciphertext;
+  }
+
+  // If we get here, it looks like encrypted data - try to decrypt
   try {
     const key = Buffer.from(ENCRYPTION_KEY, 'hex');
-    const parts = ciphertext.split(':');
-    if (parts.length !== 3) {
-      throw new Error('Invalid encrypted data format');
-    }
-
     const iv = Buffer.from(parts[0], 'base64');
     const authTag = Buffer.from(parts[1], 'base64');
     const encrypted = parts[2];
@@ -89,8 +135,13 @@ export function decrypt(ciphertext: string): string {
 
     return decrypted;
   } catch (error) {
-    console.error('Decryption error:', error);
-    throw new Error('Failed to decrypt data');
+    // Decryption failed - might be corrupted data or wrong key
+    // Return original to avoid breaking the application
+    // Log error for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('Decryption failed, returning original value (may be legacy data):', error);
+    }
+    return ciphertext;
   }
 }
 

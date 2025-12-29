@@ -28,6 +28,7 @@ import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { db, pool } from "./db";
 import { and, eq, or, isNull, desc, sql } from "drizzle-orm";
+import { encrypt, decrypt } from "./security/encryption";
 
 // Database session store configuration
 const PostgresSessionStore = connectPg(session);
@@ -128,11 +129,58 @@ export class DatabaseStorage implements IStorage {
     // We're using the rebuild-users.ts script to create users now
   }
 
+  // SECURITY: Helper to decrypt sensitive user fields
+  private decryptUserFields(user: User): User {
+    if (!user) return user;
+    
+    const decrypted = { ...user };
+    
+    // Decrypt sensitive fields if they exist
+    // The decrypt function handles legacy unencrypted data gracefully
+    if (decrypted.openRouterApiKey) {
+      decrypted.openRouterApiKey = decrypt(decrypted.openRouterApiKey);
+    }
+    
+    if (decrypted.calendlyToken) {
+      decrypted.calendlyToken = decrypt(decrypted.calendlyToken);
+    }
+    
+    if (decrypted.slackWebhookUrl) {
+      // decrypt() handles legacy data gracefully - no try/catch needed
+      decrypted.slackWebhookUrl = decrypt(decrypted.slackWebhookUrl);
+    }
+    
+    return decrypted;
+  }
+
+  // SECURITY: Helper to encrypt sensitive user fields before saving
+  private encryptUserFields(data: Partial<User>): Partial<User> {
+    const encrypted = { ...data };
+    
+    // Encrypt sensitive fields if they exist
+    if (encrypted.openRouterApiKey !== undefined && encrypted.openRouterApiKey !== null) {
+      encrypted.openRouterApiKey = encrypt(encrypted.openRouterApiKey);
+    }
+    
+    if (encrypted.calendlyToken !== undefined && encrypted.calendlyToken !== null) {
+      encrypted.calendlyToken = encrypt(encrypted.calendlyToken);
+    }
+    
+    if (encrypted.slackWebhookUrl !== undefined && encrypted.slackWebhookUrl !== null) {
+      encrypted.slackWebhookUrl = encrypt(encrypted.slackWebhookUrl);
+    }
+    
+    return encrypted;
+  }
+
   // User operations
   async getUser(id: number): Promise<User | undefined> {
     try {
       const [user] = await db.select().from(users).where(eq(users.id, id));
-      return user || undefined;
+      if (!user) return undefined;
+      
+      // SECURITY: Decrypt sensitive fields before returning
+      return this.decryptUserFields(user);
     } catch (error) {
       console.error("Error getting user by ID:", error);
       return undefined;
@@ -142,7 +190,10 @@ export class DatabaseStorage implements IStorage {
   async getUserByUsername(username: string): Promise<User | undefined> {
     try {
       const [user] = await db.select().from(users).where(eq(users.username, username));
-      return user || undefined;
+      if (!user) return undefined;
+      
+      // SECURITY: Decrypt sensitive fields before returning
+      return this.decryptUserFields(user);
     } catch (error) {
       // Better error logging
       if (error instanceof Error) {
@@ -162,26 +213,37 @@ export class DatabaseStorage implements IStorage {
     // Default to hiringManager if no role specified
     const role = insertUser.role || UserRoles.HIRING_MANAGER;
     
+    // SECURITY: Encrypt sensitive fields before saving
+    const encryptedData = this.encryptUserFields(insertUser as Partial<User>);
+    
     const [user] = await db
       .insert(users)
-      .values({ ...insertUser, role, createdAt: new Date() })
+      .values({ ...encryptedData, role, createdAt: new Date() } as any)
       .returning();
     
-    return user;
+    // SECURITY: Decrypt sensitive fields before returning
+    return this.decryptUserFields(user);
   }
   
   async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users);
+    const usersList = await db.select().from(users);
+    
+    // SECURITY: Decrypt sensitive fields for all users
+    return usersList.map(user => this.decryptUserFields(user));
   }
   
   async updateUser(id: number, data: Partial<User>): Promise<User> {
+    // SECURITY: Encrypt sensitive fields before saving
+    const encryptedData = this.encryptUserFields(data);
+    
     const [updatedUser] = await db
       .update(users)
-      .set(data)
+      .set(encryptedData)
       .where(eq(users.id, id))
       .returning();
     
-    return updatedUser;
+    // SECURITY: Decrypt sensitive fields before returning
+    return this.decryptUserFields(updatedUser);
   }
   
   async deleteUser(id: number): Promise<void> {
@@ -261,9 +323,11 @@ export class DatabaseStorage implements IStorage {
 
   // Platform integration operations
   async getPlatformIntegrations(userId?: number): Promise<PlatformIntegration[]> {
+    let integrations: PlatformIntegration[];
+    
     if (userId) {
       // Get user-specific integrations (CRM/ATS) and system-wide integrations (job posting platforms)
-      return await db
+      integrations = await db
         .select()
         .from(platformIntegrations)
         .where(
@@ -274,18 +338,105 @@ export class DatabaseStorage implements IStorage {
           )
         )
         .orderBy(platformIntegrations.platformName);
+    } else {
+      // Legacy: Get all integrations (for backward compatibility)
+      integrations = await db
+        .select()
+        .from(platformIntegrations)
+        .orderBy(platformIntegrations.platformName);
     }
-    // Legacy: Get all integrations (for backward compatibility)
-    return await db
-      .select()
-      .from(platformIntegrations)
-      .orderBy(platformIntegrations.platformName);
+    
+    // SECURITY: Decrypt sensitive fields for all integrations
+    return integrations.map(integration => this.decryptIntegrationFields(integration));
+  }
+
+  // SECURITY: Helper to decrypt sensitive platform integration fields
+  private decryptIntegrationFields(integration: PlatformIntegration): PlatformIntegration {
+    if (!integration) return integration;
+    
+    const decrypted = { ...integration };
+    
+    // Decrypt OAuth tokens if they exist
+    // The decrypt function handles legacy unencrypted data gracefully
+    if (decrypted.oauthToken) {
+      decrypted.oauthToken = decrypt(decrypted.oauthToken);
+    }
+    
+    if (decrypted.oauthRefreshToken) {
+      decrypted.oauthRefreshToken = decrypt(decrypted.oauthRefreshToken);
+    }
+    
+    // Decrypt credentials JSONB if it exists
+    if (decrypted.credentials && typeof decrypted.credentials === 'object') {
+      // Credentials is JSONB, decrypt individual sensitive fields within it
+      const creds = decrypted.credentials as any;
+      if (typeof creds === 'string') {
+        // If credentials is stored as encrypted string, decrypt and parse
+        try {
+          decrypted.credentials = JSON.parse(decrypt(creds)) as any;
+        } catch {
+          // If decryption/parsing fails, keep original
+          decrypted.credentials = creds;
+        }
+      } else {
+        // Decrypt sensitive fields within credentials object
+        const decryptedCreds = { ...creds };
+        if (decryptedCreds.apiKey) {
+          decryptedCreds.apiKey = decrypt(decryptedCreds.apiKey);
+        }
+        if (decryptedCreds.apiSecret) {
+          decryptedCreds.apiSecret = decrypt(decryptedCreds.apiSecret);
+        }
+        if (decryptedCreds.accessToken) {
+          decryptedCreds.accessToken = decrypt(decryptedCreds.accessToken);
+        }
+        decrypted.credentials = decryptedCreds;
+      }
+    }
+    
+    return decrypted;
+  }
+
+  // SECURITY: Helper to encrypt sensitive platform integration fields before saving
+  private encryptIntegrationFields(data: Partial<PlatformIntegration>): Partial<PlatformIntegration> {
+    const encrypted = { ...data };
+    
+    // Encrypt OAuth tokens if they exist
+    if (encrypted.oauthToken !== undefined && encrypted.oauthToken !== null) {
+      encrypted.oauthToken = encrypt(encrypted.oauthToken);
+    }
+    
+    if (encrypted.oauthRefreshToken !== undefined && encrypted.oauthRefreshToken !== null) {
+      encrypted.oauthRefreshToken = encrypt(encrypted.oauthRefreshToken);
+    }
+    
+    // Encrypt sensitive fields within credentials JSONB
+    if (encrypted.credentials && typeof encrypted.credentials === 'object') {
+      const creds = encrypted.credentials as any;
+      const encryptedCreds = { ...creds };
+      
+      if (encryptedCreds.apiKey) {
+        encryptedCreds.apiKey = encrypt(encryptedCreds.apiKey);
+      }
+      if (encryptedCreds.apiSecret) {
+        encryptedCreds.apiSecret = encrypt(encryptedCreds.apiSecret);
+      }
+      if (encryptedCreds.accessToken) {
+        encryptedCreds.accessToken = encrypt(encryptedCreds.accessToken);
+      }
+      
+      encrypted.credentials = encryptedCreds;
+    }
+    
+    return encrypted;
   }
 
   async getPlatformIntegration(platformId: string, userId?: number): Promise<PlatformIntegration | undefined> {
+    let integration: PlatformIntegration | undefined;
+    
     if (userId) {
       // Get user-specific integration
-      const [integration] = await db
+      const [result] = await db
         .select()
         .from(platformIntegrations)
         .where(
@@ -294,19 +445,25 @@ export class DatabaseStorage implements IStorage {
             eq(platformIntegrations.userId, userId)
           )
         );
-      return integration || undefined;
+      integration = result || undefined;
+    } else {
+      // Legacy: Get by platformId only (for backward compatibility)
+      const [result] = await db
+        .select()
+        .from(platformIntegrations)
+        .where(eq(platformIntegrations.platformId, platformId));
+      integration = result || undefined;
     }
-    // Legacy: Get by platformId only (for backward compatibility)
-    const [integration] = await db
-      .select()
-      .from(platformIntegrations)
-      .where(eq(platformIntegrations.platformId, platformId));
-    return integration || undefined;
+    
+    if (!integration) return undefined;
+    
+    // SECURITY: Decrypt sensitive fields before returning
+    return this.decryptIntegrationFields(integration);
   }
 
   // Get CRM/ATS integrations for a user
   async getCRMIntegrations(userId: number): Promise<PlatformIntegration[]> {
-    return await db
+    const integrations = await db
       .select()
       .from(platformIntegrations)
       .where(
@@ -319,30 +476,43 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .orderBy(platformIntegrations.platformName);
+    
+    // SECURITY: Decrypt sensitive fields for all integrations
+    return integrations.map(integration => this.decryptIntegrationFields(integration));
   }
 
   async createPlatformIntegration(integration: InsertPlatformIntegration): Promise<PlatformIntegration> {
+    // SECURITY: Encrypt sensitive fields before saving
+    const encryptedData = this.encryptIntegrationFields(integration as Partial<PlatformIntegration>);
+    
     const [newIntegration] = await db
       .insert(platformIntegrations)
       .values({
-        ...integration,
+        ...encryptedData,
         createdAt: new Date(),
         updatedAt: new Date()
-      })
+      } as any)
       .returning();
-    return newIntegration;
+    
+    // SECURITY: Decrypt sensitive fields before returning
+    return this.decryptIntegrationFields(newIntegration);
   }
 
   async updatePlatformIntegration(platformId: string, data: Partial<PlatformIntegration>): Promise<PlatformIntegration> {
+    // SECURITY: Encrypt sensitive fields before saving
+    const encryptedData = this.encryptIntegrationFields(data);
+    
     const [updatedIntegration] = await db
       .update(platformIntegrations)
       .set({
-        ...data,
+        ...encryptedData,
         updatedAt: new Date()
       })
       .where(eq(platformIntegrations.platformId, platformId))
       .returning();
-    return updatedIntegration;
+    
+    // SECURITY: Decrypt sensitive fields before returning
+    return this.decryptIntegrationFields(updatedIntegration);
   }
 
   async deletePlatformIntegration(platformId: string): Promise<void> {
@@ -956,7 +1126,8 @@ export class DatabaseStorage implements IStorage {
     if (scope === "all_users") {
       // Get all users with Slack configured and this event enabled
       const allUsers = await db.select().from(users);
-      return allUsers.filter(user => {
+      const decryptedUsers = allUsers.map(user => this.decryptUserFields(user));
+      return decryptedUsers.filter(user => {
         if (!user.slackWebhookUrl) return false;
         const events = user.slackNotificationEvents as string[] | null;
         return events?.includes(eventType) || false;
@@ -969,7 +1140,8 @@ export class DatabaseStorage implements IStorage {
       }
       
       const allUsers = await db.select().from(users);
-      return allUsers.filter(user => {
+      const decryptedUsers = allUsers.map(user => this.decryptUserFields(user));
+      return decryptedUsers.filter(user => {
         if (!user.slackWebhookUrl) return false;
         if (!allowedRoles.includes(user.role)) return false;
         const events = user.slackNotificationEvents as string[] | null;
@@ -1080,7 +1252,10 @@ export class DatabaseStorage implements IStorage {
       ) as any;
     }
 
-    return await usersQuery.limit(20);
+    const usersList = await usersQuery.limit(20);
+    
+    // SECURITY: Decrypt sensitive fields for all users
+    return usersList.map(user => this.decryptUserFields(user));
   }
 
   // In-app notification operations
