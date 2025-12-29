@@ -98,7 +98,7 @@ export interface IStorage {
   createNotification(notification: Omit<NotificationQueueItem, 'id' | 'createdAt' | 'processAttempts' | 'lastAttemptAt' | 'error'>): Promise<NotificationQueueItem>;
   
   // Direct email sending (bypasses notification queue)
-  sendDirectEmail(to: string, subject: string, body: string): Promise<void>;
+  sendDirectEmail(to: string, subject: string, body: string, userId?: number): Promise<void>;
   
   // Direct Slack notification (no queue, immediate send)
   sendSlackNotification(userId: number, message: string): Promise<void>;
@@ -816,9 +816,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Direct email sending (bypasses notification queue)
-  async sendDirectEmail(to: string, subject: string, body: string): Promise<void> {
-    const nodemailer = await import('nodemailer');
-
+  async sendDirectEmail(to: string, subject: string, body: string, userId?: number): Promise<void> {
     // Pre-validate the email address before attempting to send
     if (isLikelyInvalidEmail(to)) {
       // Email validation failed - candidate email does not exist
@@ -842,23 +840,27 @@ export class DatabaseStorage implements IStorage {
       throw error;
     }
 
+    // Require userId to use Gmail OAuth integration
+    if (!userId) {
+      const error = new Error('Gmail integration required. Please connect your Gmail account in Settings > Integrations to send emails.');
+      await db
+        .insert(emailLogs)
+        .values({
+          recipientEmail: to,
+          subject,
+          template: 'direct',
+          context: { body },
+          status: 'failed',
+          error: error.message,
+          createdAt: new Date()
+        });
+      throw error;
+    }
+
     try {
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: "upaksabraham24@gmail.com",
-          pass: "znjpubjqmqxkyuht" // Gmail App Password (spaces removed)
-        }
-      });
-
-      const mailOptions = {
-        from: "upaksabraham24@gmail.com",
-        to,
-        subject,
-        html: body
-      };
-
-      await transporter.sendMail(mailOptions);
+      // Use Gmail OAuth integration instead of hardcoded credentials
+      const { sendGmailEmail } = await import("./api/gmail-integration");
+      await sendGmailEmail(userId, to, subject, body);
 
       // Log the email but don't add to queue
       await db

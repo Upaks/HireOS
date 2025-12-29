@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -21,7 +21,7 @@ interface Integration {
   name: string;
   description: string;
   logo?: string;
-  category: "calendar" | "ai" | "crm" | "notification";
+  category: "calendar" | "ai" | "crm" | "notification" | "communication";
   requiresAdmin?: boolean;
   connected: boolean;
   configComponent?: React.ReactNode;
@@ -44,6 +44,12 @@ export default function Integrations() {
   // Fetch CRM integrations to check connection status
   const { data: crmIntegrations = [] } = useQuery<Array<{ platformId: string; status: string; id?: number; credentials?: any; syncDirection?: string }>>({
     queryKey: ['/api/crm-integrations'],
+    enabled: !!user,
+  });
+
+  // Fetch Gmail connection status
+  const { data: gmailStatus, refetch: refetchGmailStatus } = useQuery<{ connected: boolean }>({
+    queryKey: ['/api/gmail/status'],
     enabled: !!user,
   });
 
@@ -78,6 +84,7 @@ export default function Integrations() {
   const isGoogleSheetsConnected = (crmIntegrations as Array<{ platformId: string; status: string }>).some((crm) => crm.platformId === "google-sheets" && crm.status === "connected");
   const isAirtableConnected = (crmIntegrations as Array<{ platformId: string; status: string }>).some((crm) => crm.platformId === "airtable" && crm.status === "connected");
   const isGHLConnected = (crmIntegrations as Array<{ platformId: string; status: string }>).some((crm) => crm.platformId === "ghl" && crm.status === "connected");
+  const isGmailConnected = gmailStatus?.connected || false;
 
   // Connect Calendly mutation
   const connectCalendlyMutation = useMutation({
@@ -115,6 +122,48 @@ export default function Integrations() {
       toast({
         title: "Calendly disconnected",
         description: "Your Calendly calendar has been disconnected.",
+      });
+    },
+  });
+
+  // Connect Gmail mutation
+  const connectGmailMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("GET", "/api/gmail/auth");
+      const data = await res.json();
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to connect Gmail",
+        description: error.message || "Unknown error occurred.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Disconnect Gmail mutation
+  const disconnectGmailMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/gmail/disconnect", {});
+      return await res.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/gmail/status'] });
+      await refetchGmailStatus();
+      toast({
+        title: "Gmail disconnected",
+        description: "Your Gmail account has been disconnected.",
+      });
+      setSelectedIntegration(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to disconnect Gmail",
+        description: error.message,
+        variant: "destructive",
       });
     },
   });
@@ -190,6 +239,13 @@ export default function Integrations() {
       category: "notification",
       connected: !!user?.slackWebhookUrl,
     },
+    {
+      id: "gmail",
+      name: "Gmail",
+      description: "Send emails directly from your Gmail account. Perfect for offer letters, interview confirmations, and candidate communications.",
+      category: "communication",
+      connected: isGmailConnected,
+    },
   ];
 
   // Filter integrations based on tab
@@ -198,6 +254,35 @@ export default function Integrations() {
 
   // Check if user can access admin-only integrations
   const isAdmin = user?.role === 'admin' || user?.role === 'ceo' || user?.role === 'coo';
+
+  // Handle OAuth callback success/error messages
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gmailConnected = params.get('gmail_connected');
+    const error = params.get('error');
+
+    if (gmailConnected === 'true') {
+      toast({
+        title: "Gmail connected!",
+        description: "Your Gmail account is now connected. You can send emails directly from HireOS.",
+      });
+      refetchGmailStatus();
+      // Clean up URL
+      window.history.replaceState({}, '', '/integrations');
+    }
+
+    if (error) {
+      toast({
+        title: "Connection failed",
+        description: error === 'oauth_cancelled' 
+          ? "Gmail connection was cancelled." 
+          : `Failed to connect Gmail: ${error}`,
+        variant: "destructive",
+      });
+      // Clean up URL
+      window.history.replaceState({}, '', '/integrations');
+    }
+  }, [toast, refetchGmailStatus]);
 
   const renderIntegrationCard = (integration: Integration) => {
     const LogoComponent = getIntegrationLogo(integration.id);
@@ -238,6 +323,8 @@ export default function Integrations() {
                   setShowCRMConnectDialog(integration.id);
                 } else if (integration.id === "slack") {
                   setShowSlackDialog(true);
+                } else if (integration.id === "gmail") {
+                  setSelectedIntegration(integration.id);
                 } else {
                   setSelectedIntegration(integration.id);
                 }
@@ -359,6 +446,51 @@ export default function Integrations() {
               isLoading={updateOpenRouterMutation.isPending}
               onCancel={() => setSelectedIntegration(null)}
             />
+          </DialogContent>
+        </Dialog>
+
+        {/* Gmail Integration Dialog */}
+        <Dialog open={selectedIntegration === "gmail"} onOpenChange={(open) => !open && setSelectedIntegration(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Connect Gmail</DialogTitle>
+              <DialogDescription>
+                {gmailStatus?.connected
+                  ? "Manage your Gmail connection or disconnect it."
+                  : "Connect your Gmail account to send emails directly from HireOS."}
+              </DialogDescription>
+            </DialogHeader>
+            {gmailStatus?.connected ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                    <span className="text-sm font-medium text-green-900">Gmail is connected</span>
+                  </div>
+                </div>
+                <Button
+                  variant="destructive"
+                  onClick={() => disconnectGmailMutation.mutate()}
+                  disabled={disconnectGmailMutation.isPending}
+                  className="w-full"
+                >
+                  {disconnectGmailMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Disconnecting...
+                    </>
+                  ) : (
+                    "Disconnect Gmail"
+                  )}
+                </Button>
+              </div>
+            ) : (
+              <GmailConnectForm
+                onConnect={() => connectGmailMutation.mutate()}
+                isLoading={connectGmailMutation.isPending}
+                onCancel={() => setSelectedIntegration(null)}
+              />
+            )}
           </DialogContent>
         </Dialog>
 
@@ -513,6 +645,35 @@ function CalendlyConnectForm({ onConnect, isLoading, onCancel }: { onConnect: (t
   );
 }
 
+// Gmail Connect Form Component
+function GmailConnectForm({ onConnect, isLoading, onCancel }: { onConnect: () => void; isLoading: boolean; onCancel: () => void }) {
+  return (
+    <div className="space-y-4">
+      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <p className="text-sm text-blue-900">
+          You'll be redirected to Google to authorize HireOS to send emails on your behalf. 
+          We only request permission to send emails - we never read your emails.
+        </p>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button onClick={onConnect} disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Connecting...
+            </>
+          ) : (
+            "Connect Gmail"
+          )}
+        </Button>
+      </DialogFooter>
+    </div>
+  );
+}
+
 // OpenRouter Config Form Component
 function OpenRouterConfigForm({
   currentApiKey,
@@ -637,6 +798,14 @@ function getIntegrationLogo(integrationId: string) {
         <div className="h-8 w-8 bg-[#4A154B] rounded flex items-center justify-center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
             <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 5.042a2.528 2.528 0 0 1-2.52-2.52A2.528 2.528 0 0 1 18.956 0a2.528 2.528 0 0 1 2.523 2.522v2.52h-2.523zM18.956 6.313a2.528 2.528 0 0 1 2.523 2.521 2.528 2.528 0 0 1-2.523 2.521h-6.313A2.528 2.528 0 0 1 10.121 8.834a2.528 2.528 0 0 1 2.522-2.521h6.313zM13.478 18.956a2.528 2.528 0 0 1 2.522 2.523A2.528 2.528 0 0 1 13.478 24a2.528 2.528 0 0 1-2.521-2.522v-2.523h2.521zM12.207 18.956a2.528 2.528 0 0 1-2.522-2.523 2.528 2.528 0 0 1 2.522-2.52h6.313A2.528 2.528 0 0 1 21.042 16.433a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+          </svg>
+        </div>
+      );
+    case "gmail":
+      return (
+        <div className="h-8 w-8 bg-red-500 rounded flex items-center justify-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+            <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/>
           </svg>
         </div>
       );

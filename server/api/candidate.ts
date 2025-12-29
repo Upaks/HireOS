@@ -577,7 +577,7 @@ export function setupCandidateRoutes(app: Express) {
           Aaron Ready, CPA<br>
           Ready CPA</p>
         `;
-        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
+        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody, req.user?.id);
       }
 
       // Log status change
@@ -766,7 +766,7 @@ export function setupCandidateRoutes(app: Express) {
         .replace(/\{\{calendarLink\}\}/g, calendarLink);
 
       // Use direct email sending to leverage our error handling
-      await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
+      await storage.sendDirectEmail(candidate.email, emailSubject, emailBody, req.user?.id);
 
       // Check if an interview already exists for this candidate to prevent duplicates
       const existingInterviews = await storage.getInterviews({ candidateId: candidate.id });
@@ -905,7 +905,7 @@ export function setupCandidateRoutes(app: Express) {
 
       // Send email immediately
       try {
-        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
+        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody, req.user?.id);
       } catch (emailError: any) {
         // Don't fail the request if email fails - status is already updated
       }
@@ -1029,7 +1029,7 @@ export function setupCandidateRoutes(app: Express) {
 
       // Send email immediately using sendDirectEmail
       try {
-        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
+        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody, req.user?.id);
       } catch (emailError: any) {
         // Don't fail the request if email fails - status is already updated
       }
@@ -1219,6 +1219,7 @@ export function setupCandidateRoutes(app: Express) {
             candidate.email,
             emailSubject,
             emailBody,
+            req.user?.id
           );
 
           // Return success with updated candidate and offer
@@ -1482,7 +1483,7 @@ export function setupCandidateRoutes(app: Express) {
 
         // Send onboarding email immediately
         try {
-          await storage.sendDirectEmail(candidate.email, onboardingSubject, onboardingBody);
+          await storage.sendDirectEmail(candidate.email, onboardingSubject, onboardingBody, req.user?.id);
         } catch (emailError: any) {
           // Log error but don't fail the request
           console.error("Error sending onboarding email:", emailError);
