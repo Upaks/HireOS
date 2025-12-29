@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import StarRating from "../ui/star-rating";
 import { getStatusesForFilter, LEGACY_STATUS_MAPPING } from "@/lib/candidate-status";
+import CommentsSection from "../comments/comments-section";
 
 // Helper function to normalize candidate status (legacy -> new format)
 function normalizeCandidateStatus(status: string | null | undefined): string {
@@ -758,7 +759,7 @@ export default function CandidateDetailDialog({
                 <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
                 <TabsTrigger value="ai">AI Insights</TabsTrigger>
                 <TabsTrigger value="details">Details</TabsTrigger>
-                <TabsTrigger value="notes">Notes</TabsTrigger>
+                <TabsTrigger value="comments">Comments</TabsTrigger>
               </TabsList>
 
               <TabsContent value="evaluation" className="space-y-4">
@@ -1363,19 +1364,10 @@ export default function CandidateDetailDialog({
                 </div>
               </TabsContent>
 
-              <TabsContent value="notes">
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="notes">Notes</Label>
-                    <Textarea
-                      id="notes"
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Add notes about this candidate..."
-                      className="min-h-[200px]"
-                    />
-                  </div>
-                </div>
+              <TabsContent value="comments">
+                {candidate && (
+                  <CommentsSection entityType="candidate" entityId={candidate.id} />
+                )}
               </TabsContent>
             </Tabs>
           </div>

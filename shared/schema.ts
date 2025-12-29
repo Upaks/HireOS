@@ -124,6 +124,18 @@ export const platformIntegrations = pgTable("platform_integrations", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Comments Table
+export const comments = pgTable("comments", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  entityType: text("entity_type").notNull(), // "candidate" or "job"
+  entityId: integer("entity_id").notNull(), // ID of the candidate or job
+  content: text("content").notNull(),
+  mentions: jsonb("mentions"), // Array of user IDs mentioned in the comment: [1, 2, 3]
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Application Form Templates
 export const formTemplates = pgTable("form_templates", {
   id: serial("id").primaryKey(),
@@ -305,6 +317,8 @@ export type Offer = typeof offers.$inferSelect;
 export type ActivityLog = typeof activityLogs.$inferSelect;
 export type EmailLog = typeof emailLogs.$inferSelect;
 export type NotificationQueueItem = typeof notificationQueue.$inferSelect;
+export type Comment = typeof comments.$inferSelect;
+export type InsertComment = typeof comments.$inferInsert;
 
 // Role type
 export const UserRoles = {

@@ -19,6 +19,7 @@ import { setupCalendarWebhookRoutes } from "./api/calendar-webhooks";
 import { setupCalendlyConnectRoutes } from "./api/calendly-connect";
 import { setupAIRoutes } from "./api/ai-routes";
 import { setupGmailIntegrationRoutes } from "./api/gmail-integration";
+import { setupCommentRoutes } from "./api/comments";
 import { storage } from "./storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -44,6 +45,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupCalendlyConnectRoutes(app);
   setupAIRoutes(app);
   setupGmailIntegrationRoutes(app);
+  setupCommentRoutes(app);
 
   // We're using the rebuild-users.ts script to create users now
   // The script creates users for each role with the password "justtesting"

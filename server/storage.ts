@@ -1,6 +1,6 @@
 import { 
   users, jobs, jobPlatforms, candidates, interviews, evaluations, activityLogs, notificationQueue,
-  offers, emailLogs, platformIntegrations, formTemplates,
+  offers, emailLogs, platformIntegrations, formTemplates, comments,
   UserRoles,
   type User, 
   type InsertUser,
@@ -17,13 +17,15 @@ import {
   type PlatformIntegration,
   type InsertPlatformIntegration,
   type FormTemplate,
-  type InsertFormTemplate
+  type InsertFormTemplate,
+  type Comment,
+  type InsertComment
 } from "@shared/schema";
 import { isLikelyInvalidEmail } from "./email-validator";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { db, pool } from "./db";
-import { and, eq, or, isNull } from "drizzle-orm";
+import { and, eq, or, isNull, desc, sql } from "drizzle-orm";
 
 // Database session store configuration
 const PostgresSessionStore = connectPg(session);
@@ -105,6 +107,12 @@ export interface IStorage {
   
   // Get users who should receive Slack notifications based on scope
   getUsersForSlackNotification(triggerUserId: number, eventType: string): Promise<User[]>;
+  
+  // Comment operations
+  createComment(comment: InsertComment): Promise<Comment>;
+  getComments(entityType: string, entityId: number): Promise<Comment[]>;
+  deleteComment(id: number, userId: number): Promise<void>;
+  getUsersForMentionAutocomplete(query?: string): Promise<User[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -969,6 +977,108 @@ export class DatabaseStorage implements IStorage {
       // Default: only notify the user who triggered the event
       return [triggerUser];
     }
+  }
+
+  // Comment operations
+  async createComment(comment: InsertComment): Promise<Comment> {
+    const [newComment] = await db
+      .insert(comments)
+      .values({
+        ...comment,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newComment;
+  }
+
+  async getComments(entityType: string, entityId: number): Promise<Comment[]> {
+    const commentsList = await db
+      .select({
+        id: comments.id,
+        userId: comments.userId,
+        entityType: comments.entityType,
+        entityId: comments.entityId,
+        content: comments.content,
+        mentions: comments.mentions,
+        createdAt: comments.createdAt,
+        updatedAt: comments.updatedAt,
+        // Join with users to get author info
+        userFullName: users.fullName,
+        userEmail: users.email,
+        userRole: users.role,
+      })
+      .from(comments)
+      .leftJoin(users, eq(comments.userId, users.id))
+      .where(
+        and(
+          eq(comments.entityType, entityType),
+          eq(comments.entityId, entityId)
+        )
+      )
+      .orderBy(desc(comments.createdAt));
+
+    // Map to include user info
+    return commentsList.map((row: any) => ({
+      id: row.id,
+      userId: row.userId,
+      entityType: row.entityType,
+      entityId: row.entityId,
+      content: row.content,
+      mentions: row.mentions,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      user: row.userFullName ? {
+        id: row.userId,
+        fullName: row.userFullName,
+        email: row.userEmail,
+        role: row.userRole,
+      } : undefined,
+    })) as any[];
+  }
+
+  async deleteComment(id: number, userId: number): Promise<void> {
+    // Check if user is admin or the comment author
+    const [comment] = await db
+      .select()
+      .from(comments)
+      .where(eq(comments.id, id));
+
+    if (!comment) {
+      throw new Error('Comment not found');
+    }
+
+    // Get user to check if admin
+    const user = await this.getUser(userId);
+    const isAdmin = user?.role === 'admin' || user?.role === 'ceo' || user?.role === 'coo';
+
+    if (comment.userId !== userId && !isAdmin) {
+      throw new Error('Unauthorized: You can only delete your own comments');
+    }
+
+    await db
+      .delete(comments)
+      .where(eq(comments.id, id));
+  }
+
+  async getUsersForMentionAutocomplete(query?: string): Promise<User[]> {
+    let usersQuery = db
+      .select()
+      .from(users);
+
+    // If query provided, filter by name or email
+    if (query && query.trim()) {
+      const searchTerm = `%${query.trim().toLowerCase()}%`;
+      usersQuery = usersQuery.where(
+        or(
+          sql`LOWER(${users.fullName}) LIKE ${searchTerm}`,
+          sql`LOWER(${users.email}) LIKE ${searchTerm}`,
+          sql`LOWER(${users.username}) LIKE ${searchTerm}`
+        )
+      ) as any;
+    }
+
+    return await usersQuery.limit(20);
   }
 }
 
