@@ -9,6 +9,7 @@ import { db } from "../db";
 import { eq } from "drizzle-orm";
 import { count } from "drizzle-orm";
 import { notifySlackUsers } from "../slack-notifications";
+import { createNotification } from "./notifications";
 
 export function setupJobRoutes(app: Express) {
   // Create a new job draft
@@ -220,6 +221,20 @@ export function setupJobRoutes(app: Express) {
             job: updatedJob,
             user,
           });
+
+          // Create in-app notification for job posted
+          try {
+            await createNotification(
+              req.user.id,
+              "job_posted",
+              "Job Posted",
+              `${updatedJob.title} has been posted and is now accepting applications`,
+              `/jobs`,
+              { jobId: updatedJob.id }
+            );
+          } catch (error) {
+            console.error("[Job] Failed to create job posted notification:", error);
+          }
         }
       }
 

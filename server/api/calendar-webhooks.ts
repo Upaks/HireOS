@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { handleApiError } from "./utils";
 import { isLikelyInvalidEmail } from "../email-validator";
 import { notifySlackUsers } from "../slack-notifications";
+import { createNotification } from "./notifications";
 
 // Calendar provider types
 type CalendarProvider = "calendly" | "cal.com" | "google" | "custom";
@@ -156,6 +157,22 @@ async function updateInterviewFromBooking(
         job,
         interview: updatedInterview,
       });
+
+      // Create in-app notification for interview scheduled
+      try {
+        const jobTitle = job?.title || "position";
+        await createNotification(
+          userId,
+          "interview_scheduled",
+          "Interview Scheduled",
+          `Interview scheduled: ${candidate.name} (${jobTitle}) on ${scheduledDate.toLocaleDateString()} at ${scheduledDate.toLocaleTimeString()}`,
+          `/candidates`,
+          { candidateId: candidate.id, jobId: job?.id, interviewId: scheduledInterview.id }
+        );
+      } catch (error) {
+        console.error("[Calendar Webhook] Failed to create notification:", error);
+        // Don't fail the webhook if notification fails
+      }
     }
 
     return true;

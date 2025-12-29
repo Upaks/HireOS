@@ -1,6 +1,6 @@
 import { 
   users, jobs, jobPlatforms, candidates, interviews, evaluations, activityLogs, notificationQueue,
-  offers, emailLogs, platformIntegrations, formTemplates, comments,
+  offers, emailLogs, platformIntegrations, formTemplates, comments, inAppNotifications,
   UserRoles,
   type User, 
   type InsertUser,
@@ -19,7 +19,9 @@ import {
   type FormTemplate,
   type InsertFormTemplate,
   type Comment,
-  type InsertComment
+  type InsertComment,
+  type InAppNotification,
+  type InsertInAppNotification
 } from "@shared/schema";
 import { isLikelyInvalidEmail } from "./email-validator";
 import session from "express-session";
@@ -1079,6 +1081,81 @@ export class DatabaseStorage implements IStorage {
     }
 
     return await usersQuery.limit(20);
+  }
+
+  // In-app notification operations
+  async createInAppNotification(notification: InsertInAppNotification): Promise<InAppNotification> {
+    const [newNotification] = await db
+      .insert(inAppNotifications)
+      .values({
+        ...notification,
+        createdAt: new Date(),
+      })
+      .returning();
+    return newNotification;
+  }
+
+  async getInAppNotifications(userId: number, filters?: { read?: boolean; limit?: number }): Promise<InAppNotification[]> {
+    let conditions: any[] = [eq(inAppNotifications.userId, userId)];
+
+    if (filters?.read !== undefined) {
+      conditions.push(eq(inAppNotifications.read, filters.read));
+    }
+
+    let query = db
+      .select()
+      .from(inAppNotifications)
+      .where(and(...conditions))
+      .orderBy(desc(inAppNotifications.createdAt));
+
+    if (filters?.limit) {
+      query = query.limit(filters.limit) as any;
+    }
+
+    return await query;
+  }
+
+  async markNotificationAsRead(id: number, userId: number): Promise<void> {
+    // Verify the notification belongs to the user
+    const [notification] = await db
+      .select()
+      .from(inAppNotifications)
+      .where(
+        and(
+          eq(inAppNotifications.id, id),
+          eq(inAppNotifications.userId, userId)
+        )
+      );
+
+    if (!notification) {
+      throw new Error('Notification not found or unauthorized');
+    }
+
+    await db
+      .update(inAppNotifications)
+      .set({ read: true })
+      .where(eq(inAppNotifications.id, id));
+  }
+
+  async markAllNotificationsAsRead(userId: number): Promise<void> {
+    await db
+      .update(inAppNotifications)
+      .set({ read: true })
+      .where(eq(inAppNotifications.userId, userId));
+  }
+
+  async getUnreadNotificationCount(userId: number): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(inAppNotifications)
+      .where(
+        and(
+          eq(inAppNotifications.userId, userId),
+          eq(inAppNotifications.read, false)
+        )
+      );
+    
+    return Number(result[0]?.count || 0);
   }
 }
 

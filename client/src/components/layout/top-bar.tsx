@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import HiringIntakeForm from "../jobs/hiring-intake-form";
+import NotificationBell from "../notifications/notification-bell";
 
 interface TopBarProps {
   title: string;
@@ -41,6 +42,8 @@ export default function TopBar({
           <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
           
           <div className="ml-4 flex items-center space-x-3 md:ml-6">
+            <NotificationBell />
+            
             {showAddCandidateButton && (
               <Button
                 className="flex items-center"

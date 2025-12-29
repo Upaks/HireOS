@@ -2,6 +2,7 @@ import { Express } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { handleApiError, validateRequest } from "./utils";
+import { createNotification } from "./notifications";
 
 export function setupInterviewRoutes(app: Express) {
   // Create a new interview
@@ -40,6 +41,25 @@ export function setupInterviewRoutes(app: Express) {
         });
       }
       
+      // Create in-app notification for interview scheduled
+      if (req.user?.id && candidate && scheduledDate) {
+        try {
+          const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+          const jobTitle = job?.title || "position";
+          await createNotification(
+            req.user.id,
+            "interview_scheduled",
+            "Interview Scheduled",
+            `Interview scheduled: ${candidate.name} (${jobTitle}) on ${scheduledDate.toLocaleDateString()} at ${scheduledDate.toLocaleTimeString()}`,
+            `/candidates`,
+            { candidateId: candidate.id, jobId: job?.id, interviewId: interview.id }
+          );
+        } catch (error) {
+          console.error("[Interview] Failed to create notification:", error);
+          // Don't fail the interview creation if notification fails
+        }
+      }
+
       // Log activity
       await storage.createActivityLog({
         userId: req.user?.id,

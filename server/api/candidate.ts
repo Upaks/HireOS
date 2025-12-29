@@ -12,6 +12,7 @@ import {
 } from "../ghl-integration";
 import { Candidate } from "@shared/schema";
 import { notifySlackUsers } from "../slack-notifications";
+import { createNotification } from "./notifications";
 
 export function setupCandidateRoutes(app: Express) {
   // Create a new candidate
@@ -768,6 +769,20 @@ export function setupCandidateRoutes(app: Express) {
       // Use direct email sending to leverage our error handling
       await storage.sendDirectEmail(candidate.email, emailSubject, emailBody, req.user?.id);
 
+      // Create in-app notification for interview invite sent
+      try {
+        await createNotification(
+          req.user.id,
+          "interview_scheduled", // Using interview_scheduled type for invite sent
+          "Interview Invite Sent",
+          `Interview invite sent to ${candidate.name} for ${job?.title || "a position"}`,
+          `/candidates`,
+          { candidateId: candidate.id, jobId: job?.id }
+        );
+      } catch (error) {
+        console.error("[Candidate] Failed to create interview invite sent notification:", error);
+      }
+
       // Check if an interview already exists for this candidate to prevent duplicates
       const existingInterviews = await storage.getInterviews({ candidateId: candidate.id });
       const existingScheduledInterview = existingInterviews.find(i => i.status === "scheduled" || i.status === "pending");
@@ -1302,6 +1317,20 @@ export function setupCandidateRoutes(app: Express) {
             offer,
             user,
           });
+
+          // Create in-app notification for offer accepted
+          try {
+            await createNotification(
+              offer.approvedById,
+              "offer_accepted",
+              "Offer Accepted",
+              `${candidate.name} accepted the offer for ${job.title}`,
+              `/candidates`,
+              { candidateId: candidate.id, jobId: job.id, offerId: offer.id }
+            );
+          } catch (error) {
+            console.error("[Candidate] Failed to create offer accepted notification:", error);
+          }
         }
       }
 

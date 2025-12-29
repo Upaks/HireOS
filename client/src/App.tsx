@@ -22,6 +22,7 @@ import Forms from "@/pages/forms";
 import ApplyPage from "@/pages/apply";
 import AcceptOfferPage from "@/pages/accept-offer";
 import Integrations from "@/pages/integrations";
+import Notifications from "@/pages/notifications";
 import { ThemeProvider } from "next-themes";
 import { UserRoles } from "@shared/schema";
 
@@ -98,6 +99,12 @@ function Router() {
       <ProtectedRoute 
         path="/integrations" 
         component={Integrations}
+      />
+      
+      {/* Notifications page - accessible to all authenticated users */}
+      <ProtectedRoute 
+        path="/notifications" 
+        component={Notifications}
       />
       
       {/* Public routes - no authentication required */}

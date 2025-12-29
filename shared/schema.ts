@@ -270,6 +270,19 @@ export const emailLogs = pgTable("email_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// In-App Notifications
+export const inAppNotifications = pgTable("in_app_notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  type: text("type").notNull(), // "interview_scheduled", "offer_sent", "offer_accepted", "offer_rejected", "job_posted", "new_application", "candidate_status_changed", "interview_evaluated"
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  read: boolean("read").default(false).notNull(),
+  link: text("link"), // URL to navigate to when clicked (e.g., "/candidates/123")
+  metadata: jsonb("metadata"), // Additional data: { candidateId, jobId, interviewId, etc. }
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Notification Queue
 export const notificationQueue = pgTable("notification_queue", {
   id: serial("id").primaryKey(),
@@ -317,6 +330,8 @@ export type Offer = typeof offers.$inferSelect;
 export type ActivityLog = typeof activityLogs.$inferSelect;
 export type EmailLog = typeof emailLogs.$inferSelect;
 export type NotificationQueueItem = typeof notificationQueue.$inferSelect;
+export type InAppNotification = typeof inAppNotifications.$inferSelect;
+export type InsertInAppNotification = typeof inAppNotifications.$inferInsert;
 export type Comment = typeof comments.$inferSelect;
 export type InsertComment = typeof comments.$inferInsert;
 
