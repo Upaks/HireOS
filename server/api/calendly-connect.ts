@@ -114,7 +114,7 @@ export function setupCalendlyConnectRoutes(app: Express) {
           // Calendly requires organization even for user-scoped webhooks
           const webhookPayload = {
             url: webhookUrl,
-            events: ["invitee.created"],
+            events: ["invitee.created", "invitee.canceled", "invitee.updated"],
             organization: orgUri,
             user: userUri,
             scope: "user",

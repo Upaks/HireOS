@@ -173,15 +173,96 @@ async function handleCalendlyWebhook(req: any, res: any) {
     const payload = req.body;
     const userId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
 
-    // Log webhook received (minimal logging)
+    console.log('[Calendly Webhook] Received webhook, userId:', userId);
+    console.log('[Calendly Webhook] Payload event:', payload.event);
 
     // Calendly webhook structure can vary:
     // Option 1: { event: "invitee.created", payload: { ... } }
     // Option 2: { event: "invitee.created", payload: { invitee: { email, ... }, scheduled_event: { start_time, ... } } }
     const eventType = payload.event;
     
+    // Handle cancellation events
+    if (eventType === "invitee.canceled") {
+      console.log('[Calendly Webhook] Processing cancellation event');
+      const inviteeData = payload.payload;
+      const candidateEmail = inviteeData?.email || inviteeData?.invitee?.email;
+      
+      if (candidateEmail) {
+        // Find candidate and cancel their interview
+        const allCandidates = await storage.getCandidates({});
+        const candidate = allCandidates.find(c => c.email.toLowerCase() === candidateEmail.toLowerCase());
+        
+        if (candidate) {
+          const interviews = await storage.getInterviews({ candidateId: candidate.id });
+          const scheduledInterview = interviews.find(i => i.status === "scheduled" || i.status === "pending");
+          
+          if (scheduledInterview) {
+            // Update interview status to cancelled instead of deleting
+            await storage.updateInterview(scheduledInterview.id, {
+              status: "cancelled",
+              updatedAt: new Date()
+            });
+            console.log(`[Calendly Webhook] Cancelled interview ${scheduledInterview.id} for ${candidate.name}`);
+            
+            // Update candidate status if needed
+            if (candidate.status === "60_1st_interview_scheduled") {
+              await storage.updateCandidate(candidate.id, {
+                status: "45_1st_interview_sent" // Revert to interview sent status
+              });
+            }
+            
+            return res.status(200).json({ message: "Interview cancelled successfully" });
+          } else {
+            console.log(`[Calendly Webhook] No scheduled interview found for ${candidate.name}`);
+            return res.status(200).json({ message: "No scheduled interview found to cancel" });
+          }
+        } else {
+          console.log(`[Calendly Webhook] Candidate not found for email: ${candidateEmail}`);
+          return res.status(200).json({ message: "Candidate not found" });
+        }
+      } else {
+        console.error('[Calendly Webhook] Missing email in cancellation payload');
+        return res.status(400).json({ message: "Missing email in cancellation payload" });
+      }
+    }
+    
+    // Handle rescheduling events (invitee.updated)
+    if (eventType === "invitee.updated") {
+      console.log('[Calendly Webhook] Processing reschedule event');
+      const inviteeData = payload.payload;
+      const candidateEmail = inviteeData?.email || inviteeData?.invitee?.email;
+      
+      if (!candidateEmail) {
+        console.error('[Calendly Webhook] Missing email in reschedule payload');
+        return res.status(400).json({ message: "Missing email in reschedule payload" });
+      }
+      
+      // Get scheduled event data
+      const scheduledEvent = inviteeData.scheduled_event || payload.scheduled_event;
+      if (!scheduledEvent || !scheduledEvent.start_time) {
+        console.error('[Calendly Webhook] Missing scheduled_event.start_time in reschedule');
+        return res.status(400).json({ message: "Missing scheduled_event.start_time in reschedule" });
+      }
+      
+      const newScheduledDate = new Date(scheduledEvent.start_time);
+      console.log(`[Calendly Webhook] Rescheduling to: ${newScheduledDate.toISOString()}`);
+      
+      // Use the same update function as booking - it will update the existing interview
+      const updated = await updateInterviewFromBooking(candidateEmail, newScheduledDate, "calendly", userId);
+      
+      if (updated) {
+        console.log('[Calendly Webhook] Interview rescheduled successfully');
+        res.status(200).json({ message: "Interview rescheduled successfully" });
+      } else {
+        console.log('[Calendly Webhook] Failed to reschedule - candidate not found or other error');
+        res.status(200).json({ message: "No matching candidate found. Please ensure the candidate exists in HireOS with this email address." });
+      }
+      return;
+    }
+    
     // Only process "invitee.created" events (when someone books)
     if (eventType !== "invitee.created") {
+      console.log(`[Calendly Webhook] Ignoring event type: ${eventType}`);
       return res.status(200).json({ message: "Event ignored" });
     }
 
@@ -209,9 +290,10 @@ async function handleCalendlyWebhook(req: any, res: any) {
       return res.status(400).json({ message: "Missing scheduled_event.start_time" });
     }
 
-    // Skip if rescheduled or canceled (check status)
-    if (inviteeData.rescheduled || inviteeData.status !== 'active') {
-      return res.status(200).json({ message: "Event was rescheduled or canceled" });
+    // Skip if canceled (check status) - rescheduling is handled separately via invitee.updated event
+    if (inviteeData.status !== 'active') {
+      console.log(`[Calendly Webhook] Skipping inactive event with status: ${inviteeData.status}`);
+      return res.status(200).json({ message: "Event was canceled or inactive" });
     }
 
     const scheduledDate = new Date(scheduledEvent.start_time);
