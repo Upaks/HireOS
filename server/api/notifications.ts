@@ -30,6 +30,12 @@ export function setupNotificationRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const userId = (req.user as any).id;
       const { read, limit } = req.query;
 
@@ -41,7 +47,7 @@ export function setupNotificationRoutes(app: Express) {
         filters.limit = parseInt(limit as string);
       }
 
-      const notifications = await storage.getInAppNotifications(userId, filters);
+      const notifications = await storage.getInAppNotifications(accountId, userId, filters);
       res.json(notifications);
     } catch (error) {
       handleApiError(error, res);
@@ -55,8 +61,14 @@ export function setupNotificationRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const userId = (req.user as any).id;
-      const count = await storage.getUnreadNotificationCount(userId);
+      const count = await storage.getUnreadNotificationCount(accountId, userId);
       res.json({ count });
     } catch (error) {
       handleApiError(error, res);
@@ -70,10 +82,16 @@ export function setupNotificationRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const { id } = req.params;
       const userId = (req.user as any).id;
 
-      await storage.markNotificationAsRead(parseInt(id), userId);
+      await storage.markNotificationAsRead(parseInt(id), accountId, userId);
       res.json({ message: "Notification marked as read" });
     } catch (error) {
       handleApiError(error, res);
@@ -87,8 +105,14 @@ export function setupNotificationRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const userId = (req.user as any).id;
-      await storage.markAllNotificationsAsRead(userId);
+      await storage.markAllNotificationsAsRead(accountId, userId);
       res.json({ message: "All notifications marked as read" });
     } catch (error) {
       handleApiError(error, res);
@@ -102,6 +126,12 @@ export function setupNotificationRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const validationResult = createNotificationSchema.safeParse(req.body);
       if (!validationResult.success) {
         return res.status(400).json({
@@ -111,7 +141,7 @@ export function setupNotificationRoutes(app: Express) {
       }
 
       const data = validationResult.data;
-      const notification = await storage.createInAppNotification(data);
+      const notification = await storage.createInAppNotification({ ...data, accountId });
       res.status(201).json(notification);
     } catch (error) {
       handleApiError(error, res);
@@ -129,7 +159,15 @@ export async function createNotification(
   metadata?: Record<string, any>
 ): Promise<void> {
   try {
+    // MULTI-TENANT: Get user's accountId
+    const accountId = await storage.getUserAccountId(userId);
+    if (!accountId) {
+      console.error(`[Notification] User ${userId} is not associated with any account`);
+      return;
+    }
+
     const notification = await storage.createInAppNotification({
+      accountId,
       userId,
       type,
       title,

@@ -2,8 +2,8 @@
     import { storage } from "../storage";
     import { handleApiError } from "./utils";
     import { db } from "../db";
-    import { jobs, candidates, interviews } from "@shared/schema";
-    import { eq, inArray, and, gte } from "drizzle-orm";
+    import { jobs, candidates, interviews, activityLogs } from "@shared/schema";
+    import { eq, inArray, and, gte, desc } from "drizzle-orm";
     import { count } from "drizzle-orm";
 
 
@@ -15,24 +15,34 @@
             return res.status(401).json({ message: "Authentication required" });
           }
 
+          // MULTI-TENANT: Get user's accountId
+          const accountId = await storage.getUserAccountId((req.user as any).id);
+          if (!accountId) {
+            return res.status(400).json({ message: "User is not associated with any account" });
+          }
+
           // Active Jobs
           const activeJobsCountResult = await db
             .select({ count: count() })
             .from(jobs)
-            .where(eq(jobs.status, "active"));
+            .where(and(eq(jobs.status, "active"), eq(jobs.accountId, accountId)));
           const activeJobs = Number(activeJobsCountResult[0].count);
 
           // Total Candidates
           const totalCandidatesResult = await db
             .select({ count: count() })
-            .from(candidates);
+            .from(candidates)
+            .where(eq(candidates.accountId, accountId));
           const totalCandidates = Number(totalCandidatesResult[0].count);
 
           // Scheduled Interviews
           const scheduledInterviewsResult = await db
             .select({ count: count() })
             .from(candidates)
-            .where(inArray(candidates.status, ["60_1st_interview_scheduled", "75_2nd_interview_scheduled"]));
+            .where(and(
+              eq(candidates.accountId, accountId),
+              inArray(candidates.status, ["60_1st_interview_scheduled", "75_2nd_interview_scheduled"])
+            ));
           const scheduledInterviews = Number(scheduledInterviewsResult[0].count);
 
 
@@ -40,8 +50,19 @@
           const offersSentResult = await db
             .select({ count: count() })
             .from(candidates)
-            .where(eq(candidates.status, "95_offer_sent"));
+            .where(and(
+              eq(candidates.accountId, accountId),
+              eq(candidates.status, "95_offer_sent")
+            ));
           const offersSent = Number(offersSentResult[0].count);
+
+          // Get recent activity logs (last 10, filtered by account)
+          const recentActivityLogs = await db
+            .select()
+            .from(activityLogs)
+            .where(eq(activityLogs.accountId, accountId))
+            .orderBy(desc(activityLogs.timestamp))
+            .limit(10);
 
           // ✅ Final JSON response
           res.json({
@@ -50,7 +71,8 @@
               totalCandidates,
               scheduledInterviews,
               offersSent
-            }
+            },
+            recentActivity: recentActivityLogs
           });
         } catch (error) {
           handleApiError(error, res);
@@ -64,12 +86,18 @@
             return res.status(401).json({ message: "Authentication required" });
           }
 
+          // MULTI-TENANT: Get user's accountId
+          const accountId = await storage.getUserAccountId((req.user as any).id);
+          if (!accountId) {
+            return res.status(400).json({ message: "User is not associated with any account" });
+          }
+
           const jobId = req.query.jobId ? parseInt(req.query.jobId as string) : undefined;
           const dateRange = req.query.dateRange as string || "30"; // Default to 30 days
 
-          // Calculate date filter
+          // Calculate date filter (always includes accountId)
           const buildConditions = (...conditions: any[]) => {
-            const allConditions = [];
+            const allConditions = [eq(candidates.accountId, accountId)]; // Always filter by account
             if (dateRange !== "all") {
               const days = parseInt(dateRange);
               const startDate = new Date();
@@ -167,22 +195,35 @@
             return res.status(401).json({ message: "Authentication required" });
           }
 
-          const allJobs = await storage.getJobs();
+          // MULTI-TENANT: Get user's accountId
+          const accountId = await storage.getUserAccountId((req.user as any).id);
+          if (!accountId) {
+            return res.status(400).json({ message: "User is not associated with any account" });
+          }
+
+          const allJobs = await storage.getJobs(accountId);
           const jobPerformance = [];
 
           for (const job of allJobs) {
-            // Applications: COUNT(*) of candidates assigned to the job
+            // Applications: COUNT(*) of candidates assigned to the job (within account)
             const allCandidatesResult = await db
               .select({ count: count() })
               .from(candidates)
-              .where(eq(candidates.jobId, job.id));
+              .where(and(
+                eq(candidates.accountId, accountId),
+                eq(candidates.jobId, job.id)
+              ));
             const applications = Number(allCandidatesResult[0].count);
 
             // Assessments: COUNT(*) of candidates with status = '30_assessment_completed'
             const assessmentsResult = await db
               .select({ count: count() })
               .from(candidates)
-              .where(and(eq(candidates.jobId, job.id), eq(candidates.status, "30_assessment_completed")));
+              .where(and(
+                eq(candidates.accountId, accountId),
+                eq(candidates.jobId, job.id),
+                eq(candidates.status, "30_assessment_completed")
+              ));
             const assessments = Number(assessmentsResult[0].count);
 
             // Interviews: Sum of candidates with interview statuses
@@ -195,6 +236,7 @@
               .select({ count: count() })
               .from(candidates)
               .where(and(
+                eq(candidates.accountId, accountId),
                 eq(candidates.jobId, job.id),
                 inArray(candidates.status, interviewStatuses)
               ));
@@ -204,14 +246,22 @@
             const offersResult = await db
               .select({ count: count() })
               .from(candidates)
-              .where(and(eq(candidates.jobId, job.id), eq(candidates.status, "95_offer_sent")));
+              .where(and(
+                eq(candidates.accountId, accountId),
+                eq(candidates.jobId, job.id),
+                eq(candidates.status, "95_offer_sent")
+              ));
             const offers = Number(offersResult[0].count);
 
             // Hires: Count of candidates with status = '100_offer_accepted'
             const hiresResult = await db
               .select({ count: count() })
               .from(candidates)
-              .where(and(eq(candidates.jobId, job.id), eq(candidates.status, "100_offer_accepted")));
+              .where(and(
+                eq(candidates.accountId, accountId),
+                eq(candidates.jobId, job.id),
+                eq(candidates.status, "100_offer_accepted")
+              ));
             const hires = Number(hiresResult[0].count);
 
             // Conversion: Hires ÷ Total candidates × 100 (as percentage)
@@ -248,7 +298,13 @@
             return res.status(401).json({ message: "Authentication required" });
           }
 
-          const hiredCandidates = await storage.getCandidates({ status: "hired" });
+          // MULTI-TENANT: Get user's accountId
+          const accountId = await storage.getUserAccountId((req.user as any).id);
+          if (!accountId) {
+            return res.status(400).json({ message: "User is not associated with any account" });
+          }
+
+          const hiredCandidates = await storage.getCandidates(accountId, { status: "100_offer_accepted" });
           const candidatesWithData = hiredCandidates.length;
 
           const sampleData = {

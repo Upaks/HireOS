@@ -134,7 +134,7 @@ export function setupAuth(app: Express) {
 
       // Add default role if not specified
       if (!req.body.role) {
-        req.body.role = UserRoles.HIRING_MANAGER;
+        req.body.role = UserRoles.ADMIN;
       }
 
       const user = await storage.createUser({
@@ -142,11 +142,21 @@ export function setupAuth(app: Express) {
         password: await hashPassword(req.body.password),
       });
 
+      // MULTI-TENANT: Create account for new user and add them as a member
+      // Use user's fullName as account name, or default to "My Account"
+      const accountName = user.fullName ? `${user.fullName}'s Account` : "My Account";
+      const account = await storage.createAccount(accountName, user.id, user.role);
+
       // Remove password from response
       const { password, ...userWithoutPassword } = user;
 
       // SECURITY: Log registration (sanitized)
-      SecureLogger.info("User registered", { userId: user.id, username: user.username, email: user.email });
+      SecureLogger.info("User registered", { 
+        userId: user.id, 
+        username: user.username, 
+        email: user.email,
+        accountId: account.id 
+      });
 
       req.login(user, (err) => {
         if (err) return next(err);

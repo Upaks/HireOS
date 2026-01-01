@@ -56,7 +56,13 @@ export function setupFormTemplateRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const templates = await storage.getFormTemplates();
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
+      const templates = await storage.getFormTemplates(accountId);
       res.json(templates);
     } catch (error) {
       handleApiError(error, res);
@@ -66,13 +72,13 @@ export function setupFormTemplateRoutes(app: Express) {
   // Get default form template
   // MUST come before /api/form-templates/:id to avoid route conflict
   // Public endpoint - no auth required (for public application page)
+  // NOTE: For public endpoints, we can't filter by accountId - this may need job-specific routing
   app.get("/api/form-templates/default", async (req, res) => {
     try {
-      const template = await storage.getDefaultFormTemplate();
-      if (!template) {
-        return res.status(404).json({ message: "No default form template found" });
-      }
-      res.json(template);
+      // For public access, we can't determine accountId from jobId in the URL
+      // This endpoint might need to be updated to accept jobId and look up accountId
+      // For now, return error requiring authentication or accept accountId as query param
+      return res.status(401).json({ message: "Authentication required for default template" });
     } catch (error) {
       handleApiError(error, res);
     }
@@ -82,12 +88,24 @@ export function setupFormTemplateRoutes(app: Express) {
   // Public endpoint - no auth required (for public application page)
   app.get("/api/form-templates/:id", async (req, res) => {
     try {
+      // For public access, we need to get accountId from the template itself or require it
+      // For now, require authentication for security
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid template ID" });
       }
 
-      const template = await storage.getFormTemplate(id);
+      const template = await storage.getFormTemplate(id, accountId);
       if (!template) {
         return res.status(404).json({ message: "Form template not found" });
       }
@@ -105,6 +123,12 @@ export function setupFormTemplateRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const validationResult = createFormTemplateSchema.safeParse(req.body);
       if (!validationResult.success) {
         return res.status(400).json({
@@ -115,17 +139,17 @@ export function setupFormTemplateRoutes(app: Express) {
 
       const data = validationResult.data;
 
-      // If setting as default, unset other defaults
+      // If setting as default, unset other defaults (within account)
       if (data.isDefault) {
-        const existingDefaults = await storage.getFormTemplates();
+        const existingDefaults = await storage.getFormTemplates(accountId);
         for (const template of existingDefaults) {
           if (template.isDefault && template.id) {
-            await storage.updateFormTemplate(template.id, { isDefault: false });
+            await storage.updateFormTemplate(template.id, accountId, { isDefault: false });
           }
         }
       }
 
-      const template = await storage.createFormTemplate(data);
+      const template = await storage.createFormTemplate({ ...data, accountId });
       res.status(201).json(template);
     } catch (error) {
       handleApiError(error, res);
@@ -137,6 +161,12 @@ export function setupFormTemplateRoutes(app: Express) {
     try {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
+      }
+
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
       }
 
       const id = parseInt(req.params.id);
@@ -154,17 +184,17 @@ export function setupFormTemplateRoutes(app: Express) {
 
       const data = validationResult.data;
 
-      // If setting as default, unset other defaults
+      // If setting as default, unset other defaults (within account)
       if (data.isDefault) {
-        const existingDefaults = await storage.getFormTemplates();
+        const existingDefaults = await storage.getFormTemplates(accountId);
         for (const template of existingDefaults) {
           if (template.isDefault && template.id && template.id !== id) {
-            await storage.updateFormTemplate(template.id, { isDefault: false });
+            await storage.updateFormTemplate(template.id, accountId, { isDefault: false });
           }
         }
       }
 
-      const template = await storage.updateFormTemplate(id, data);
+      const template = await storage.updateFormTemplate(id, accountId, data);
       if (!template) {
         return res.status(404).json({ message: "Form template not found" });
       }
@@ -182,12 +212,18 @@ export function setupFormTemplateRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid template ID" });
       }
 
-      await storage.deleteFormTemplate(id);
+      await storage.deleteFormTemplate(id, accountId);
       res.status(204).send();
     } catch (error) {
       handleApiError(error, res);

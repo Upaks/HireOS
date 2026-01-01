@@ -11,6 +11,24 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Accounts Table (Multi-tenant)
+export const accounts = pgTable("accounts", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Account Members Table (Links users to accounts)
+export const accountMembers = pgTable("account_members", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  role: text("role").notNull().default("hiringManager"),
+  joinedAt: timestamp("joined_at").defaultNow().notNull(),
+  invitedById: integer("invited_by_id").references(() => users.id),
+});
+
 // Users Table
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -44,6 +62,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
 // Job Postings Table
 export const jobs = pgTable("jobs", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
   title: text("title").notNull(),
   suggestedTitle: text("suggested_title"),
   description: text("description").notNull(),
@@ -84,6 +103,7 @@ export const insertJobSchema = createInsertSchema(jobs)
 // Job Posting Platforms
 export const jobPlatforms = pgTable("job_platforms", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
   jobId: integer("job_id")
     .references(() => jobs.id)
     .notNull(),
@@ -99,6 +119,7 @@ export const jobPlatforms = pgTable("job_platforms", {
 // Platform Integrations (API Credentials & Connections)
 export const platformIntegrations = pgTable("platform_integrations", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }), // Multi-tenant: NULL for system-wide integrations
   userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }), // For user-scoped integrations (CRM/ATS). NULL for system-wide (job posting platforms)
   platformId: text("platform_id").notNull(), // "linkedin", "onlinejobs", "ghl", "hubspot", etc.
   platformName: text("platform_name").notNull(), // Display name: "LinkedIn", "onlinejobs.ph", "GoHighLevel", etc.
@@ -127,6 +148,7 @@ export const platformIntegrations = pgTable("platform_integrations", {
 // Comments Table
 export const comments = pgTable("comments", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
   userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   entityType: text("entity_type").notNull(), // "candidate" or "job"
   entityId: integer("entity_id").notNull(), // ID of the candidate or job
@@ -139,6 +161,7 @@ export const comments = pgTable("comments", {
 // Application Form Templates
 export const formTemplates = pgTable("form_templates", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
   name: text("name").notNull(), // "Default Application Form", "Developer Application Form", etc.
   description: text("description"),
   fields: jsonb("fields").notNull(), // Array of field definitions
@@ -150,6 +173,7 @@ export const formTemplates = pgTable("form_templates", {
 // Candidates Table
 export const candidates = pgTable("candidates", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
   jobId: integer("job_id").references(() => jobs.id),
   name: text("name").notNull(),
   email: text("email").notNull(),
@@ -192,6 +216,7 @@ export const insertCandidateSchema = createInsertSchema(candidates).omit({
 // Interviews Table
 export const interviews = pgTable("interviews", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
   candidateId: integer("candidate_id")
     .references(() => candidates.id)
     .notNull(),
@@ -209,6 +234,7 @@ export const interviews = pgTable("interviews", {
 // Interview Evaluations
 export const evaluations = pgTable("evaluations", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
   interviewId: integer("interview_id")
     .references(() => interviews.id)
     .notNull(),
@@ -230,6 +256,7 @@ export const evaluations = pgTable("evaluations", {
 // Offers Table
 export const offers = pgTable("offers", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
   candidateId: integer("candidate_id")
     .references(() => candidates.id)
     .notNull(),
@@ -249,6 +276,7 @@ export const offers = pgTable("offers", {
 // Activity Logs
 export const activityLogs = pgTable("activity_logs", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
   userId: integer("user_id").references(() => users.id),
   action: text("action").notNull(), // Created job, sent assessment, scheduled interview, etc.
   entityType: text("entity_type").notNull(), // job, candidate, interview, etc.
@@ -273,6 +301,7 @@ export const emailLogs = pgTable("email_logs", {
 // In-App Notifications
 export const inAppNotifications = pgTable("in_app_notifications", {
   id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
   userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   type: text("type").notNull(), // "interview_scheduled", "offer_sent", "offer_accepted", "offer_rejected", "job_posted", "new_application", "candidate_status_changed", "interview_evaluated"
   title: text("title").notNull(),
@@ -308,6 +337,11 @@ export const ghlTokens = pgTable("ghl_tokens", {
 });
 
 // Type Exports
+export type Account = typeof accounts.$inferSelect;
+export type InsertAccount = typeof accounts.$inferInsert;
+export type AccountMember = typeof accountMembers.$inferSelect;
+export type InsertAccountMember = typeof accountMembers.$inferInsert;
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 

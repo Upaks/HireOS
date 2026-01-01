@@ -49,7 +49,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return await res.json();
     },
     onSuccess: (user: User) => {
+      // Clear all cached queries from previous user session
+      queryClient.clear();
+      // Set the new user data
       queryClient.setQueryData(["/api/user"], user);
+      // Queries will be fetched fresh when components mount
       toast({
         title: "Login successful",
         description: `Welcome, ${user.fullName}!`,
@@ -70,7 +74,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return await res.json();
     },
     onSuccess: (user: User) => {
+      // Clear all cached queries from any previous session
+      queryClient.clear();
+      // Set the new user data
       queryClient.setQueryData(["/api/user"], user);
+      // Queries will be fetched fresh when components mount
       toast({
         title: "Registration successful",
         description: `Welcome to HireOS, ${user.fullName}!`,
@@ -90,6 +98,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await apiRequest("POST", "/api/logout");
     },
     onSuccess: () => {
+      // Clear ALL cached queries to prevent data leakage between users
+      queryClient.clear();
+      // Explicitly set user to null
       queryClient.setQueryData(["/api/user"], null);
       toast({
         title: "Logged out",

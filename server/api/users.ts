@@ -48,7 +48,13 @@ export function setupUserRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const users = await storage.getAllUsers();
+      // MULTI-TENANT: Get user's accountId and filter users by account
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
+      const users = await storage.getAllUsers(accountId);
       
       // Remove passwords from response
       const sanitizedUsers = users.map(user => {
@@ -122,19 +128,25 @@ export function setupUserRoutes(app: Express) {
       // Remove password from response
       const { password, ...userWithoutPassword } = user;
 
+      // MULTI-TENANT: Get accountId for activity log
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      
       // Log activity (sanitized)
       SecureLogger.info("User created", { userId: user.id, username: user.username, role: user.role });
-      await storage.createActivityLog({
-        userId: req.user?.id,
-        action: "Created user",
-        entityType: "user",
-        entityId: user.id,
-        details: { 
-          username: user.username,
-          role: user.role
-        },
-        timestamp: new Date()
-      });
+      if (accountId) {
+        await storage.createActivityLog({
+          accountId,
+          userId: req.user?.id,
+          action: "Created user",
+          entityType: "user",
+          entityId: user.id,
+          details: { 
+            username: user.username,
+            role: user.role
+          },
+          timestamp: new Date()
+        });
+      }
 
       res.status(201).json(userWithoutPassword);
     } catch (error) {
@@ -178,18 +190,24 @@ export function setupUserRoutes(app: Express) {
 
       const updatedUser = await storage.updateUser(userId, updateData);
 
+      // MULTI-TENANT: Get accountId for activity log
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+
       // Log activity
-      await storage.createActivityLog({
-        userId: req.user?.id,
-        action: "Updated user",
-        entityType: "user",
-        entityId: userId,
-        details: { 
-          username: user.username,
-          fieldsUpdated: Object.keys(req.body),
-        },
-        timestamp: new Date()
-      });
+      if (accountId) {
+        await storage.createActivityLog({
+          accountId,
+          userId: req.user?.id,
+          action: "Updated user",
+          entityType: "user",
+          entityId: userId,
+          details: { 
+            username: user.username,
+            fieldsUpdated: Object.keys(req.body),
+          },
+          timestamp: new Date()
+        });
+      }
 
       // Remove password from response
       const { password, ...userWithoutPassword } = updatedUser;
@@ -223,18 +241,24 @@ export function setupUserRoutes(app: Express) {
 
       await storage.deleteUser(userId);
 
+      // MULTI-TENANT: Get accountId for activity log
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+
       // Log activity
-      await storage.createActivityLog({
-        userId: req.user?.id,
-        action: "Deleted user",
-        entityType: "user",
-        entityId: userId,
-        details: { 
-          username: user.username,
-          role: user.role
-        },
-        timestamp: new Date()
-      });
+      if (accountId) {
+        await storage.createActivityLog({
+          accountId,
+          userId: req.user?.id,
+          action: "Deleted user",
+          entityType: "user",
+          entityId: userId,
+          details: { 
+            username: user.username,
+            role: user.role
+          },
+          timestamp: new Date()
+        });
+      }
 
       res.status(204).send();
     } catch (error) {

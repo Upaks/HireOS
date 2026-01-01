@@ -72,10 +72,24 @@ export function setupCandidateRoutes(app: Express) {
             .json({ message: "Authentication or API key required" });
         }
 
-        // Check for duplicate candidate (same name and email)
+        // MULTI-TENANT: Get user's accountId (if authenticated)
+        let accountId: number | null = null;
+        if (req.isAuthenticated() && req.user?.id) {
+          accountId = await storage.getUserAccountId(req.user.id);
+          if (!accountId) {
+            return res.status(400).json({ message: "User is not associated with any account" });
+          }
+        } else {
+          // For API key access, we might need accountId from request or return error
+          // For now, require authentication for candidate creation
+          return res.status(401).json({ message: "Authentication required for candidate creation" });
+        }
+
+        // Check for duplicate candidate (same name and email) within account
         const existingCandidate = await storage.getCandidateByNameAndEmail(
           req.body.name,
           req.body.email,
+          accountId
         );
         if (existingCandidate) {
           return res.status(409).json({
@@ -86,12 +100,12 @@ export function setupCandidateRoutes(app: Express) {
           });
         }
 
-        const candidate = await storage.createCandidate(req.body);
+        const candidate = await storage.createCandidate({ ...req.body, accountId });
 
         // Send Slack notification for new application
         const userId = (req.user as any)?.id;
         if (userId && candidate.jobId) {
-          const job = await storage.getJob(candidate.jobId);
+          const job = await storage.getJob(candidate.jobId, accountId);
           if (job) {
             await notifySlackUsers(userId, "new_application", {
               candidate,
@@ -127,13 +141,13 @@ export function setupCandidateRoutes(app: Express) {
                     updates.experienceYears = parsedData.experienceYears;
                   }
                   
-                  await storage.updateCandidate(candidate.id, updates);
+                  await storage.updateCandidate(candidate.id, accountId, updates);
                   
                   // Auto-calculate match score if jobId exists
                   if (candidate.jobId) {
                     try {
                       const { calculateMatchScore } = await import('./ai-matching');
-                      const job = await storage.getJob(candidate.jobId);
+                      const job = await storage.getJob(candidate.jobId, accountId);
                       if (job) {
                         const matchResult = await calculateMatchScore(
                           {
@@ -151,7 +165,7 @@ export function setupCandidateRoutes(app: Express) {
                           },
                           user.openRouterApiKey!
                         );
-                        await storage.updateCandidate(candidate.id, { matchScore: matchResult.score });
+                        await storage.updateCandidate(candidate.id, accountId, { matchScore: matchResult.score });
                       }
                     } catch (matchError) {
                       console.error("Error auto-calculating match score:", matchError);
@@ -170,7 +184,7 @@ export function setupCandidateRoutes(app: Express) {
         // Sync to connected CRMs (GHL, Airtable, Google Sheets)
         if (userId && candidate.jobId !== null && candidate.jobId !== undefined) {
           try {
-            const job = await storage.getJob(candidate.jobId);
+            const job = await storage.getJob(candidate.jobId, accountId);
             if (job) {
               (candidate as any).job = job;
             }
@@ -209,7 +223,7 @@ export function setupCandidateRoutes(app: Express) {
 
                   const ghlContactId = ghlResponse.contact?.id;
                   if (ghlContactId) {
-                    await storage.updateCandidate(candidate.id, { ghlContactId });
+                    await storage.updateCandidate(candidate.id, accountId, { ghlContactId });
                   }
                 } else if (integration.platformId === 'airtable') {
                   const { updateCandidateInAirtable } = await import('../airtable-integration');
@@ -235,6 +249,7 @@ export function setupCandidateRoutes(app: Express) {
               } catch (syncError: any) {
                 // Log but don't fail the main creation
                 await storage.createActivityLog({
+                  accountId,
                   userId: req.user?.id ?? null,
                   action: `${integration.platformName} sync failed`,
                   entityType: "candidate",
@@ -255,6 +270,7 @@ export function setupCandidateRoutes(app: Express) {
 
         // Log activity
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: "Added candidate",
           entityType: "candidate",
@@ -265,7 +281,7 @@ export function setupCandidateRoutes(app: Express) {
 
         // If express review is enabled, send assessment immediately
         // Otherwise, schedule it for 3 hours later
-        const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+        const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
         const processAfter = job?.expressReview
           ? new Date()
           : new Date(Date.now() + 3 * 60 * 60 * 1000); // 3 hours later
@@ -301,19 +317,21 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const jobId = req.query.jobId
         ? parseInt(req.query.jobId as string)
         : undefined;
       const status = req.query.status as string | undefined;
-      const hiPeoplePercentile = req.query.hiPeoplePercentile
-        ? parseInt(req.query.hiPeoplePercentile as string)
-        : undefined;
 
       // Get candidates based on filters
-      const candidates = await storage.getCandidates({
+      const candidates = await storage.getCandidates(accountId, {
         jobId,
         status,
-        hiPeoplePercentile,
       });
 
       res.json(candidates);
@@ -329,18 +347,24 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const candidateId = parseInt(req.params.id);
       if (isNaN(candidateId)) {
         return res.status(400).json({ message: "Invalid candidate ID" });
       }
 
-      // SECURITY: Check authorization
+      // SECURITY: Check authorization (still useful for additional checks)
       const hasAccess = await canAccessCandidate(req.user!.id, candidateId);
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied to this candidate" });
       }
 
-      const candidate = await storage.getCandidate(candidateId);
+      const candidate = await storage.getCandidate(candidateId, accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
@@ -360,15 +384,27 @@ export function setupCandidateRoutes(app: Express) {
           .json({ message: "Authentication or API key required" });
       }
 
+      // MULTI-TENANT: Get user's accountId (if authenticated)
+      let accountId: number | null = null;
+      if (req.isAuthenticated() && req.user?.id) {
+        accountId = await storage.getUserAccountId(req.user.id);
+        if (!accountId) {
+          return res.status(400).json({ message: "User is not associated with any account" });
+        }
+      } else {
+        // For API key access, require authentication for now
+        return res.status(401).json({ message: "Authentication required for candidate updates" });
+      }
+
       // Resolve candidate either by numeric ID or GHL Contact ID
       const candidateIdentifier = req.params.id;
       let candidate: Candidate | undefined;
 
       if (!isNaN(Number(candidateIdentifier))) {
-        candidate = await storage.getCandidate(parseInt(candidateIdentifier));
+        candidate = await storage.getCandidate(parseInt(candidateIdentifier), accountId);
       } else {
         candidate =
-          await storage.getCandidateByGHLContactId(candidateIdentifier);
+          await storage.getCandidateByGHLContactId(candidateIdentifier, accountId);
       }
 
       if (!candidate) {
@@ -412,6 +448,7 @@ export function setupCandidateRoutes(app: Express) {
       // Update candidate
       const updatedCandidate = await storage.updateCandidate(
         candidate.id,
+        accountId,
         updateData,
       );
 
@@ -446,15 +483,15 @@ export function setupCandidateRoutes(app: Express) {
                   updates.experienceYears = parsedData.experienceYears;
                 }
                 
-                await storage.updateCandidate(updatedCandidate.id, updates);
+                await storage.updateCandidate(updatedCandidate.id, accountId, updates);
                 
                 // Auto-calculate match score if jobId exists
                 if (updatedCandidate.jobId) {
                   try {
                     const { calculateMatchScore } = await import('./ai-matching');
-                    const job = await storage.getJob(updatedCandidate.jobId);
+                    const job = await storage.getJob(updatedCandidate.jobId, accountId);
                     if (job) {
-                      const finalCandidate = await storage.getCandidate(updatedCandidate.id);
+                      const finalCandidate = await storage.getCandidate(updatedCandidate.id, accountId);
                       const matchResult = await calculateMatchScore(
                         {
                           name: finalCandidate!.name,
@@ -472,7 +509,7 @@ export function setupCandidateRoutes(app: Express) {
                         },
                         user.openRouterApiKey!
                       );
-                      await storage.updateCandidate(updatedCandidate.id, { matchScore: matchResult.score });
+                      await storage.updateCandidate(updatedCandidate.id, accountId, { matchScore: matchResult.score });
                     }
                   } catch (matchError) {
                     console.error("Error auto-calculating match score:", matchError);
@@ -504,7 +541,7 @@ export function setupCandidateRoutes(app: Express) {
                 const { updateCandidateInAirtable } = await import('../airtable-integration');
                 // Get job details if available
                 if (updatedCandidate.jobId) {
-                  const job = await storage.getJob(updatedCandidate.jobId);
+                  const job = await storage.getJob(updatedCandidate.jobId, accountId);
                   if (job) {
                     (updatedCandidate as any).job = job;
                   }
@@ -514,7 +551,7 @@ export function setupCandidateRoutes(app: Express) {
                 const { updateCandidateInGHL } = await import('../ghl-integration');
                 // Get job details if available
                 if (updatedCandidate.jobId) {
-                  const job = await storage.getJob(updatedCandidate.jobId);
+                  const job = await storage.getJob(updatedCandidate.jobId, accountId);
                   if (job) {
                     (updatedCandidate as any).job = job;
                   }
@@ -524,7 +561,7 @@ export function setupCandidateRoutes(app: Express) {
                 const { createOrUpdateGoogleSheetsContact, findRowByEmail } = await import('../google-sheets-integration');
                 // Get job details if available
                 if (updatedCandidate.jobId) {
-                  const job = await storage.getJob(updatedCandidate.jobId);
+                  const job = await storage.getJob(updatedCandidate.jobId, accountId);
                   if (job) {
                     (updatedCandidate as any).job = job;
                   }
@@ -563,7 +600,7 @@ export function setupCandidateRoutes(app: Express) {
         req.body.status === "45_1st_interview_sent" &&
         req.body.status !== candidate.status
       ) {
-        const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+        const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
         if (job) {
           // SECURITY: Get user info for email template
           const user = req.user ? await storage.getUser(req.user.id) : null;
@@ -582,18 +619,14 @@ export function setupCandidateRoutes(app: Express) {
             ${sanitizeTextInput(companyName)}
           `.trim());
           
-          await storage.createNotification({
+          await storage.createInAppNotification({
+            accountId,
+            userId: req.user?.id ?? null,
             type: "email",
-            payload: {
-              recipientEmail: candidate.email,
-              subject: `${sanitizeTextInput(candidate.name)}, Let's Discuss Your Fit for Our ${sanitizeTextInput(job.title)} Position`,
-              template: "custom",
-              context: {
-                body: emailBody,
-              },
-            },
-            processAfter: new Date(),
-            status: "pending",
+            title: "Interview Invite Sent",
+            message: `Interview invite sent to ${candidate.name}`,
+            link: `/candidates/${candidate.id}`,
+            metadata: { candidateId: candidate.id },
           });
         }
       }
@@ -605,12 +638,13 @@ export function setupCandidateRoutes(app: Express) {
         (req.body.finalDecisionStatus === "offer" &&
           candidate.finalDecisionStatus !== "offer")
       ) {
-        const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+        const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
 
         // Create offer if none exists
-        let offer = await storage.getOfferByCandidate(candidate.id);
+        let offer = await storage.getOfferByCandidate(candidate.id, accountId);
         if (!offer) {
           offer = await storage.createOffer({
+            accountId,
             candidateId: candidate.id,
             offerType: "Full-time",
             compensation: "Competitive",
@@ -622,6 +656,7 @@ export function setupCandidateRoutes(app: Express) {
         }
 
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: "Sent offer to candidate",
           entityType: "candidate",
@@ -662,10 +697,10 @@ export function setupCandidateRoutes(app: Express) {
         
         if (wasInterviewStatus && isNoLongerInterviewStatus) {
           // Cancel any scheduled/pending interviews for this candidate
-          const existingInterviews = await storage.getInterviews({ candidateId: candidate.id });
+          const existingInterviews = await storage.getInterviews(accountId, { candidateId: candidate.id });
           for (const interview of existingInterviews) {
             if (interview.status === "scheduled" || interview.status === "pending") {
-              await storage.updateInterview(interview.id, {
+              await storage.updateInterview(interview.id, accountId, {
                 status: "cancelled",
                 notes: interview.notes ? `${interview.notes}\n\nCancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candidate status changed to ${req.body.status}`,
                 updatedAt: new Date()
@@ -675,6 +710,7 @@ export function setupCandidateRoutes(app: Express) {
         }
         
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: `Updated candidate status to ${req.body.status}`,
           entityType: "candidate",
@@ -691,6 +727,7 @@ export function setupCandidateRoutes(app: Express) {
       // Log evaluation update
       if (hasEvaluationFields) {
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: "Updated candidate evaluation",
           entityType: "candidate",
@@ -726,18 +763,24 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const candidateId = parseInt(req.params.id);
       if (isNaN(candidateId)) {
         return res.status(400).json({ message: "Invalid candidate ID" });
       }
 
-      const candidate = await storage.getCandidate(candidateId);
+      const candidate = await storage.getCandidate(candidateId, accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
       // Get job details first (needed for email and logging)
-      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
 
       // Check for valid email before sending interview invite
       if (isLikelyInvalidEmail(candidate.email)) {
@@ -747,6 +790,7 @@ export function setupCandidateRoutes(app: Express) {
 
         // Log activity about the failed interview invite
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: "Interview invite failed - invalid email",
           entityType: "candidate",
@@ -767,12 +811,13 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // Only update candidate status if email is valid
-      const updatedCandidate = await storage.updateCandidate(candidateId, {
+      const updatedCandidate = await storage.updateCandidate(candidateId, accountId, {
         status: "45_1st_interview_sent",
       });
 
       // Log activity
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Invited candidate to interview",
         entityType: "candidate",
@@ -866,13 +911,14 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // Check if an interview already exists for this candidate to prevent duplicates
-      const existingInterviews = await storage.getInterviews({ candidateId: candidate.id });
+      const existingInterviews = await storage.getInterviews(accountId, { candidateId: candidate.id });
       const existingScheduledInterview = existingInterviews.find(i => i.status === "scheduled" || i.status === "pending");
       
       if (!existingScheduledInterview) {
         // Create an interview record so it shows up in the Interviews tab
         // Status is "scheduled" but without a specific date (candidate will book via calendar)
         await storage.createInterview({
+          accountId,
           candidateId: candidate.id,
           interviewerId: req.user?.id ?? null,
           type: "video", // Default to video interview
@@ -882,7 +928,7 @@ export function setupCandidateRoutes(app: Express) {
         });
       } else {
         // Update existing interview instead of creating duplicate
-        await storage.updateInterview(existingScheduledInterview.id, {
+        await storage.updateInterview(existingScheduledInterview.id, accountId, {
           status: "scheduled",
           notes: "Interview invitation sent - awaiting candidate to book via calendar link",
           updatedAt: new Date()
@@ -902,18 +948,24 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const candidateId = parseInt(req.params.id);
       if (isNaN(candidateId)) {
         return res.status(400).json({ message: "Invalid candidate ID" });
       }
 
-      const candidate = await storage.getCandidate(candidateId);
+      const candidate = await storage.getCandidate(candidateId, accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
       // Get job details first
-      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
 
       // Check for valid email before adding to talent pool
       if (isLikelyInvalidEmail(candidate.email)) {
@@ -923,6 +975,7 @@ export function setupCandidateRoutes(app: Express) {
 
         // Log activity about the failed talent pool add
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: "Talent pool add failed - invalid email",
           entityType: "candidate",
@@ -943,13 +996,14 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // Only update candidate status if email is valid
-      const updatedCandidate = await storage.updateCandidate(candidateId, {
+      const updatedCandidate = await storage.updateCandidate(candidateId, accountId, {
         status: "90_talent_pool",
         finalDecisionStatus: "talent_pool", // Also keep final decision status in sync
       });
 
       // Log activity
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Added candidate to talent pool",
         entityType: "candidate",
@@ -1027,18 +1081,24 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const candidateId = parseInt(req.params.id);
       if (isNaN(candidateId)) {
         return res.status(400).json({ message: "Invalid candidate ID" });
       }
 
-      const candidate = await storage.getCandidate(candidateId);
+      const candidate = await storage.getCandidate(candidateId, accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
       // Get job details first (needed for email)
-      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
 
       // IMPORTANT: First check if email exists before updating candidate status
       // Use the same email validation as in sendDirectEmail
@@ -1054,6 +1114,7 @@ export function setupCandidateRoutes(app: Express) {
 
         // Log activity
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: "Rejection failed - invalid email",
           entityType: "candidate",
@@ -1074,13 +1135,14 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // Email appears valid, proceed with updating the status
-      const updatedCandidate = await storage.updateCandidate(candidateId, {
+      const updatedCandidate = await storage.updateCandidate(candidateId, accountId, {
         status: "200_rejected",
         finalDecisionStatus: "rejected",
       });
 
       // Log activity
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Rejected candidate",
         entityType: "candidate",
@@ -1168,18 +1230,24 @@ export function setupCandidateRoutes(app: Express) {
           return res.status(401).json({ message: "Authentication required" });
         }
 
+        // MULTI-TENANT: Get user's accountId
+        const accountId = await storage.getUserAccountId(req.user!.id);
+        if (!accountId) {
+          return res.status(400).json({ message: "User is not associated with any account" });
+        }
+
         const candidateId = parseInt(req.params.id);
         if (isNaN(candidateId)) {
           return res.status(400).json({ message: "Invalid candidate ID" });
         }
 
-        const candidate = await storage.getCandidate(candidateId);
+        const candidate = await storage.getCandidate(candidateId, accountId);
         if (!candidate) {
           return res.status(404).json({ message: "Candidate not found" });
         }
 
         // Get job details first (needed for email template)
-        const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+        const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
 
         // First check if email is valid, similar to how reject works
         // Validate email exists before updating status
@@ -1190,6 +1258,7 @@ export function setupCandidateRoutes(app: Express) {
 
             // Log failed attempt
             await storage.createActivityLog({
+              accountId,
               userId: req.user?.id ?? null,
               action: "Offer send failed - invalid email",
               entityType: "candidate",
@@ -1211,7 +1280,7 @@ export function setupCandidateRoutes(app: Express) {
           }
 
           // Email appears valid, proceed with updating the status
-          const updatedCandidate = await storage.updateCandidate(candidateId, {
+          const updatedCandidate = await storage.updateCandidate(candidateId, accountId, {
             status: "95_offer_sent",
             finalDecisionStatus: "offer_sent", // Also update final decision status
           });
@@ -1221,6 +1290,7 @@ export function setupCandidateRoutes(app: Express) {
             ? new Date(req.body.startDate)
             : undefined;
           const offer = await storage.createOffer({
+            accountId,
             candidateId,
             offerType: req.body.offerType,
             compensation: req.body.compensation,
@@ -1235,7 +1305,7 @@ export function setupCandidateRoutes(app: Express) {
           // Send Slack notification for offer sent
           if (req.user?.id) {
             const user = await storage.getUser(req.user.id);
-            const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+            const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
             if (user && job) {
               await notifySlackUsers(req.user.id, "offer_sent", {
                 candidate: updatedCandidate,
@@ -1248,6 +1318,7 @@ export function setupCandidateRoutes(app: Express) {
 
           // Log activity for successful offer creation
           await storage.createActivityLog({
+            accountId,
             userId: req.user?.id ?? null,
             action: "Sent offer to candidate",
             entityType: "candidate",
@@ -1373,34 +1444,41 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const candidateId = parseInt(req.params.id);
       if (isNaN(candidateId)) {
         return res.status(400).json({ message: "Invalid candidate ID" });
       }
 
-      const candidate = await storage.getCandidate(candidateId);
+      const candidate = await storage.getCandidate(candidateId, accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
       // Update candidate status
-      const updatedCandidate = await storage.updateCandidate(candidateId, {
+      const updatedCandidate = await storage.updateCandidate(candidateId, accountId, {
         status: "100_offer_accepted",
       });
 
       // Update offer status
-      const offer = await storage.getOfferByCandidate(candidateId);
+      const offer = await storage.getOfferByCandidate(candidateId, accountId);
       if (offer) {
-        await storage.updateOffer(offer.id, {
+        await storage.updateOffer(offer.id, accountId, {
           status: "accepted",
         });
       }
 
       // Get job details
-      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
 
       // Log activity
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Candidate accepted offer",
         entityType: "candidate",
@@ -1486,13 +1564,13 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(400).json({ message: "This offer is not available for acceptance" });
       }
 
-      // Get candidate and job details
-      const candidate = await storage.getCandidate(offer.candidateId);
+      // Get candidate and job details (use accountId from offer)
+      const candidate = await storage.getCandidate(offer.candidateId, offer.accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
-      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId, offer.accountId) : null;
 
       // Return offer details (safe for public viewing)
       res.json({
@@ -1545,22 +1623,22 @@ export function setupCandidateRoutes(app: Express) {
         return res.status(400).json({ message: "This offer has already been declined" });
       }
 
-      // Get candidate and job details
-      const candidate = await storage.getCandidate(offer.candidateId);
+      // Get candidate and job details (use accountId from offer)
+      const candidate = await storage.getCandidate(offer.candidateId, offer.accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
-      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId, offer.accountId) : null;
 
       if (action === "accept") {
         // Update offer status
-        await storage.updateOffer(offer.id, {
+        await storage.updateOffer(offer.id, offer.accountId, {
           status: "accepted",
         });
 
         // Update candidate status
-        await storage.updateCandidate(offer.candidateId, {
+        await storage.updateCandidate(offer.candidateId, offer.accountId, {
           status: "100_offer_accepted",
         });
 
@@ -1640,6 +1718,7 @@ export function setupCandidateRoutes(app: Express) {
 
         // Log activity
         await storage.createActivityLog({
+          accountId: offer.accountId,
           userId: offer.approvedById ?? null,
           action: "Candidate accepted offer",
           entityType: "candidate",
@@ -1654,17 +1733,18 @@ export function setupCandidateRoutes(app: Express) {
         });
       } else {
         // Decline offer
-        await storage.updateOffer(offer.id, {
+        await storage.updateOffer(offer.id, offer.accountId, {
           status: "declined",
         });
 
-        await storage.updateCandidate(offer.candidateId, {
+        await storage.updateCandidate(offer.candidateId, offer.accountId, {
           status: "200_rejected",
           finalDecisionStatus: "rejected",
         });
 
         // Log activity
         await storage.createActivityLog({
+          accountId: offer.accountId,
           userId: offer.approvedById ?? null,
           action: "Candidate declined offer",
           entityType: "candidate",

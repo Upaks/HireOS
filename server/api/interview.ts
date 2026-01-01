@@ -21,9 +21,16 @@ export function setupInterviewRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const scheduledDate = req.body.scheduledDate ? new Date(req.body.scheduledDate) : undefined;
       
       const interview = await storage.createInterview({
+        accountId,
         candidateId: req.body.candidateId,
         scheduledDate,
         interviewerId: req.body.interviewerId || req.user?.id,
@@ -34,9 +41,9 @@ export function setupInterviewRoutes(app: Express) {
       });
       
       // Update candidate status if needed
-      const candidate = await storage.getCandidate(req.body.candidateId);
+      const candidate = await storage.getCandidate(req.body.candidateId, accountId);
       if (candidate && candidate.status !== "interview_scheduled") {
-        await storage.updateCandidate(req.body.candidateId, {
+        await storage.updateCandidate(req.body.candidateId, accountId, {
           status: "interview_scheduled"
         });
       }
@@ -44,7 +51,7 @@ export function setupInterviewRoutes(app: Express) {
       // Create in-app notification for interview scheduled
       if (req.user?.id && candidate && scheduledDate) {
         try {
-          const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+          const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
           const jobTitle = job?.title || "position";
           await createNotification(
             req.user.id,
@@ -62,6 +69,7 @@ export function setupInterviewRoutes(app: Express) {
 
       // Log activity
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Scheduled interview",
         entityType: "interview",
@@ -87,11 +95,17 @@ export function setupInterviewRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const candidateId = req.query.candidateId ? parseInt(req.query.candidateId as string) : undefined;
       const interviewerId = req.query.interviewerId ? parseInt(req.query.interviewerId as string) : undefined;
       const status = req.query.status as string | undefined;
       
-      const interviews = await storage.getInterviews({
+      const interviews = await storage.getInterviews(accountId, {
         candidateId,
         interviewerId,
         status
@@ -110,12 +124,18 @@ export function setupInterviewRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const interviewId = parseInt(req.params.id);
       if (isNaN(interviewId)) {
         return res.status(400).json({ message: "Invalid interview ID" });
       }
 
-      const interview = await storage.getInterview(interviewId);
+      const interview = await storage.getInterview(interviewId, accountId);
       if (!interview) {
         return res.status(404).json({ message: "Interview not found" });
       }
@@ -133,12 +153,18 @@ export function setupInterviewRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const interviewId = parseInt(req.params.id);
       if (isNaN(interviewId)) {
         return res.status(400).json({ message: "Invalid interview ID" });
       }
 
-      const interview = await storage.getInterview(interviewId);
+      const interview = await storage.getInterview(interviewId, accountId);
       if (!interview) {
         return res.status(404).json({ message: "Interview not found" });
       }
@@ -151,10 +177,11 @@ export function setupInterviewRoutes(app: Express) {
         req.body.conductedDate = new Date(req.body.conductedDate);
       }
 
-      const updatedInterview = await storage.updateInterview(interviewId, req.body);
+      const updatedInterview = await storage.updateInterview(interviewId, accountId, req.body);
       
       // Log activity
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Updated interview",
         entityType: "interview",
@@ -176,23 +203,30 @@ export function setupInterviewRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const interviewId = parseInt(req.params.id);
       if (isNaN(interviewId)) {
         return res.status(400).json({ message: "Invalid interview ID" });
       }
 
-      const interview = await storage.getInterview(interviewId);
+      const interview = await storage.getInterview(interviewId, accountId);
       if (!interview) {
         return res.status(404).json({ message: "Interview not found" });
       }
 
-      const updatedInterview = await storage.updateInterview(interviewId, {
+      const updatedInterview = await storage.updateInterview(interviewId, accountId, {
         status: "completed",
         conductedDate: new Date()
       });
       
       // Log activity
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Completed interview",
         entityType: "interview",
@@ -227,23 +261,29 @@ export function setupInterviewRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const interviewId = parseInt(req.params.id);
       if (isNaN(interviewId)) {
         return res.status(400).json({ message: "Invalid interview ID" });
       }
 
-      const interview = await storage.getInterview(interviewId);
+      const interview = await storage.getInterview(interviewId, accountId);
       if (!interview) {
         return res.status(404).json({ message: "Interview not found" });
       }
 
       // Check if there's an existing evaluation
-      const existingEvaluation = await storage.getEvaluationByInterview(interviewId);
+      const existingEvaluation = await storage.getEvaluationByInterview(interviewId, accountId);
       let evaluation;
 
       if (existingEvaluation) {
         // Update existing evaluation
-        evaluation = await storage.updateEvaluation(existingEvaluation.id, {
+        evaluation = await storage.updateEvaluation(existingEvaluation.id, accountId, {
           ...req.body,
           evaluatorId: req.user?.id,
           updatedAt: new Date()
@@ -251,6 +291,7 @@ export function setupInterviewRoutes(app: Express) {
       } else {
         // Create new evaluation
         evaluation = await storage.createEvaluation({
+          accountId,
           interviewId,
           ...req.body,
           evaluatorId: req.user?.id
@@ -259,7 +300,7 @@ export function setupInterviewRoutes(app: Express) {
       
       // Mark the interview as completed if it wasn't already
       if (interview.status !== "completed") {
-        await storage.updateInterview(interviewId, {
+        await storage.updateInterview(interviewId, accountId, {
           status: "completed",
           conductedDate: interview.conductedDate || new Date()
         });
@@ -267,6 +308,7 @@ export function setupInterviewRoutes(app: Express) {
       
       // Log activity
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Submitted interview evaluation",
         entityType: "evaluation",
@@ -292,12 +334,18 @@ export function setupInterviewRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const interviewId = parseInt(req.params.id);
       if (isNaN(interviewId)) {
         return res.status(400).json({ message: "Invalid interview ID" });
       }
 
-      const evaluation = await storage.getEvaluationByInterview(interviewId);
+      const evaluation = await storage.getEvaluationByInterview(interviewId, accountId);
       if (!evaluation) {
         return res.status(404).json({ message: "Evaluation not found" });
       }
@@ -315,20 +363,27 @@ export function setupInterviewRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(req.user!.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const interviewId = parseInt(req.params.id);
       if (isNaN(interviewId)) {
         return res.status(400).json({ message: "Invalid interview ID" });
       }
 
-      const interview = await storage.getInterview(interviewId);
+      const interview = await storage.getInterview(interviewId, accountId);
       if (!interview) {
         return res.status(404).json({ message: "Interview not found" });
       }
 
-      await storage.deleteInterview(interviewId);
+      await storage.deleteInterview(interviewId, accountId);
       
       // Log activity
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Deleted interview",
         entityType: "interview",

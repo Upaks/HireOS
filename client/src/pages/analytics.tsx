@@ -14,18 +14,35 @@ export default function Analytics() {
   const [dateRange, setDateRange] = useState("30"); // Default to last 30 days
   
   // Fetch funnel metrics
-  const { data: funnelData, isLoading: isLoadingFunnel } = useQuery<FunnelStats>({
+  const { data: funnelData, isLoading: isLoadingFunnel, error: funnelError } = useQuery<FunnelStats>({
     queryKey: ['/api/analytics/funnel', { dateRange }],
     queryFn: async () => {
-      const res = await fetch(`/api/analytics/funnel?dateRange=${dateRange}`);
-      if (!res.ok) throw new Error('Failed to fetch funnel data');
+      const res = await fetch(`/api/analytics/funnel?dateRange=${dateRange}`, {
+        credentials: "include"
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || 'Failed to fetch funnel data');
+      }
       return res.json();
     },
+    retry: false,
   });
   
   // Fetch job performance metrics
   const { data: jobPerformanceData, isLoading: isLoadingJobPerformance } = useQuery<JobPerformance[]>({
     queryKey: ['/api/analytics/job-performance'],
+    queryFn: async () => {
+      const res = await fetch('/api/analytics/job-performance', {
+        credentials: "include"
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || 'Failed to fetch job performance data');
+      }
+      return res.json();
+    },
+    retry: false,
   });
   
   // Handle date range change
@@ -99,9 +116,15 @@ export default function Analytics() {
               <div className="flex flex-col">
                 <div className="text-sm font-medium text-slate-500">Assessments Completed</div>
                 <div className="text-xl font-semibold text-slate-900 mt-1">
-                  {isLoadingFunnel ? <Loader2 className="h-5 w-5 animate-spin" /> : funnelData?.assessments || 0}
+                  {isLoadingFunnel ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : funnelError ? (
+                    <span className="text-red-500 text-sm">Error</span>
+                  ) : (
+                    funnelData?.assessments ?? 0
+                  )}
                 </div>
-                {!isLoadingFunnel && funnelData && (
+                {!isLoadingFunnel && !funnelError && funnelData && (
                   <div className="text-sm mt-1">
                     <span className="text-green-600 font-medium">
                       {funnelData.applications > 0 

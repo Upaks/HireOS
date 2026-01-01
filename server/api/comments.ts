@@ -29,9 +29,16 @@ export function setupCommentRoutes(app: Express) {
         return res.status(400).json({ message: "entityType must be 'candidate' or 'job'" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const comments = await storage.getComments(
         entityType as string,
-        parseInt(entityId as string)
+        parseInt(entityId as string),
+        accountId
       );
 
       res.json(comments);
@@ -55,6 +62,12 @@ export function setupCommentRoutes(app: Express) {
         });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const userId = (req.user as any).id;
       const data = validationResult.data;
 
@@ -65,8 +78,8 @@ export function setupCommentRoutes(app: Express) {
         const mentionRegex = /@(\w+)/g;
         const matches = data.content.match(mentionRegex);
         if (matches) {
-          // Get all users for mention matching
-          const allUsers = await storage.getUsersForMentionAutocomplete();
+          // Get all users for mention matching (within account)
+          const allUsers = await storage.getUsersForMentionAutocomplete(accountId);
           const mentionedUsernames = matches.map(m => m.substring(1).toLowerCase());
           
           // Find user IDs for mentioned usernames
@@ -83,6 +96,7 @@ export function setupCommentRoutes(app: Express) {
       }
 
       const comment = await storage.createComment({
+        accountId,
         userId,
         entityType: data.entityType,
         entityId: data.entityId,
@@ -91,7 +105,7 @@ export function setupCommentRoutes(app: Express) {
       });
 
       // Fetch the comment with user info
-      const comments = await storage.getComments(data.entityType, data.entityId);
+      const comments = await storage.getComments(data.entityType, data.entityId, accountId);
       const newComment = comments.find(c => c.id === comment.id);
 
       res.status(201).json(newComment || comment);
@@ -107,10 +121,16 @@ export function setupCommentRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const { id } = req.params;
       const userId = (req.user as any).id;
 
-      await storage.deleteComment(parseInt(id), userId);
+      await storage.deleteComment(parseInt(id), accountId, userId);
       res.status(204).send();
     } catch (error) {
       handleApiError(error, res);
@@ -124,8 +144,14 @@ export function setupCommentRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId((req.user as any).id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
       const { q } = req.query;
-      const users = await storage.getUsersForMentionAutocomplete(q as string | undefined);
+      const users = await storage.getUsersForMentionAutocomplete(accountId, q as string | undefined);
       res.json(users);
     } catch (error) {
       handleApiError(error, res);
