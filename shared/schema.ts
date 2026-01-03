@@ -209,6 +209,7 @@ export const candidates = pgTable("candidates", {
 
 export const insertCandidateSchema = createInsertSchema(candidates).omit({
   id: true,
+  accountId: true, // Added server-side, not from client
   createdAt: true,
   updatedAt: true,
 });
