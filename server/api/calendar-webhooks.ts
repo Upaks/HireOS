@@ -92,9 +92,21 @@ async function updateInterviewFromBooking(
   userId?: number
 ): Promise<boolean> {
   try {
-    // Find candidate by email
-    const allCandidates = await storage.getCandidates({});
-    const candidate = allCandidates.find(c => c.email.toLowerCase() === candidateEmail.toLowerCase());
+    // MULTI-TENANT: Get accountId from userId (required for multi-tenant data isolation)
+    if (!userId) {
+      console.error(`[Calendar Webhook] userId is required for multi-tenant data isolation`);
+      return false;
+    }
+    
+    const accountId = await storage.getUserAccountId(userId);
+    if (!accountId) {
+      console.error(`[Calendar Webhook] User ${userId} is not associated with any account`);
+      return false;
+    }
+
+    // Find candidate by email within the user's account
+    const candidates = await storage.getCandidates(accountId, {});
+    const candidate = candidates.find(c => c.email.toLowerCase() === candidateEmail.toLowerCase());
     
     if (!candidate) {
       return false;
@@ -102,7 +114,7 @@ async function updateInterviewFromBooking(
 
     // Find scheduled interview for this candidate
     // If userId is provided, prioritize interviews where this user is the interviewer
-    const interviews = await storage.getInterviews({ candidateId: candidate.id });
+    const interviews = await storage.getInterviews(accountId, { candidateId: candidate.id });
     
     let scheduledInterview = interviews.find(
       i => (i.status === "scheduled" || i.status === "pending")
@@ -121,6 +133,7 @@ async function updateInterviewFromBooking(
     // If no interview exists, create one automatically
     if (!scheduledInterview) {
       const newInterview = await storage.createInterview({
+        accountId,
         candidateId: candidate.id,
         type: "video",
         status: "scheduled",
@@ -132,7 +145,7 @@ async function updateInterviewFromBooking(
     }
 
     // Update interview with scheduled date
-    await storage.updateInterview(scheduledInterview.id, {
+    await storage.updateInterview(scheduledInterview.id, accountId, {
       scheduledDate: scheduledDate,
       status: "scheduled",
       notes: scheduledInterview.notes 
@@ -143,14 +156,14 @@ async function updateInterviewFromBooking(
 
     // Update candidate status if needed
     if (candidate.status !== "60_1st_interview_scheduled") {
-      await storage.updateCandidate(candidate.id, {
+      await storage.updateCandidate(candidate.id, accountId, {
         status: "60_1st_interview_scheduled"
       });
     }
 
     // Send Slack notification for interview scheduled
-    const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
-    const updatedInterview = await storage.getInterview(scheduledInterview.id);
+    const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+    const updatedInterview = await storage.getInterview(scheduledInterview.id, accountId);
     if (updatedInterview && candidate && job && userId) {
       await notifySlackUsers(userId, "interview_scheduled", {
         candidate,
@@ -204,18 +217,25 @@ async function handleCalendlyWebhook(req: any, res: any) {
       const inviteeData = payload.payload;
       const candidateEmail = inviteeData?.email || inviteeData?.invitee?.email;
       
-      if (candidateEmail) {
+      if (candidateEmail && userId) {
+        // MULTI-TENANT: Get accountId from userId
+        const accountId = await storage.getUserAccountId(userId);
+        if (!accountId) {
+          console.error(`[Calendly Webhook] User ${userId} is not associated with any account`);
+          return res.status(400).json({ message: "User is not associated with any account" });
+        }
+        
         // Find candidate and cancel their interview
-        const allCandidates = await storage.getCandidates({});
-        const candidate = allCandidates.find(c => c.email.toLowerCase() === candidateEmail.toLowerCase());
+        const candidates = await storage.getCandidates(accountId, {});
+        const candidate = candidates.find(c => c.email.toLowerCase() === candidateEmail.toLowerCase());
         
         if (candidate) {
-          const interviews = await storage.getInterviews({ candidateId: candidate.id });
+          const interviews = await storage.getInterviews(accountId, { candidateId: candidate.id });
           const scheduledInterview = interviews.find(i => i.status === "scheduled" || i.status === "pending");
           
           if (scheduledInterview) {
             // Update interview status to cancelled instead of deleting
-            await storage.updateInterview(scheduledInterview.id, {
+            await storage.updateInterview(scheduledInterview.id, accountId, {
               status: "cancelled",
               updatedAt: new Date()
             });
@@ -223,7 +243,7 @@ async function handleCalendlyWebhook(req: any, res: any) {
             
             // Update candidate status if needed
             if (candidate.status === "60_1st_interview_scheduled") {
-              await storage.updateCandidate(candidate.id, {
+              await storage.updateCandidate(candidate.id, accountId, {
                 status: "45_1st_interview_sent" // Revert to interview sent status
               });
             }

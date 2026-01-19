@@ -114,7 +114,7 @@ export function setupCalendlyConnectRoutes(app: Express) {
           // Calendly requires organization even for user-scoped webhooks
           const webhookPayload = {
             url: webhookUrl,
-            events: ["invitee.created", "invitee.canceled", "invitee.updated"],
+            events: ["invitee.created", "invitee.canceled"],
             organization: orgUri,
             user: userUri,
             scope: "user",
@@ -265,7 +265,14 @@ export function setupCalendlyConnectRoutes(app: Express) {
         });
 
         // Step 6: Log activity
+        // MULTI-TENANT: Get user's accountId
+        const accountId = await storage.getUserAccountId(userId);
+        if (!accountId) {
+          return res.status(400).json({ message: "User is not associated with any account" });
+        }
+        
         await storage.createActivityLog({
+          accountId,
           userId,
           action: "Connected Calendly",
           entityType: "user",
@@ -335,7 +342,14 @@ export function setupCalendlyConnectRoutes(app: Express) {
       });
 
       // Log activity
+      // MULTI-TENANT: Get user's accountId
+      const accountId = await storage.getUserAccountId(userId);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      
       await storage.createActivityLog({
+        accountId,
         userId,
         action: "Disconnected Calendly",
         entityType: "user",
