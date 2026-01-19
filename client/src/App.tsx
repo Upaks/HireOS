@@ -21,6 +21,7 @@ import CRMSyncPage from "@/pages/crm-sync";
 import Forms from "@/pages/forms";
 import ApplyPage from "@/pages/apply";
 import AcceptOfferPage from "@/pages/accept-offer";
+import BookPage from "@/pages/book";
 import Integrations from "@/pages/integrations";
 import Notifications from "@/pages/notifications";
 import { ThemeProvider } from "next-themes";
@@ -111,6 +112,7 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <Route path="/apply/:jobId" component={ApplyPage} />
       <Route path="/accept-offer/:token" component={AcceptOfferPage} />
+      <Route path="/book/:userId" component={BookPage} />
       
       <Route component={NotFound} />
     </Switch>

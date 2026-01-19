@@ -532,6 +532,40 @@ export default function UserManagement() {
                   </FormItem>
                 )}
               />
+
+              <FormField
+                control={editForm.control}
+                name="calendarProvider"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Calendar Provider</FormLabel>
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        // Auto-generate booking link if Google Calendar is selected
+                        if (value === "google" && currentUser) {
+                          const baseUrl = window.location.origin;
+                          editForm.setValue("calendarLink", `${baseUrl}/book/${currentUser.id}`);
+                        }
+                      }}
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select calendar provider" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="calendly">Calendly</SelectItem>
+                        <SelectItem value="cal.com">Cal.com</SelectItem>
+                        <SelectItem value="google">Google Calendar (HireOS Booking)</SelectItem>
+                        <SelectItem value="custom">Custom</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               
               <FormField
                 control={editForm.control}
@@ -542,13 +576,20 @@ export default function UserManagement() {
                     <FormControl>
                       <Input 
                         type="url" 
-                        placeholder="https://calendly.com/your-username/meeting" 
-                        {...field} 
+                        placeholder={
+                          editForm.watch("calendarProvider") === "google"
+                            ? "Auto-generated booking link"
+                            : "https://calendly.com/your-username/meeting"
+                        }
+                        {...field}
+                        readOnly={editForm.watch("calendarProvider") === "google"}
                       />
                     </FormControl>
                     <FormMessage />
                     <p className="text-xs text-muted-foreground">
-                      Your personal calendar link (Calendly, Cal.com, etc.). Used when sending interview invitations.
+                      {editForm.watch("calendarProvider") === "google"
+                        ? "Your Google Calendar booking link (auto-generated). Share this with candidates."
+                        : "Your personal calendar link (Calendly, Cal.com, etc.). Used when sending interview invitations."}
                     </p>
                   </FormItem>
                 )}

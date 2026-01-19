@@ -3,6 +3,7 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { handleApiError, validateRequest } from "./utils";
 import { createNotification } from "./notifications";
+import { createGoogleCalendarEvent, updateGoogleCalendarEvent, deleteGoogleCalendarEvent } from "./google-calendar";
 
 export function setupInterviewRoutes(app: Express) {
   // Create a new interview
@@ -64,6 +65,34 @@ export function setupInterviewRoutes(app: Express) {
         } catch (error) {
           console.error("[Interview] Failed to create notification:", error);
           // Don't fail the interview creation if notification fails
+        }
+      }
+
+      // Create Google Calendar event if Google Calendar is connected
+      if (req.user?.id && scheduledDate && candidate) {
+        try {
+          const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+          const interviewer = interview.interviewerId ? await storage.getUser(interview.interviewerId) : null;
+          
+          await createGoogleCalendarEvent(req.user.id, {
+            id: interview.id,
+            candidateId: candidate.id,
+            scheduledDate,
+            type: interview.type,
+            videoUrl: interview.videoUrl || undefined,
+            candidate: {
+              name: candidate.name,
+              email: candidate.email,
+            },
+            job: job ? { title: job.title } : undefined,
+            interviewer: interviewer ? {
+              fullName: interviewer.fullName,
+              email: interviewer.email,
+            } : undefined,
+          });
+        } catch (error) {
+          console.error("[Interview] Failed to create Google Calendar event:", error);
+          // Don't fail the interview creation if calendar event fails
         }
       }
 
@@ -178,6 +207,21 @@ export function setupInterviewRoutes(app: Express) {
       }
 
       const updatedInterview = await storage.updateInterview(interviewId, accountId, req.body);
+      
+      // Update Google Calendar event if Google Calendar is connected and scheduledDate changed
+      if (req.user?.id && req.body.scheduledDate && updatedInterview) {
+        try {
+          const candidate = await storage.getCandidate(updatedInterview.candidateId, accountId);
+          const job = candidate?.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+          const interviewer = updatedInterview.interviewerId ? await storage.getUser(updatedInterview.interviewerId) : null;
+          
+          // TODO: Store googleCalendarEventId in interview record for proper update/delete
+          // For now, we'll need to search for the event or store ID in notes/metadata
+          // This is a simplified version - full implementation would require event ID storage
+        } catch (error) {
+          console.error("[Interview] Failed to update Google Calendar event:", error);
+        }
+      }
       
       // Log activity
       await storage.createActivityLog({

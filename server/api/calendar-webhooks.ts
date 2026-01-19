@@ -4,6 +4,7 @@ import { handleApiError } from "./utils";
 import { isLikelyInvalidEmail } from "../email-validator";
 import { notifySlackUsers } from "../slack-notifications";
 import { createNotification } from "./notifications";
+import { createGoogleCalendarEvent } from "./google-calendar";
 
 // Calendar provider types
 type CalendarProvider = "calendly" | "cal.com" | "google" | "custom";
@@ -185,6 +186,39 @@ async function updateInterviewFromBooking(
       } catch (error) {
         console.error("[Calendar Webhook] Failed to create notification:", error);
         // Don't fail the webhook if notification fails
+      }
+
+      // Create Google Calendar event if Google Calendar is connected and sync with Calendly is enabled
+      if (provider === "calendly" && userId) {
+        try {
+          const googleCalendarIntegration = await storage.getPlatformIntegration('google-calendar', userId);
+          const credentials = googleCalendarIntegration?.credentials as any;
+          const syncWithCalendly = credentials?.syncWithCalendly || false;
+          
+          if (googleCalendarIntegration?.status === 'connected' && syncWithCalendly && updatedInterview) {
+            const interviewer = updatedInterview.interviewerId ? await storage.getUser(updatedInterview.interviewerId) : null;
+            
+            await createGoogleCalendarEvent(userId, {
+              id: updatedInterview.id,
+              candidateId: candidate.id,
+              scheduledDate,
+              type: updatedInterview.type || "video",
+              videoUrl: updatedInterview.videoUrl || undefined,
+              candidate: {
+                name: candidate.name,
+                email: candidate.email,
+              },
+              job: job ? { title: job.title } : undefined,
+              interviewer: interviewer ? {
+                fullName: interviewer.fullName,
+                email: interviewer.email,
+              } : undefined,
+            });
+          }
+        } catch (error) {
+          console.error("[Calendar Webhook] Failed to create Google Calendar event:", error);
+          // Don't fail the webhook if calendar event fails
+        }
       }
     }
 

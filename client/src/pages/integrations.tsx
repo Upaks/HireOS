@@ -53,6 +53,24 @@ export default function Integrations() {
     enabled: !!user,
   });
 
+  // Fetch Google Calendar connection status
+  const { data: googleCalendarStatus, refetch: refetchGoogleCalendarStatus } = useQuery<{ connected: boolean; syncWithCalendly: boolean }>({
+    queryKey: ['/api/google-calendar/status'],
+    enabled: !!user,
+  });
+
+  // Fetch Google Calendar availability settings
+  const { data: availabilitySettings, refetch: refetchAvailability } = useQuery<{
+    daysOfWeek: number[];
+    startTime: string;
+    endTime: string;
+    timeZone: string;
+    slotDuration: number;
+  }>({
+    queryKey: ['/api/google-calendar/availability'],
+    enabled: !!user && (googleCalendarStatus?.connected || false),
+  });
+
   // Get full integration details for settings dialog
   const getIntegrationForPlatform = (platformId: string) => {
     return (crmIntegrations as any[]).find((i) => i.platformId === platformId);
@@ -85,6 +103,7 @@ export default function Integrations() {
   const isAirtableConnected = (crmIntegrations as Array<{ platformId: string; status: string }>).some((crm) => crm.platformId === "airtable" && crm.status === "connected");
   const isGHLConnected = (crmIntegrations as Array<{ platformId: string; status: string }>).some((crm) => crm.platformId === "ghl" && crm.status === "connected");
   const isGmailConnected = gmailStatus?.connected || false;
+  const isGoogleCalendarConnected = googleCalendarStatus?.connected || false;
 
   // Connect Calendly mutation
   const connectCalendlyMutation = useMutation({
@@ -162,6 +181,100 @@ export default function Integrations() {
     onError: (error: Error) => {
       toast({
         title: "Failed to disconnect Gmail",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Connect Google Calendar mutation
+  const connectGoogleCalendarMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("GET", "/api/google-calendar/auth");
+      const data = await res.json();
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to connect Google Calendar",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Disconnect Google Calendar mutation
+  const disconnectGoogleCalendarMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/google-calendar/disconnect", {});
+      return await res.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/google-calendar/status'] });
+      await refetchGoogleCalendarStatus();
+      toast({
+        title: "Google Calendar disconnected",
+        description: "Your Google Calendar account has been disconnected.",
+      });
+      setSelectedIntegration(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to disconnect Google Calendar",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update Google Calendar sync settings mutation
+  const updateGoogleCalendarSyncMutation = useMutation({
+    mutationFn: async (syncWithCalendly: boolean) => {
+      const res = await apiRequest("POST", "/api/google-calendar/sync-settings", { syncWithCalendly });
+      return await res.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/google-calendar/status'] });
+      await refetchGoogleCalendarStatus();
+      toast({
+        title: "Sync settings updated",
+        description: "Your Google Calendar sync settings have been updated.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to update sync settings",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update Google Calendar availability settings mutation
+  const updateAvailabilityMutation = useMutation({
+    mutationFn: async (settings: {
+      daysOfWeek: number[];
+      startTime: string;
+      endTime: string;
+      timeZone: string;
+      slotDuration: number;
+    }) => {
+      const res = await apiRequest("POST", "/api/google-calendar/availability", settings);
+      return await res.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/google-calendar/availability'] });
+      await refetchAvailability();
+      toast({
+        title: "Availability settings updated",
+        description: "Your availability settings have been saved.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to update availability",
         description: error.message,
         variant: "destructive",
       });
@@ -246,6 +359,13 @@ export default function Integrations() {
       category: "communication",
       connected: isGmailConnected,
     },
+    {
+      id: "google-calendar",
+      name: "Google Calendar",
+      description: "Sync interviews with Google Calendar. When interviews are scheduled, they automatically appear in your Google Calendar.",
+      category: "calendar",
+      connected: isGoogleCalendarConnected,
+    },
   ];
 
   // Filter integrations based on tab
@@ -259,6 +379,7 @@ export default function Integrations() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const gmailConnected = params.get('gmail_connected');
+    const googleCalendarConnected = params.get('google_calendar_connected');
     const error = params.get('error');
 
     if (gmailConnected === 'true') {
@@ -271,18 +392,28 @@ export default function Integrations() {
       window.history.replaceState({}, '', '/integrations');
     }
 
+    if (googleCalendarConnected === 'true') {
+      toast({
+        title: "Google Calendar connected!",
+        description: "Your Google Calendar account is now connected. Interviews will automatically sync to your calendar.",
+      });
+      refetchGoogleCalendarStatus();
+      // Clean up URL
+      window.history.replaceState({}, '', '/integrations');
+    }
+
     if (error) {
       toast({
         title: "Connection failed",
         description: error === 'oauth_cancelled' 
-          ? "Gmail connection was cancelled." 
-          : `Failed to connect Gmail: ${error}`,
+          ? "Connection was cancelled." 
+          : `Failed to connect: ${error}`,
         variant: "destructive",
       });
       // Clean up URL
       window.history.replaceState({}, '', '/integrations');
     }
-  }, [toast, refetchGmailStatus]);
+  }, [toast, refetchGmailStatus, refetchGoogleCalendarStatus]);
 
   const renderIntegrationCard = (integration: Integration) => {
     const LogoComponent = getIntegrationLogo(integration.id);
@@ -323,7 +454,7 @@ export default function Integrations() {
                   setShowCRMConnectDialog(integration.id);
                 } else if (integration.id === "slack") {
                   setShowSlackDialog(true);
-                } else if (integration.id === "gmail") {
+                } else if (integration.id === "gmail" || integration.id === "google-calendar") {
                   setSelectedIntegration(integration.id);
                 } else {
                   setSelectedIntegration(integration.id);
@@ -488,6 +619,97 @@ export default function Integrations() {
               <GmailConnectForm
                 onConnect={() => connectGmailMutation.mutate()}
                 isLoading={connectGmailMutation.isPending}
+                onCancel={() => setSelectedIntegration(null)}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Google Calendar Integration Dialog */}
+        <Dialog open={selectedIntegration === "google-calendar"} onOpenChange={(open) => !open && setSelectedIntegration(null)}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Connect Google Calendar</DialogTitle>
+              <DialogDescription>
+                {googleCalendarStatus?.connected
+                  ? "Manage your Google Calendar connection and sync settings."
+                  : "Connect your Google Calendar to automatically sync interviews to your calendar."}
+              </DialogDescription>
+            </DialogHeader>
+            {googleCalendarStatus?.connected ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                    <span className="text-sm font-medium text-green-900">Google Calendar is connected</span>
+                  </div>
+                </div>
+                
+                {/* Sync with Calendly Toggle */}
+                <div className="space-y-3 p-4 border rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <Label htmlFor="sync-calendly" className="text-sm font-medium">
+                        Sync with Calendly
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        When enabled, interviews booked on Calendly will also create events in Google Calendar.
+                      </p>
+                    </div>
+                    <div className="ml-4">
+                      <input
+                        type="checkbox"
+                        id="sync-calendly"
+                        checked={googleCalendarStatus?.syncWithCalendly || false}
+                        onChange={(e) => updateGoogleCalendarSyncMutation.mutate(e.target.checked)}
+                        disabled={updateGoogleCalendarSyncMutation.isPending || !calendlyStatus?.connected}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+                  {!calendlyStatus?.connected && (
+                    <p className="text-xs text-amber-600 mt-2">
+                      ⚠️ Connect Calendly to enable calendar sync
+                    </p>
+                  )}
+                </div>
+
+                {/* Availability Settings */}
+                {availabilitySettings && user && (
+                  <GoogleCalendarAvailabilitySettings
+                    settings={availabilitySettings}
+                    onSave={(settings: {
+                      daysOfWeek: number[];
+                      startTime: string;
+                      endTime: string;
+                      timeZone: string;
+                      slotDuration: number;
+                    }) => updateAvailabilityMutation.mutate(settings)}
+                    isLoading={updateAvailabilityMutation.isPending}
+                    userId={user.id}
+                  />
+                )}
+
+                <Button
+                  variant="destructive"
+                  onClick={() => disconnectGoogleCalendarMutation.mutate()}
+                  disabled={disconnectGoogleCalendarMutation.isPending}
+                  className="w-full"
+                >
+                  {disconnectGoogleCalendarMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Disconnecting...
+                    </>
+                  ) : (
+                    "Disconnect Google Calendar"
+                  )}
+                </Button>
+              </div>
+            ) : (
+              <GoogleCalendarConnectForm
+                onConnect={() => connectGoogleCalendarMutation.mutate()}
+                isLoading={connectGoogleCalendarMutation.isPending}
                 onCancel={() => setSelectedIntegration(null)}
               />
             )}
@@ -674,6 +896,185 @@ function GmailConnectForm({ onConnect, isLoading, onCancel }: { onConnect: () =>
   );
 }
 
+// Google Calendar Connect Form Component
+function GoogleCalendarConnectForm({ onConnect, isLoading, onCancel }: { onConnect: () => void; isLoading: boolean; onCancel: () => void }) {
+  return (
+    <div className="space-y-4">
+      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <p className="text-sm text-blue-900">
+          You'll be redirected to Google to authorize HireOS to access your Google Calendar. 
+          We only request permission to create and manage calendar events - we never read your calendar data.
+        </p>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button onClick={onConnect} disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Connecting...
+            </>
+          ) : (
+            "Connect Google Calendar"
+          )}
+        </Button>
+      </DialogFooter>
+    </div>
+  );
+}
+
+// Google Calendar Availability Settings Component
+function GoogleCalendarAvailabilitySettings({
+  settings,
+  onSave,
+  isLoading,
+  userId,
+}: {
+  settings: {
+    daysOfWeek: number[];
+    startTime: string;
+    endTime: string;
+    timeZone: string;
+    slotDuration: number;
+  };
+  onSave: (settings: {
+    daysOfWeek: number[];
+    startTime: string;
+    endTime: string;
+    timeZone: string;
+    slotDuration: number;
+  }) => void;
+  isLoading: boolean;
+  userId?: number;
+}) {
+  const [localSettings, setLocalSettings] = useState(settings);
+  const [bookingLink, setBookingLink] = useState("");
+
+  useEffect(() => {
+    setLocalSettings(settings);
+  }, [settings]);
+
+  useEffect(() => {
+    if (userId) {
+      const baseUrl = window.location.origin;
+      setBookingLink(`${baseUrl}/book/${userId}`);
+    }
+  }, [userId]);
+
+  const days = [
+    { value: 1, label: "Monday" },
+    { value: 2, label: "Tuesday" },
+    { value: 3, label: "Wednesday" },
+    { value: 4, label: "Thursday" },
+    { value: 5, label: "Friday" },
+    { value: 6, label: "Saturday" },
+    { value: 7, label: "Sunday" },
+  ];
+
+  const handleDayToggle = (day: number) => {
+    setLocalSettings({
+      ...localSettings,
+      daysOfWeek: localSettings.daysOfWeek.includes(day)
+        ? localSettings.daysOfWeek.filter(d => d !== day)
+        : [...localSettings.daysOfWeek, day].sort(),
+    });
+  };
+
+  return (
+    <div className="space-y-4 p-4 border rounded-lg">
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Your Booking Link</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            value={bookingLink}
+            readOnly
+            className="flex-1 font-mono text-sm"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              navigator.clipboard.writeText(bookingLink);
+            }}
+          >
+            Copy
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          Share this link with candidates so they can book interviews directly
+        </p>
+      </div>
+
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Available Days</Label>
+        <div className="flex flex-wrap gap-2">
+          {days.map((day) => (
+            <Button
+              key={day.value}
+              variant={localSettings.daysOfWeek.includes(day.value) ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleDayToggle(day.value)}
+            >
+              {day.label.slice(0, 3)}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="start-time">Start Time</Label>
+          <Input
+            id="start-time"
+            type="time"
+            value={localSettings.startTime}
+            onChange={(e) => setLocalSettings({ ...localSettings, startTime: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label htmlFor="end-time">End Time</Label>
+          <Input
+            id="end-time"
+            type="time"
+            value={localSettings.endTime}
+            onChange={(e) => setLocalSettings({ ...localSettings, endTime: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div>
+        <Label htmlFor="slot-duration">Slot Duration (minutes)</Label>
+        <Input
+          id="slot-duration"
+          type="number"
+          min="15"
+          max="120"
+          step="15"
+          value={localSettings.slotDuration}
+          onChange={(e) => setLocalSettings({ ...localSettings, slotDuration: parseInt(e.target.value) || 30 })}
+        />
+      </div>
+
+      <Button
+        onClick={() => onSave(localSettings)}
+        disabled={isLoading}
+        className="w-full"
+      >
+        {isLoading ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            Saving...
+          </>
+        ) : (
+          "Save Availability Settings"
+        )}
+      </Button>
+    </div>
+  );
+}
+
 // OpenRouter Config Form Component
 function OpenRouterConfigForm({
   currentApiKey,
@@ -806,6 +1207,15 @@ function getIntegrationLogo(integrationId: string) {
         <div className="h-8 w-8 bg-red-500 rounded flex items-center justify-center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
             <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/>
+          </svg>
+        </div>
+      );
+    case "google-calendar":
+      return (
+        <div className="h-8 w-8 bg-[#4285F4] rounded flex items-center justify-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+            <path d="M19 4H5C3.89 4 3 4.9 3 6V20C3 21.1 3.89 22 5 22H19C20.1 22 21 21.1 21 20V6C21 4.9 20.1 4 19 4ZM19 20H5V9H19V20Z"/>
+            <path d="M7 11H9V13H7V11ZM11 11H13V13H11V11ZM15 11H17V13H15V11ZM7 15H9V17H7V15ZM11 15H13V17H11V15ZM15 15H17V17H15V15Z"/>
           </svg>
         </div>
       );

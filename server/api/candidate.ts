@@ -842,7 +842,17 @@ export function setupCandidateRoutes(app: Express) {
         });
       }
       
-      const calendarLink = user.calendarLink;
+      // Build calendar link - if Google Calendar, append candidateId and jobId
+      let calendarLink = user.calendarLink;
+      if (user.calendarProvider === 'google' && calendarLink) {
+        const url = new URL(calendarLink);
+        url.searchParams.set('candidateId', candidateId.toString());
+        if (candidate.jobId) {
+          url.searchParams.set('jobId', candidate.jobId.toString());
+        }
+        calendarLink = url.toString();
+      }
+      
       const senderName = user.fullName || "Team Member";
       const companyName = getCompanyName(); // SECURITY: From environment variable
       

@@ -267,6 +267,55 @@ export function setupUserRoutes(app: Express) {
   });
 
   // Get current user's roles and permissions
+  // Public endpoint to get user info for booking page (limited info only)
+  // No authentication required - this is a public booking page
+  app.options("/api/users/:id/public", (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.sendStatus(200);
+  });
+  
+  app.get("/api/users/:id/public", async (req, res) => {
+    // Set CORS headers for public access
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    try {
+      const userId = parseInt(req.params.id);
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Check if user has Google Calendar connected
+      const integration = await storage.getPlatformIntegration('google-calendar', userId);
+      if (!integration) {
+        return res.status(404).json({ message: "Google Calendar not connected for this user" });
+      }
+      
+      // Check status (case-insensitive check)
+      const status = integration.status?.toLowerCase();
+      if (status !== 'connected') {
+        return res.status(404).json({ message: "Google Calendar not connected for this user" });
+      }
+
+      // Return limited public info
+      res.json({
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+      });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+
   app.get("/api/users/me/permissions", async (req, res) => {
     try {
       if (!req.isAuthenticated()) {

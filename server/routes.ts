@@ -19,6 +19,7 @@ import { setupCalendarWebhookRoutes } from "./api/calendar-webhooks";
 import { setupCalendlyConnectRoutes } from "./api/calendly-connect";
 import { setupAIRoutes } from "./api/ai-routes";
 import { setupGmailIntegrationRoutes } from "./api/gmail-integration";
+import { setupGoogleCalendarRoutes } from "./api/google-calendar";
 import { setupCommentRoutes } from "./api/comments";
 import { setupNotificationRoutes } from "./api/notifications";
 import { storage } from "./storage";
@@ -55,6 +56,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupCalendlyConnectRoutes(app);
   setupAIRoutes(app);
   setupGmailIntegrationRoutes(app);
+  setupGoogleCalendarRoutes(app);
   setupCommentRoutes(app);
   setupNotificationRoutes(app);
 

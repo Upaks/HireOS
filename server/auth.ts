@@ -60,7 +60,8 @@ export function setupAuth(app: Express) {
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true, // SECURITY: Prevent XSS access to cookies
-      sameSite: 'strict', // SECURITY: Prevent CSRF attacks
+      // Use 'lax' in development/ngrok to allow cross-browser access, 'strict' in production
+      sameSite: (process.env.NODE_ENV === "production" && !process.env.USE_NGROK) ? 'strict' : 'lax',
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
     }
   };
@@ -252,6 +253,11 @@ export function setupAuth(app: Express) {
   
   // User management routes - accessible by COO, CEO, DIRECTOR, and ADMIN only
   app.use("/api/users", (req, res, next) => {
+    // Allow public booking endpoint without authentication
+    if (req.path.includes('/public')) {
+      return next();
+    }
+    
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const userRole = req.user?.role as string;
     if (![UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN].includes(userRole as any)) {
