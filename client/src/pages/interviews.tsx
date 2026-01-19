@@ -259,7 +259,7 @@ function InterviewCard({ interview, renderStatus, onDelete, isDeleting }: Interv
             
             <div className="flex gap-2">
               {interview.status === 'completed' && (
-                <Link href={`/interviews/${interview.id}/evaluate`}>
+                <Link href={`/interviews/${interview.id}`}>
                   <Button size="sm">Grade Interview</Button>
                 </Link>
               )}
