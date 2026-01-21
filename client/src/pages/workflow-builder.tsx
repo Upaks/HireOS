@@ -32,8 +32,16 @@ import {
   Loader2,
   AlertCircle,
   Radio,
+  History,
+  FileText,
+  Menu,
+  PanelRightClose,
+  PanelRightOpen,
+  List,
+  CheckCircle2,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface WorkflowStep {
@@ -90,6 +98,14 @@ export default function WorkflowBuilderPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [showExecutionLogs, setShowExecutionLogs] = useState(false);
+  const [showExecutionLogsPanel, setShowExecutionLogsPanel] = useState(false);
+  const [selectedExecution, setSelectedExecution] = useState<any>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<(() => void) | null>(null);
+  const initialStepsRef = useRef<WorkflowStep[]>([]);
+  const [showRightPanel, setShowRightPanel] = useState(true);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const { data: existingWorkflow } = useQuery<any>({
     queryKey: [`/api/workflows/${workflowId}`],
@@ -119,6 +135,18 @@ export default function WorkflowBuilderPage() {
     enabled: !!workflowId && !!user && showTestDialog && testDataMode === "last",
   });
 
+  // Get workflow executions for logs
+  const { data: workflowExecutions = [], isLoading: executionsLoading } = useQuery<any[]>({
+    queryKey: [`/api/workflows/${workflowId}/executions`],
+    enabled: !!workflowId && !!user && showExecutionLogsPanel,
+  });
+
+  // Get selected execution details
+  const { data: executionDetails } = useQuery<any>({
+    queryKey: [`/api/workflow-executions/${selectedExecution?.id}`],
+    enabled: !!selectedExecution?.id && !!user,
+  });
+
   useEffect(() => {
     if (params?.id) {
       setWorkflowIdState(parseInt(params.id));
@@ -127,8 +155,14 @@ export default function WorkflowBuilderPage() {
     }
   }, [params?.id]);
 
+  // Track if we've already loaded this workflow to prevent overwriting user edits
+  const loadedWorkflowIdRef = useRef<number | null>(null);
+
   useEffect(() => {
-    if (existingWorkflow) {
+    // Only load workflow data if:
+    // 1. We have workflow data
+    // 2. We haven't loaded this workflow yet OR the workflow ID has changed
+    if (existingWorkflow && (loadedWorkflowIdRef.current !== workflowId)) {
       setName(existingWorkflow.name || "");
       setDescription(existingWorkflow.description || "");
       setTriggerType(existingWorkflow.triggerType || "candidate_status_change");
@@ -140,21 +174,49 @@ export default function WorkflowBuilderPage() {
         id: step.id || `step-${index}-${Date.now()}`,
       }));
       setSteps(stepsWithIds);
+      // Store initial steps for comparison
+      initialStepsRef.current = JSON.parse(JSON.stringify(stepsWithIds));
       // Clear editing state when loading new workflow
       setEditingStep(null);
       setEditingTrigger(false);
+      // Mark this workflow as loaded
+      loadedWorkflowIdRef.current = workflowId;
+      // Reset unsaved changes when loading
+      setHasUnsavedChanges(false);
     }
-  }, [existingWorkflow]);
+  }, [existingWorkflow, workflowId]);
+
+  // Track changes to steps
+  useEffect(() => {
+    if (initialStepsRef.current.length > 0 || steps.length > 0) {
+      const currentStepsStr = JSON.stringify(steps);
+      const initialStepsStr = JSON.stringify(initialStepsRef.current);
+      const hasChanges = currentStepsStr !== initialStepsStr;
+      setHasUnsavedChanges(hasChanges);
+    }
+  }, [steps]);
+
+  // Reset loaded workflow ref when workflow ID changes (e.g., navigating to a different workflow)
+  useEffect(() => {
+    if (workflowId !== loadedWorkflowIdRef.current) {
+      loadedWorkflowIdRef.current = null;
+    }
+  }, [workflowId]);
 
   const createWorkflowMutation = useMutation({
     mutationFn: async (workflow: any) => {
       const res = await apiRequest("POST", "/api/workflows", workflow);
       return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (createdWorkflow) => {
       queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
       toast({ title: "Workflow created successfully" });
-      setLocation("/workflows");
+      // Update the workflow ID so we can edit it
+      if (createdWorkflow?.id) {
+        setWorkflowIdState(createdWorkflow.id);
+        // Update the URL without redirecting away
+        setLocation(`/workflows/${createdWorkflow.id}/edit`);
+      }
     },
     onError: (error: Error) => {
       toast({ title: "Failed to create workflow", description: error.message, variant: "destructive" });
@@ -166,10 +228,15 @@ export default function WorkflowBuilderPage() {
       const res = await apiRequest("PATCH", `/api/workflows/${id}`, data);
       return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (updatedWorkflow) => {
+      // Update the specific workflow in cache with the new data
+      queryClient.setQueryData([`/api/workflows/${workflowId}`], updatedWorkflow);
+      // Invalidate the list query
       queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
       toast({ title: "Workflow updated successfully" });
-      setLocation("/workflows");
+      // Reset the loaded workflow ref so changes persist
+      loadedWorkflowIdRef.current = null;
+      // Don't redirect - stay on the edit page
     },
     onError: (error: Error) => {
       toast({ title: "Failed to update workflow", description: error.message, variant: "destructive" });
@@ -248,7 +315,36 @@ export default function WorkflowBuilderPage() {
   };
 
   const handleUpdateStepConfig = (stepId: string, config: any) => {
-    const step = steps.find((s) => s.id === stepId);
+    // First check if it's a step in the main steps array
+    let step = steps.find((s) => s.id === stepId);
+    let isInConditionalBranch = false;
+    let parentConditionStep: WorkflowStep | null = null;
+    let branchType: "then" | "else" | null = null;
+
+    // If not found, check if it's in a conditional branch (thenSteps or elseSteps)
+    if (!step) {
+      for (const conditionStep of steps) {
+        if (conditionStep.type === "condition") {
+          const thenStep = (conditionStep.thenSteps || []).find((s) => s.id === stepId);
+          const elseStep = (conditionStep.elseSteps || []).find((s) => s.id === stepId);
+          
+          if (thenStep) {
+            step = thenStep;
+            isInConditionalBranch = true;
+            parentConditionStep = conditionStep;
+            branchType = "then";
+            break;
+          } else if (elseStep) {
+            step = elseStep;
+            isInConditionalBranch = true;
+            parentConditionStep = conditionStep;
+            branchType = "else";
+            break;
+          }
+        }
+      }
+    }
+
     if (!step) return;
 
     // If template is selected for send_email action, auto-populate subject and body
@@ -263,17 +359,36 @@ export default function WorkflowBuilderPage() {
       config.template = undefined;
     }
 
-    setSteps(steps.map((step) => (step.id === stepId ? { ...step, config: { ...step.config, ...config } } : step)));
+    if (isInConditionalBranch && parentConditionStep) {
+      // Update step in conditional branch
+      const updatedStep = { ...step, config: { ...step.config, ...config } };
+      const updatedConditionStep = { ...parentConditionStep };
+      
+      if (branchType === "then") {
+        updatedConditionStep.thenSteps = (parentConditionStep.thenSteps || []).map((s) =>
+          s.id === stepId ? updatedStep : s
+        );
+      } else if (branchType === "else") {
+        updatedConditionStep.elseSteps = (parentConditionStep.elseSteps || []).map((s) =>
+          s.id === stepId ? updatedStep : s
+        );
+      }
+      
+      setSteps(steps.map((s) => (s.id === parentConditionStep!.id ? updatedConditionStep : s)));
+    } else {
+      // Update step in main steps array
+      setSteps(steps.map((step) => (step.id === stepId ? { ...step, config: { ...step.config, ...config } } : step)));
+    }
   };
 
-  const handleSave = () => {
+  const handleSave = async (): Promise<boolean> => {
     if (!name.trim()) {
       toast({ title: "Workflow name is required", variant: "destructive" });
-      return;
+      return false;
     }
     if (steps.length === 0) {
       toast({ title: "Add at least one action", variant: "destructive" });
-      return;
+      return false;
     }
 
     const workflowData = {
@@ -285,10 +400,61 @@ export default function WorkflowBuilderPage() {
       steps,
     };
 
-    if (workflowId) {
-      updateWorkflowMutation.mutate({ id: workflowId, data: workflowData });
+    return new Promise((resolve) => {
+      if (workflowId) {
+        updateWorkflowMutation.mutate(
+          { id: workflowId, data: workflowData },
+          {
+            onSuccess: () => {
+              // Update initial steps ref to mark as saved
+              initialStepsRef.current = JSON.parse(JSON.stringify(steps));
+              setHasUnsavedChanges(false);
+              resolve(true);
+            },
+            onError: () => resolve(false),
+          }
+        );
+      } else {
+        createWorkflowMutation.mutate(workflowData, {
+          onSuccess: (createdWorkflow) => {
+            if (createdWorkflow?.id) {
+              setWorkflowIdState(createdWorkflow.id);
+              // Update initial steps ref to mark as saved
+              initialStepsRef.current = JSON.parse(JSON.stringify(steps));
+              setHasUnsavedChanges(false);
+            }
+            resolve(true);
+          },
+          onError: () => resolve(false),
+        });
+      }
+    });
+  };
+
+  const handleNavigation = (navigationFn: () => void) => {
+    if (hasUnsavedChanges) {
+      setPendingNavigation(() => navigationFn);
+      setShowUnsavedDialog(true);
     } else {
-      createWorkflowMutation.mutate(workflowData);
+      navigationFn();
+    }
+  };
+
+  const handleRunWorkflow = async () => {
+    if (steps.length === 0) {
+      toast({ title: "Add at least one action before testing", variant: "destructive" });
+      return;
+    }
+
+    // Save first if there are changes
+    const saved = await handleSave();
+    if (saved) {
+      // Wait a moment for the save to complete, then open test dialog
+      setTimeout(() => {
+        setShowTestDialog(true);
+        setTestDataMode(triggerType === "manual" ? "manual" : "manual");
+        setTestData({});
+      }, 100);
     }
   };
 
@@ -322,62 +488,462 @@ export default function WorkflowBuilderPage() {
   return (
     <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
       {/* Top Bar */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => setLocation("/workflows")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between shadow-sm flex-wrap gap-2">
+        <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
+          <Button variant="ghost" size="sm" onClick={() => handleNavigation(() => setLocation("/workflows"))} className="flex-shrink-0">
+            <ArrowLeft className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Back</span>
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{workflowId ? "Edit Workflow" : "Create Workflow"}</h1>
-            <p className="text-sm text-gray-500">Build powerful automation workflows</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">{workflowId ? "Edit Workflow" : "Create Workflow"}</h1>
+            <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Build powerful automation workflows</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        
+        {/* Desktop Actions */}
+        <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Workflow name..."
-            className="w-64"
+            className="w-48 xl:w-64"
           />
-          <Button variant="outline" onClick={() => setLocation("/workflows")}>
+          <Button variant="outline" onClick={() => handleNavigation(() => setLocation("/workflows"))}>
             Cancel
           </Button>
           <Button
             variant="outline"
-            onClick={() => {
-              if (steps.length === 0) {
-                toast({ title: "Add at least one action before testing", variant: "destructive" });
-                return;
-              }
-              setShowTestDialog(true);
-              setTestDataMode(triggerType === "manual" ? "manual" : "manual");
-              setTestData({});
-            }}
-            disabled={isRunning || steps.length === 0}
+            onClick={handleRunWorkflow}
+            disabled={isRunning || steps.length === 0 || createWorkflowMutation.isPending || updateWorkflowMutation.isPending}
             className="border-blue-600 text-blue-600 hover:bg-blue-50"
           >
             <Play className="h-4 w-4 mr-2" />
             {triggerType === "manual" ? "Run" : "Test"} Workflow
           </Button>
           <Button
-            onClick={handleSave}
+            onClick={() => handleSave()}
             disabled={createWorkflowMutation.isPending || updateWorkflowMutation.isPending}
             className="bg-blue-600 hover:bg-blue-700"
           >
-            <Save className="h-4 w-4 mr-2" />
-            Save
+            {createWorkflowMutation.isPending || updateWorkflowMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save
+              </>
+            )}
+          </Button>
+        </div>
+
+        {/* Mobile Menu Button */}
+        <div className="lg:hidden flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowExecutionLogsPanel(true)}
+            className="h-9 w-9 p-0"
+            title="View Execution Logs"
+          >
+            <History className="h-5 w-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowMobileMenu(!showMobileMenu)}
+            className="h-9 w-9 p-0"
+          >
+            <Menu className="h-5 w-5" />
           </Button>
         </div>
       </div>
 
+      {/* Mobile Menu Dropdown */}
+      {showMobileMenu && (
+        <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 space-y-2">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Workflow name..."
+            className="w-full"
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => handleNavigation(() => setLocation("/workflows"))}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleRunWorkflow}
+              disabled={isRunning || steps.length === 0 || createWorkflowMutation.isPending || updateWorkflowMutation.isPending}
+              className="flex-1 border-blue-600 text-blue-600 hover:bg-blue-50"
+            >
+              <Play className="h-4 w-4 mr-2" />
+              {triggerType === "manual" ? "Run" : "Test"}
+            </Button>
+            <Button
+              onClick={() => handleSave()}
+              disabled={createWorkflowMutation.isPending || updateWorkflowMutation.isPending}
+              className="flex-1 bg-blue-600 hover:bg-blue-700"
+            >
+              {createWorkflowMutation.isPending || updateWorkflowMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content - Split Layout */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+        {/* Left: Execution Logs Panel */}
+        {showExecutionLogsPanel && (
+          <div className="hidden lg:block fixed left-0 top-0 bottom-0 w-96 bg-white border-r border-gray-200 shadow-xl z-40 overflow-y-auto">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Execution Logs
+              </h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowExecutionLogsPanel(false);
+                  setSelectedExecution(null);
+                }}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4">
+              {executionsLoading ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin" />
+                  <p className="text-sm">Loading executions...</p>
+                </div>
+              ) : workflowExecutions.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <History className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                  <p className="text-sm">No executions yet</p>
+                  <p className="text-xs mt-2">Run the workflow to see execution logs</p>
+                </div>
+              ) : selectedExecution ? (
+                <div className="space-y-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedExecution(null)}
+                    className="mb-2"
+                  >
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Back to List
+                  </Button>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm font-semibold">Status:</span>
+                        {executionDetails?.status === "completed" ? (
+                          <Badge className="bg-green-100 text-green-800">
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            Completed
+                          </Badge>
+                        ) : executionDetails?.status === "failed" ? (
+                          <Badge className="bg-red-100 text-red-800">
+                            <XCircle className="h-3 w-3 mr-1" />
+                            Failed
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-yellow-100 text-yellow-800">
+                            <Clock className="h-3 w-3 mr-1" />
+                            {executionDetails?.status || "Running"}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        <Clock className="h-3 w-3 inline mr-1" />
+                        {executionDetails?.startedAt
+                          ? new Date(executionDetails.startedAt).toLocaleString()
+                          : "N/A"}
+                      </div>
+                    </div>
+                    {executionDetails?.errorMessage && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded">
+                        <p className="text-sm font-semibold text-red-800 mb-1">Error:</p>
+                        <p className="text-xs text-red-700">{executionDetails.errorMessage}</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-semibold mb-2">Execution Data:</p>
+                      <pre className="text-xs bg-gray-50 p-3 rounded border overflow-auto max-h-64">
+                        {JSON.stringify(executionDetails?.executionData || {}, null, 2)}
+                      </pre>
+                    </div>
+                    {executionDetails?.steps && executionDetails.steps.length > 0 && (
+                      <div>
+                        <p className="text-sm font-semibold mb-2">Step Results:</p>
+                        <div className="space-y-2">
+                          {executionDetails.steps.map((step: any) => (
+                            <div
+                              key={step.id}
+                              className="p-3 bg-gray-50 rounded border border-gray-200"
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs font-semibold">
+                                  Step {step.stepIndex + 1}: {step.actionType}
+                                </span>
+                                {step.status === "completed" ? (
+                                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                ) : step.status === "failed" ? (
+                                  <XCircle className="h-4 w-4 text-red-600" />
+                                ) : (
+                                  <Clock className="h-4 w-4 text-yellow-600" />
+                                )}
+                              </div>
+                              {step.errorMessage && (
+                                <p className="text-xs text-red-600 mt-1">{step.errorMessage}</p>
+                              )}
+                              {step.result && (
+                                <pre className="text-xs mt-2 bg-white p-2 rounded overflow-auto max-h-32">
+                                  {JSON.stringify(step.result, null, 2)}
+                                </pre>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {workflowExecutions.map((execution: any) => (
+                    <Card
+                      key={execution.id}
+                      className="cursor-pointer hover:bg-gray-50 transition-colors"
+                      onClick={() => setSelectedExecution(execution)}
+                    >
+                      <CardContent className="p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              {execution.status === "completed" ? (
+                                <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                              ) : execution.status === "failed" ? (
+                                <XCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
+                              ) : (
+                                <Clock className="h-4 w-4 text-yellow-600 flex-shrink-0" />
+                              )}
+                              <span className="text-sm font-semibold truncate">
+                                {execution.status === "completed"
+                                  ? "Completed"
+                                  : execution.status === "failed"
+                                  ? "Failed"
+                                  : "Running"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500">
+                              {execution.startedAt
+                                ? new Date(execution.startedAt).toLocaleString()
+                                : "N/A"}
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Mobile: Execution Logs Overlay */}
+        {showExecutionLogsPanel && (
+          <div className="lg:hidden fixed inset-0 z-50 bg-black/50" onClick={() => {
+            setShowExecutionLogsPanel(false);
+            setSelectedExecution(null);
+          }}>
+            <div className="absolute left-0 top-0 bottom-0 w-full max-w-sm bg-white shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <History className="h-5 w-5" />
+                  Execution Logs
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowExecutionLogsPanel(false);
+                    setSelectedExecution(null);
+                  }}
+                  className="h-8 w-8 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="p-4">
+                {executionsLoading ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin" />
+                    <p className="text-sm">Loading executions...</p>
+                  </div>
+                ) : workflowExecutions.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <History className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                    <p className="text-sm">No executions yet</p>
+                    <p className="text-xs mt-2">Run the workflow to see execution logs</p>
+                  </div>
+                ) : selectedExecution ? (
+                  <div className="space-y-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedExecution(null)}
+                      className="mb-2"
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Back to List
+                    </Button>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-semibold">Status:</span>
+                          {executionDetails?.status === "completed" ? (
+                            <Badge className="bg-green-100 text-green-800">
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              Completed
+                            </Badge>
+                          ) : executionDetails?.status === "failed" ? (
+                            <Badge className="bg-red-100 text-red-800">
+                              <XCircle className="h-3 w-3 mr-1" />
+                              Failed
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-yellow-100 text-yellow-800">
+                              <Clock className="h-3 w-3 mr-1" />
+                              {executionDetails?.status || "Running"}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          <Clock className="h-3 w-3 inline mr-1" />
+                          {executionDetails?.startedAt
+                            ? new Date(executionDetails.startedAt).toLocaleString()
+                            : "N/A"}
+                        </div>
+                      </div>
+                      {executionDetails?.errorMessage && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded">
+                          <p className="text-sm font-semibold text-red-800 mb-1">Error:</p>
+                          <p className="text-xs text-red-700">{executionDetails.errorMessage}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-sm font-semibold mb-2">Execution Data:</p>
+                        <pre className="text-xs bg-gray-50 p-3 rounded border overflow-auto max-h-64">
+                          {JSON.stringify(executionDetails?.executionData || {}, null, 2)}
+                        </pre>
+                      </div>
+                      {executionDetails?.steps && executionDetails.steps.length > 0 && (
+                        <div>
+                          <p className="text-sm font-semibold mb-2">Step Results:</p>
+                          <div className="space-y-2">
+                            {executionDetails.steps.map((step: any) => (
+                              <div
+                                key={step.id}
+                                className="p-3 bg-gray-50 rounded border border-gray-200"
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs font-semibold">
+                                    Step {step.stepIndex + 1}: {step.actionType}
+                                  </span>
+                                  {step.status === "completed" ? (
+                                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                  ) : step.status === "failed" ? (
+                                    <XCircle className="h-4 w-4 text-red-600" />
+                                  ) : (
+                                    <Clock className="h-4 w-4 text-yellow-600" />
+                                  )}
+                                </div>
+                                {step.errorMessage && (
+                                  <p className="text-xs text-red-600 mt-1">{step.errorMessage}</p>
+                                )}
+                                {step.result && (
+                                  <pre className="text-xs mt-2 bg-white p-2 rounded overflow-auto max-h-32">
+                                    {JSON.stringify(step.result, null, 2)}
+                                  </pre>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {workflowExecutions.map((execution: any) => (
+                      <Card
+                        key={execution.id}
+                        className="cursor-pointer hover:bg-gray-50 transition-colors"
+                        onClick={() => setSelectedExecution(execution)}
+                      >
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                {execution.status === "completed" ? (
+                                  <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                                ) : execution.status === "failed" ? (
+                                  <XCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
+                                ) : (
+                                  <Clock className="h-4 w-4 text-yellow-600 flex-shrink-0" />
+                                )}
+                                <span className="text-sm font-semibold truncate">
+                                  {execution.status === "completed"
+                                    ? "Completed"
+                                    : execution.status === "failed"
+                                    ? "Failed"
+                                    : "Running"}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500">
+                                {execution.startedAt
+                                  ? new Date(execution.startedAt).toLocaleString()
+                                  : "N/A"}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Left: Canvas */}
-        <div ref={canvasRef} className="flex-1 overflow-auto bg-gray-50 p-8">
+        <div ref={canvasRef} className={`flex-1 overflow-auto bg-gray-50 p-4 sm:p-6 lg:p-8 transition-all ${showExecutionLogsPanel ? 'lg:ml-96' : ''}`}>
           <div className="max-w-4xl mx-auto">
             {/* Trigger */}
-            <div className="flex flex-col items-center mb-8">
+            <div className="flex flex-col items-center mb-4">
               <Card
                 className={`w-64 border-2 border-blue-400 bg-gradient-to-br from-blue-50 to-blue-100 shadow-lg cursor-pointer hover:shadow-xl transition-all ${
                   editingTrigger ? "ring-2 ring-blue-500" : ""
@@ -385,6 +951,8 @@ export default function WorkflowBuilderPage() {
                 onClick={() => {
                   setEditingTrigger(true);
                   setEditingStep(null);
+                  setShowRightPanel(true);
+                  setShowMobileMenu(false);
                 }}
               >
                 <CardContent className="p-4">
@@ -414,6 +982,8 @@ export default function WorkflowBuilderPage() {
                         e.stopPropagation();
                         setEditingTrigger(true);
                         setEditingStep(null);
+                        setShowRightPanel(true);
+                        setShowMobileMenu(false);
                       }}
                       className="h-6 w-6 p-0"
                     >
@@ -424,11 +994,31 @@ export default function WorkflowBuilderPage() {
               </Card>
 
               {/* Connection Line */}
-              {steps.length > 0 && <div className="w-0.5 h-12 bg-gray-400 my-2" />}
+              {steps.length > 0 && <div className="w-0.5 h-6 bg-gray-400 my-1" />}
+              
+              {/* Add Step Button after Trigger */}
+              {steps.length > 0 && (
+                <div className="flex justify-center my-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActionMenuAfterStep(null);
+                      setShowActionMenu(true);
+                      setEditingStep(null);
+                      setEditingTrigger(false);
+                    }}
+                    className="h-7 w-7 p-0 rounded-full border-2 border-dashed hover:border-solid"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Steps */}
-            <div className="flex flex-col items-center gap-4">
+            <div className="flex flex-col items-center gap-2">
               {steps.map((step, index) => {
                 const actionDef = getActionDef(step.type);
                 const colors = ACTION_COLORS[step.type] || ACTION_COLORS.wait;
@@ -444,6 +1034,8 @@ export default function WorkflowBuilderPage() {
                       onClick={() => {
                         setEditingStep(step.id);
                         setEditingTrigger(false);
+                        setShowRightPanel(true);
+                        setShowMobileMenu(false);
                       }}
                     >
                       <CardContent className="p-4">
@@ -657,7 +1249,7 @@ export default function WorkflowBuilderPage() {
                       </div>
                     )}
 
-                    {index < steps.length - 1 && !isCondition && <div className="w-0.5 h-12 bg-gray-400 my-2" />}
+                    {index < steps.length - 1 && !isCondition && <div className="w-0.5 h-6 bg-gray-400 my-1" />}
                   </div>
                 );
               })}
@@ -687,7 +1279,228 @@ export default function WorkflowBuilderPage() {
         </div>
 
         {/* Right: Settings Panel */}
-        <div className="w-96 border-l border-gray-200 bg-white overflow-y-auto">
+        {/* Mobile: Overlay/Drawer */}
+        {showRightPanel && editingDef && (
+          <div className="lg:hidden fixed inset-0 z-50 bg-black/50" onClick={() => setShowRightPanel(false)}>
+            <div className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-white shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="p-4 sm:p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-bold text-gray-900">{editingDef.name}</h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingStep(null);
+                      setEditingTrigger(false);
+                      setShowRightPanel(false);
+                    }}
+                    className="h-8 w-8 p-0"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                {editingDef.type === "trigger" && (
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-semibold">Trigger Type</Label>
+                      <Select value={triggerType} onValueChange={setTriggerType}>
+                        <SelectTrigger className="mt-2">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="candidate_status_change">🔄 Candidate Status Change</SelectItem>
+                          <SelectItem value="interview_scheduled">📅 Interview Scheduled</SelectItem>
+                          <SelectItem value="interview_completed">✅ Interview Completed</SelectItem>
+                          <SelectItem value="manual">👆 Manual Trigger</SelectItem>
+                          <SelectItem value="scheduled">⏰ Scheduled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {triggerType === "candidate_status_change" && (
+                      <div className="grid grid-cols-1 gap-4">
+                        <div>
+                          <Label className="text-sm font-semibold">From Status (optional)</Label>
+                          <Select
+                            value={triggerConfig.fromStatus || "any"}
+                            onValueChange={(value) =>
+                              setTriggerConfig({ ...triggerConfig, fromStatus: value === "any" ? null : value })
+                            }
+                          >
+                            <SelectTrigger className="mt-2">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="any">Any status</SelectItem>
+                              <SelectItem value="new">New</SelectItem>
+                              <SelectItem value="assessment_sent">Assessment Sent</SelectItem>
+                              <SelectItem value="assessment_completed">Assessment Completed</SelectItem>
+                              <SelectItem value="interview_scheduled">Interview Scheduled</SelectItem>
+                              <SelectItem value="interview_completed">Interview Completed</SelectItem>
+                              <SelectItem value="offer_sent">Offer Sent</SelectItem>
+                              <SelectItem value="rejected">Rejected</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-sm font-semibold">To Status</Label>
+                          <Select
+                            value={triggerConfig.toStatus || ""}
+                            onValueChange={(value) => setTriggerConfig({ ...triggerConfig, toStatus: value })}
+                          >
+                            <SelectTrigger className="mt-2">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="new">New</SelectItem>
+                              <SelectItem value="assessment_sent">Assessment Sent</SelectItem>
+                              <SelectItem value="assessment_completed">Assessment Completed</SelectItem>
+                              <SelectItem value="interview_scheduled">Interview Scheduled</SelectItem>
+                              <SelectItem value="interview_completed">Interview Completed</SelectItem>
+                              <SelectItem value="offer_sent">Offer Sent</SelectItem>
+                              <SelectItem value="rejected">Rejected</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+                    <div className="pt-4 border-t">
+                      <Button
+                        onClick={() => {
+                          setEditingTrigger(false);
+                          setEditingStep(null);
+                          setShowRightPanel(false);
+                        }}
+                        className="w-full bg-blue-600 hover:bg-blue-700"
+                      >
+                        Done
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {editingDef.type === "step" && editingDef.actionDef && (
+                  <div className="space-y-4">
+                    {editingDef.actionDef.configFields?.map((field: any) => {
+                      const stepConfig = editingDef.step?.config || {};
+                      const hasTemplate = editingDef.step?.type === "send_email" && stepConfig.template && stepConfig.template !== "none";
+                      const isTemplateField = field.name === "subject" || field.name === "body";
+                      const isDisabled = hasTemplate && isTemplateField;
+
+                      return (
+                        <div key={field.name}>
+                          <Label className="text-sm font-semibold">
+                            {field.label} {field.required && <span className="text-red-500">*</span>}
+                            {isDisabled && (
+                              <span className="ml-2 text-xs text-blue-600 font-normal">(from template)</span>
+                            )}
+                          </Label>
+                          {field.type === "select" || field.type === "user_select" ? (
+                            <Select
+                              value={stepConfig[field.name]?.toString() || ""}
+                              onValueChange={(value) => handleUpdateStepConfig(editingDef.step!.id, { [field.name]: field.type === "user_select" ? parseInt(value) : value })}
+                            >
+                              <SelectTrigger className="mt-2">
+                                <SelectValue placeholder={field.placeholder || `Select ${field.label}`} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {field.name === "template" ? (
+                                  <>
+                                    <SelectItem value="none">None (use custom)</SelectItem>
+                                    {(emailTemplates as any[]).map((template) => (
+                                      <SelectItem key={template.id} value={template.id}>
+                                        {template.name}
+                                      </SelectItem>
+                                    ))}
+                                  </>
+                                ) : field.type === "user_select" ? (
+                                  (users as any[]).map((user) => (
+                                    <SelectItem key={user.id} value={user.id.toString()}>
+                                      {user.fullName || user.username || user.email}
+                                    </SelectItem>
+                                  ))
+                                ) : (
+                                  field.options?.map((option: string) => (
+                                    <SelectItem key={option} value={option}>
+                                      {option}
+                                    </SelectItem>
+                                  ))
+                                )}
+                              </SelectContent>
+                            </Select>
+                          ) : field.type === "datetime" ? (
+                            <Input
+                              type="datetime-local"
+                              value={stepConfig[field.name] ? new Date(stepConfig[field.name]).toISOString().slice(0, 16) : ""}
+                              onChange={(e) => {
+                                const dateValue = e.target.value ? new Date(e.target.value).toISOString() : "";
+                                handleUpdateStepConfig(editingDef.step!.id, { [field.name]: dateValue });
+                              }}
+                              placeholder={field.placeholder}
+                              className="mt-2"
+                              required={field.required}
+                            />
+                          ) : field.type === "textarea" ? (
+                            <Textarea
+                              value={stepConfig[field.name] || ""}
+                              onChange={(e) => handleUpdateStepConfig(editingDef.step!.id, { [field.name]: e.target.value })}
+                              placeholder={field.placeholder}
+                              rows={4}
+                              className="mt-2"
+                              disabled={isDisabled}
+                            />
+                          ) : (
+                            <Input
+                              type={field.type === "number" ? "number" : "text"}
+                              value={stepConfig[field.name] || ""}
+                              onChange={(e) =>
+                                handleUpdateStepConfig(editingDef.step!.id, {
+                                  [field.name]: field.type === "number" ? Number(e.target.value) : e.target.value,
+                                })
+                              }
+                              placeholder={field.placeholder}
+                              className="mt-2"
+                              disabled={isDisabled}
+                              required={field.required}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div className="pt-4 border-t">
+                      <Button
+                        onClick={() => {
+                          setEditingStep(null);
+                          setEditingTrigger(false);
+                          setShowRightPanel(false);
+                        }}
+                        className="w-full bg-blue-600 hover:bg-blue-700"
+                      >
+                        Done
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Execution Logs Button on Divider */}
+        {!showExecutionLogsPanel && (
+          <div className="hidden lg:flex absolute left-0 top-1/2 -translate-y-1/2 z-30">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowExecutionLogsPanel(true)}
+              className="h-10 w-10 p-0 rounded-r-none border-r-0 bg-white shadow-md hover:bg-gray-50"
+              title="View Execution Logs"
+            >
+              <History className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* Desktop: Side Panel */}
+        <div className={`hidden lg:block w-96 border-l border-gray-200 bg-white overflow-y-auto transition-all ${showRightPanel ? '' : 'hidden'}`}>
           {editingDef ? (
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
@@ -953,7 +1766,7 @@ export default function WorkflowBuilderPage() {
 
       {/* Test Workflow Dialog */}
       <Dialog open={showTestDialog} onOpenChange={setShowTestDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {triggerType === "manual" ? "Run Workflow" : "Test Workflow"}
@@ -1040,19 +1853,69 @@ export default function WorkflowBuilderPage() {
             </div>
           ) : (
             <div className="space-y-4 py-4">
-              <Tabs value={testDataMode} onValueChange={(v) => setTestDataMode(v as any)}>
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="last">Use Last Execution</TabsTrigger>
-                  <TabsTrigger value="manual">Enter Test Data</TabsTrigger>
-                  <TabsTrigger value="listen">Listen for Event</TabsTrigger>
-                </TabsList>
+              {/* Test Mode Selection Cards */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <Card
+                  className={`cursor-pointer transition-all hover:shadow-md border-2 ${
+                    testDataMode === "last"
+                      ? "border-blue-500 bg-blue-50 shadow-md"
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                  onClick={() => setTestDataMode("last")}
+                >
+                  <CardContent className="p-4 flex flex-col items-center text-center">
+                    <div className={`p-3 rounded-lg mb-3 ${
+                      testDataMode === "last" ? "bg-blue-100" : "bg-gray-100"}`}>
+                      <History className={`h-6 w-6 ${testDataMode === "last" ? "text-blue-600" : "text-gray-600"}`} />
+                    </div>
+                    <h3 className="font-semibold text-sm text-gray-900 mb-1">Use Last Execution</h3>
+                    <p className="text-xs text-gray-500">Reuse data from previous run</p>
+                  </CardContent>
+                </Card>
 
-                <TabsContent value="last" className="space-y-4 mt-4">
+                <Card
+                  className={`cursor-pointer transition-all hover:shadow-md border-2 ${
+                    testDataMode === "manual"
+                      ? "border-blue-500 bg-blue-50 shadow-md"
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                  onClick={() => setTestDataMode("manual")}
+                >
+                  <CardContent className="p-4 flex flex-col items-center text-center">
+                    <div className={`p-3 rounded-lg mb-3 ${testDataMode === "manual" ? "bg-blue-100" : "bg-gray-100"}`}>
+                      <FileText className={`h-6 w-6 ${testDataMode === "manual" ? "text-blue-600" : "text-gray-600"}`} />
+                    </div>
+                    <h3 className="font-semibold text-sm text-gray-900 mb-1">Enter Test Data</h3>
+                    <p className="text-xs text-gray-500">Manually input test values</p>
+                  </CardContent>
+                </Card>
+
+                <Card
+                  className={`cursor-pointer transition-all hover:shadow-md border-2 ${
+                    testDataMode === "listen"
+                      ? "border-blue-500 bg-blue-50 shadow-md"
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                  onClick={() => setTestDataMode("listen")}
+                >
+                  <CardContent className="p-4 flex flex-col items-center text-center">
+                    <div className={`p-3 rounded-lg mb-3 ${testDataMode === "listen" ? "bg-blue-100" : "bg-gray-100"}`}>
+                      <Radio className={`h-6 w-6 ${testDataMode === "listen" ? "text-blue-600" : "text-gray-600"}`} />
+                    </div>
+                    <h3 className="font-semibold text-sm text-gray-900 mb-1">Listen for Event</h3>
+                    <p className="text-xs text-gray-500">Wait for real trigger event</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Content based on selected mode */}
+              {testDataMode === "last" && (
+                <div className="space-y-4 mt-4">
                   {lastExecutionData ? (
                     <div className="space-y-4">
-                      <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="p-4 bg-gray-50 rounded-lg w-full">
                         <p className="text-sm text-gray-600 mb-2">Last execution data:</p>
-                        <pre className="text-xs bg-white p-3 rounded border overflow-auto max-h-48">
+                        <pre className="text-xs bg-white p-3 rounded border overflow-auto h-[200px] w-full max-w-full" style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>
                           {JSON.stringify(lastExecutionData.executionData, null, 2)}
                         </pre>
                       </div>
@@ -1105,9 +1968,11 @@ export default function WorkflowBuilderPage() {
                       <p className="text-xs mt-2">This workflow hasn't run yet</p>
                     </div>
                   )}
-                </TabsContent>
+                </div>
+              )}
 
-                <TabsContent value="manual" className="space-y-4 mt-4">
+              {testDataMode === "manual" && (
+                <div className="space-y-4 mt-4">
                   {triggerType === "candidate_status_change" && (
                     <>
                       <div>
@@ -1268,9 +2133,11 @@ export default function WorkflowBuilderPage() {
                       )}
                     </Button>
                   </DialogFooter>
-                </TabsContent>
+                </div>
+              )}
 
-                <TabsContent value="listen" className="space-y-4 mt-4">
+              {testDataMode === "listen" && (
+                <div className="space-y-4 mt-4">
                   <div className="text-center py-8">
                     <div className="p-4 bg-blue-50 rounded-lg mb-4">
                       <Radio className="h-8 w-8 mx-auto mb-2 text-blue-600 animate-pulse" />
@@ -1290,8 +2157,8 @@ export default function WorkflowBuilderPage() {
                       </Button>
                     </DialogFooter>
                   </div>
-                </TabsContent>
-              </Tabs>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
@@ -1389,6 +2256,38 @@ export default function WorkflowBuilderPage() {
           </Card>
         </div>
       )}
+
+      {/* Unsaved Changes Dialog */}
+      <AlertDialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
+        <AlertDialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md w-full mx-auto">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm sm:text-base">
+              You have unsaved changes to your workflow. Are you sure you want to leave? Your changes will be lost if you don't save them.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 sm:justify-end">
+            <AlertDialogCancel 
+              onClick={() => setShowUnsavedDialog(false)}
+              className="w-full sm:w-auto order-2 sm:order-1"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowUnsavedDialog(false);
+                if (pendingNavigation) {
+                  pendingNavigation();
+                  setPendingNavigation(null);
+                }
+              }}
+              className="bg-red-600 hover:bg-red-700 w-full sm:w-auto order-1 sm:order-2"
+            >
+              Leave Without Saving
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
