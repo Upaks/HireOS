@@ -68,6 +68,23 @@ export function setupInterviewRoutes(app: Express) {
         }
       }
 
+      // Trigger workflow for interview scheduled
+      try {
+        const { triggerWorkflows } = await import("../workflow-engine");
+        const job = candidate?.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+        await triggerWorkflows("interview_scheduled", {
+          entityType: "interview",
+          entityId: interview.id,
+          interview,
+          candidate,
+          job,
+          user: req.user,
+        }, accountId);
+      } catch (error) {
+        console.error("[Interview Create] Workflow trigger error:", error);
+        // Don't fail the request if workflow trigger fails
+      }
+
       // Create Google Calendar event if Google Calendar is connected
       if (req.user?.id && scheduledDate && candidate) {
         try {
@@ -267,6 +284,24 @@ export function setupInterviewRoutes(app: Express) {
         status: "completed",
         conductedDate: new Date()
       });
+
+      // Trigger workflow for interview completed
+      try {
+        const { triggerWorkflows } = await import("../workflow-engine");
+        const candidate = await storage.getCandidate(interview.candidateId, accountId);
+        const job = candidate?.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+        await triggerWorkflows("interview_completed", {
+          entityType: "interview",
+          entityId: interview.id,
+          interview: updatedInterview,
+          candidate,
+          job,
+          user: req.user,
+        }, accountId);
+      } catch (error) {
+        console.error("[Interview Complete] Workflow trigger error:", error);
+        // Don't fail the request if workflow trigger fails
+      }
       
       // Log activity
       await storage.createActivityLog({
@@ -344,10 +379,28 @@ export function setupInterviewRoutes(app: Express) {
       
       // Mark the interview as completed if it wasn't already
       if (interview.status !== "completed") {
-        await storage.updateInterview(interviewId, accountId, {
+        const updatedInterview = await storage.updateInterview(interviewId, accountId, {
           status: "completed",
           conductedDate: interview.conductedDate || new Date()
         });
+
+        // Trigger workflow for interview completed
+        try {
+          const { triggerWorkflows } = await import("../workflow-engine");
+          const candidate = await storage.getCandidate(interview.candidateId, accountId);
+          const job = candidate?.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+          await triggerWorkflows("interview_completed", {
+            entityType: "interview",
+            entityId: interview.id,
+            interview: updatedInterview,
+            candidate,
+            job,
+            user: req.user,
+          }, accountId);
+        } catch (error) {
+          console.error("[Interview Evaluation] Workflow trigger error:", error);
+          // Don't fail the request if workflow trigger fails
+        }
       }
       
       // Log activity

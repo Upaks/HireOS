@@ -370,7 +370,61 @@ export type InsertInAppNotification = typeof inAppNotifications.$inferInsert;
 export type Comment = typeof comments.$inferSelect;
 export type InsertComment = typeof comments.$inferInsert;
 
+// Workflow types
+export type Workflow = typeof workflows.$inferSelect;
+export type InsertWorkflow = typeof workflows.$inferInsert;
+export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
+export type InsertWorkflowExecution = typeof workflowExecutions.$inferInsert;
+export type WorkflowExecutionStep = typeof workflowExecutionSteps.$inferSelect;
+export type InsertWorkflowExecutionStep = typeof workflowExecutionSteps.$inferInsert;
+
 // Role type
+export const workflows = pgTable("workflows", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").default(true).notNull(),
+  triggerType: text("trigger_type").notNull(), // "candidate_status_change", "interview_scheduled", "interview_completed", "manual", "scheduled"
+  triggerConfig: jsonb("trigger_config"), // { status: "interview_scheduled", jobId: 123, etc. }
+  steps: jsonb("steps").notNull(), // Array of workflow steps with actions and conditions
+  createdById: integer("created_by_id").references(() => users.id),
+  executionCount: integer("execution_count").default(0).notNull(), // Track how many times workflow has run
+  lastExecutedAt: timestamp("last_executed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Workflow Executions - Track each time a workflow runs
+export const workflowExecutions = pgTable("workflow_executions", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
+  workflowId: integer("workflow_id").references(() => workflows.id, { onDelete: "cascade" }).notNull(),
+  status: text("status").notNull().default("running"), // "running", "completed", "failed", "cancelled"
+  triggerEntityType: text("trigger_entity_type"), // "candidate", "interview", "job"
+  triggerEntityId: integer("trigger_entity_id"), // ID of the candidate/interview/job that triggered this
+  executionData: jsonb("execution_data"), // Store context data (candidate info, interview info, etc.)
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Workflow Execution Steps - Track each step's execution within a workflow run
+export const workflowExecutionSteps = pgTable("workflow_execution_steps", {
+  id: serial("id").primaryKey(),
+  executionId: integer("execution_id").references(() => workflowExecutions.id, { onDelete: "cascade" }).notNull(),
+  stepIndex: integer("step_index").notNull(), // Which step in the workflow (0, 1, 2, etc.)
+  actionType: text("action_type").notNull(), // "send_email", "update_status", "create_interview", "notify_slack", etc.
+  actionConfig: jsonb("action_config").notNull(), // Configuration for this action
+  status: text("status").notNull().default("pending"), // "pending", "running", "completed", "failed", "skipped"
+  result: jsonb("result"), // Store action result (e.g., email sent, status updated, etc.)
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const UserRoles = {
   HIRING_MANAGER: "hiringManager",
   PROJECT_MANAGER: "projectManager",

@@ -24,6 +24,8 @@ import AcceptOfferPage from "@/pages/accept-offer";
 import BookPage from "@/pages/book";
 import Integrations from "@/pages/integrations";
 import Notifications from "@/pages/notifications";
+import Workflows from "@/pages/workflows";
+import WorkflowBuilderPage from "@/pages/workflow-builder";
 import { ThemeProvider } from "next-themes";
 import { UserRoles } from "@shared/schema";
 
@@ -106,6 +108,22 @@ function Router() {
       <ProtectedRoute 
         path="/notifications" 
         component={Notifications}
+      />
+      
+      {/* Workflows page - accessible to all authenticated users */}
+      <ProtectedRoute 
+        path="/workflows" 
+        component={Workflows}
+      />
+      
+      {/* Workflow Builder - full page */}
+      <ProtectedRoute 
+        path="/workflows/new" 
+        component={WorkflowBuilderPage}
+      />
+      <ProtectedRoute 
+        path="/workflows/:id/edit" 
+        component={WorkflowBuilderPage}
       />
       
       {/* Public routes - no authentication required */}

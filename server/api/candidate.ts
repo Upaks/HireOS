@@ -750,6 +750,26 @@ export function setupCandidateRoutes(app: Express) {
         });
       }
 
+      // Trigger workflows if status changed
+      if (req.body.status && req.body.status !== candidate.status) {
+        try {
+          const { triggerWorkflows } = await import("../workflow-engine");
+          const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+          await triggerWorkflows("candidate_status_change", {
+            entityType: "candidate",
+            entityId: candidate.id,
+            candidate: updatedCandidate,
+            job,
+            user: req.user,
+            fromStatus: candidate.status,
+            toStatus: req.body.status,
+          }, accountId);
+        } catch (error) {
+          console.error("[Candidate Update] Workflow trigger error:", error);
+          // Don't fail the request if workflow trigger fails
+        }
+      }
+
       res.json(updatedCandidate);
     } catch (error) {
       handleApiError(error, res);

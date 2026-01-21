@@ -14,6 +14,7 @@ import {
   FileEdit,
   Plug,
   Bell,
+  Zap,
   X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -87,6 +88,12 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
       title: "Integrations",
       icon: <Plug className="h-5 w-5 mr-3" />,
       href: "/integrations",
+      roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
+    },
+    {
+      title: "Workflows",
+      icon: <Zap className="h-5 w-5 mr-3" />,
+      href: "/workflows",
       roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     },
     {

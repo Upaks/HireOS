@@ -1,7 +1,7 @@
 import { 
   users, jobs, jobPlatforms, candidates, interviews, evaluations, activityLogs, notificationQueue,
   offers, emailLogs, platformIntegrations, formTemplates, comments, inAppNotifications,
-  accounts, accountMembers,
+  accounts, accountMembers, workflows, workflowExecutions, workflowExecutionSteps,
   UserRoles,
   type User, 
   type InsertUser,
@@ -26,7 +26,13 @@ import {
   type Account,
   type InsertAccount,
   type AccountMember,
-  type InsertAccountMember
+  type InsertAccountMember,
+  type Workflow,
+  type InsertWorkflow,
+  type WorkflowExecution,
+  type InsertWorkflowExecution,
+  type WorkflowExecutionStep,
+  type InsertWorkflowExecutionStep
 } from "@shared/schema";
 import { isLikelyInvalidEmail } from "./email-validator";
 import session from "express-session";
@@ -126,6 +132,21 @@ export interface IStorage {
   getComments(entityType: string, entityId: number, accountId: number): Promise<Comment[]>;
   deleteComment(id: number, userId: number, accountId: number): Promise<void>;
   getUsersForMentionAutocomplete(accountId: number, query?: string): Promise<User[]>;
+  
+  // Workflow operations
+  createWorkflow(workflow: any & { accountId: number }): Promise<any>;
+  getWorkflows(accountId: number): Promise<any[]>;
+  getWorkflow(id: number, accountId: number): Promise<any | undefined>;
+  updateWorkflow(id: number, accountId: number, data: Partial<any>): Promise<any>;
+  deleteWorkflow(id: number, accountId: number): Promise<void>;
+  getActiveWorkflowsByTrigger(accountId: number, triggerType: string, triggerConfig?: any): Promise<any[]>;
+  createWorkflowExecution(execution: any & { accountId: number }): Promise<any>;
+  updateWorkflowExecution(id: number, accountId: number, data: Partial<any>): Promise<any>;
+  createWorkflowExecutionStep(step: any): Promise<any>;
+  updateWorkflowExecutionStep(id: number, data: Partial<any>): Promise<any>;
+  getWorkflowExecutions(workflowId: number, accountId: number, limit?: number): Promise<any[]>;
+  getWorkflowExecutionSteps(executionId: number): Promise<any[]>;
+  incrementWorkflowExecutionCount(workflowId: number, accountId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1458,6 +1479,193 @@ export class DatabaseStorage implements IStorage {
       );
     
     return Number(result[0]?.count || 0);
+  }
+
+  // =====================================================
+  // WORKFLOW OPERATIONS
+  // =====================================================
+
+  async createWorkflow(workflow: InsertWorkflow & { accountId: number }): Promise<Workflow> {
+    const [newWorkflow] = await db
+      .insert(workflows)
+      .values({
+        accountId: workflow.accountId,
+        name: workflow.name,
+        description: workflow.description,
+        isActive: workflow.isActive ?? true,
+        triggerType: workflow.triggerType,
+        triggerConfig: workflow.triggerConfig,
+        steps: workflow.steps,
+        createdById: workflow.createdById,
+      })
+      .returning();
+    return newWorkflow;
+  }
+
+  async getWorkflows(accountId: number): Promise<Workflow[]> {
+    return await db
+      .select()
+      .from(workflows)
+      .where(eq(workflows.accountId, accountId))
+      .orderBy(desc(workflows.updatedAt));
+  }
+
+  async getWorkflow(id: number, accountId: number): Promise<Workflow | undefined> {
+    const [workflow] = await db
+      .select()
+      .from(workflows)
+      .where(and(eq(workflows.id, id), eq(workflows.accountId, accountId)));
+    return workflow;
+  }
+
+  async updateWorkflow(id: number, accountId: number, data: Partial<Workflow>): Promise<Workflow> {
+    const [updated] = await db
+      .update(workflows)
+      .set(data)
+      .where(and(eq(workflows.id, id), eq(workflows.accountId, accountId)))
+      .returning();
+    return updated;
+  }
+
+  async deleteWorkflow(id: number, accountId: number): Promise<void> {
+    await db
+      .delete(workflows)
+      .where(and(eq(workflows.id, id), eq(workflows.accountId, accountId)));
+  }
+
+  async getActiveWorkflowsByTrigger(
+    accountId: number,
+    triggerType: string,
+    triggerConfig?: any
+  ): Promise<Workflow[]> {
+    const allWorkflows = await db
+      .select()
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.accountId, accountId),
+          eq(workflows.isActive, true),
+          eq(workflows.triggerType, triggerType)
+        )
+      );
+
+    // Filter by trigger config if provided
+    if (triggerConfig) {
+      return allWorkflows.filter((workflow) => {
+        const config = workflow.triggerConfig as any;
+        if (!config) return false;
+
+        // Match trigger config fields
+        if (triggerConfig.fromStatus && config.fromStatus !== triggerConfig.fromStatus) {
+          return false;
+        }
+        if (triggerConfig.toStatus && config.toStatus !== triggerConfig.toStatus) {
+          return false;
+        }
+        if (triggerConfig.jobId && config.jobId && config.jobId !== triggerConfig.jobId) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    return allWorkflows;
+  }
+
+  async createWorkflowExecution(
+    execution: InsertWorkflowExecution & { accountId: number }
+  ): Promise<WorkflowExecution> {
+    const [newExecution] = await db
+      .insert(workflowExecutions)
+      .values({
+        accountId: execution.accountId,
+        workflowId: execution.workflowId,
+        status: execution.status ?? 'running',
+        triggerEntityType: execution.triggerEntityType,
+        triggerEntityId: execution.triggerEntityId,
+        executionData: execution.executionData,
+      })
+      .returning();
+    return newExecution;
+  }
+
+  async updateWorkflowExecution(
+    id: number,
+    accountId: number,
+    data: Partial<WorkflowExecution>
+  ): Promise<WorkflowExecution> {
+    const [updated] = await db
+      .update(workflowExecutions)
+      .set(data)
+      .where(and(eq(workflowExecutions.id, id), eq(workflowExecutions.accountId, accountId)))
+      .returning();
+    return updated;
+  }
+
+  async createWorkflowExecutionStep(step: InsertWorkflowExecutionStep): Promise<WorkflowExecutionStep> {
+    const [newStep] = await db
+      .insert(workflowExecutionSteps)
+      .values({
+        executionId: step.executionId,
+        stepIndex: step.stepIndex,
+        actionType: step.actionType,
+        actionConfig: step.actionConfig,
+        status: step.status ?? 'pending',
+        result: step.result,
+        errorMessage: step.errorMessage,
+        startedAt: step.startedAt,
+        completedAt: step.completedAt,
+      })
+      .returning();
+    return newStep;
+  }
+
+  async updateWorkflowExecutionStep(
+    id: number,
+    data: Partial<WorkflowExecutionStep>
+  ): Promise<WorkflowExecutionStep> {
+    const [updated] = await db
+      .update(workflowExecutionSteps)
+      .set(data)
+      .where(eq(workflowExecutionSteps.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getWorkflowExecutions(
+    workflowId: number,
+    accountId: number,
+    limit: number = 50
+  ): Promise<WorkflowExecution[]> {
+    return await db
+      .select()
+      .from(workflowExecutions)
+      .where(
+        and(
+          eq(workflowExecutions.workflowId, workflowId),
+          eq(workflowExecutions.accountId, accountId)
+        )
+      )
+      .orderBy(desc(workflowExecutions.startedAt))
+      .limit(limit);
+  }
+
+  async getWorkflowExecutionSteps(executionId: number): Promise<WorkflowExecutionStep[]> {
+    return await db
+      .select()
+      .from(workflowExecutionSteps)
+      .where(eq(workflowExecutionSteps.executionId, executionId))
+      .orderBy(workflowExecutionSteps.stepIndex);
+  }
+
+  async incrementWorkflowExecutionCount(workflowId: number, accountId: number): Promise<void> {
+    await db
+      .update(workflows)
+      .set({
+        executionCount: sql`${workflows.executionCount} + 1`,
+        lastExecutedAt: sql`NOW()`,
+      })
+      .where(and(eq(workflows.id, workflowId), eq(workflows.accountId, accountId)));
   }
 }
 
