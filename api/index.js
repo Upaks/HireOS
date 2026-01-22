@@ -13,12 +13,16 @@ var __export = (target, all) => {
 var schema_exports = {};
 __export(schema_exports, {
   UserRoles: () => UserRoles,
+  accountMembers: () => accountMembers,
+  accounts: () => accounts,
   activityLogs: () => activityLogs,
   candidates: () => candidates,
+  comments: () => comments,
   emailLogs: () => emailLogs,
   evaluations: () => evaluations,
   formTemplates: () => formTemplates,
   ghlTokens: () => ghlTokens,
+  inAppNotifications: () => inAppNotifications,
   insertCandidateSchema: () => insertCandidateSchema,
   insertJobSchema: () => insertJobSchema,
   insertUserSchema: () => insertUserSchema,
@@ -28,7 +32,10 @@ __export(schema_exports, {
   notificationQueue: () => notificationQueue,
   offers: () => offers,
   platformIntegrations: () => platformIntegrations,
-  users: () => users
+  users: () => users,
+  workflowExecutionSteps: () => workflowExecutionSteps,
+  workflowExecutions: () => workflowExecutions,
+  workflows: () => workflows
 });
 import {
   pgTable,
@@ -41,10 +48,24 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-var users, insertUserSchema, jobs, insertJobSchema, jobPlatforms, platformIntegrations, formTemplates, candidates, insertCandidateSchema, interviews, evaluations, offers, activityLogs, emailLogs, notificationQueue, ghlTokens, UserRoles;
+var accounts, accountMembers, users, insertUserSchema, jobs, insertJobSchema, jobPlatforms, platformIntegrations, comments, formTemplates, candidates, insertCandidateSchema, interviews, evaluations, offers, activityLogs, emailLogs, inAppNotifications, notificationQueue, ghlTokens, workflows, workflowExecutions, workflowExecutionSteps, UserRoles;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
+    accounts = pgTable("accounts", {
+      id: serial("id").primaryKey(),
+      name: text("name").notNull(),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    accountMembers = pgTable("account_members", {
+      id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
+      userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+      role: text("role").notNull().default("hiringManager"),
+      joinedAt: timestamp("joined_at").defaultNow().notNull(),
+      invitedById: integer("invited_by_id").references(() => users.id)
+    });
     users = pgTable("users", {
       id: serial("id").primaryKey(),
       username: text("username").notNull().unique(),
@@ -56,6 +77,20 @@ var init_schema = __esm({
       // Optional: User's personal calendar scheduling link
       calendarProvider: text("calendar_provider"),
       // Optional: "calendly", "cal.com", "google", "custom"
+      calendlyToken: text("calendly_token"),
+      // Optional: Encrypted Calendly Personal Access Token
+      calendlyWebhookId: text("calendly_webhook_id"),
+      // Optional: Calendly webhook subscription ID
+      openRouterApiKey: text("openrouter_api_key"),
+      // Optional: OpenRouter API key for AI features (resume parsing, matching)
+      slackWebhookUrl: text("slack_webhook_url"),
+      // Optional: User's Slack webhook URL for notifications
+      slackNotificationScope: text("slack_notification_scope"),
+      // Optional: "all_users" or "specific_roles"
+      slackNotificationRoles: jsonb("slack_notification_roles"),
+      // Optional: Array of roles to notify if scope is "specific_roles"
+      slackNotificationEvents: jsonb("slack_notification_events"),
+      // Optional: Array of events to notify about ["interview_scheduled", "offer_accepted", "offer_sent", "job_posted", "new_application"]
       // Email templates (stored as JSONB for flexibility)
       emailTemplates: jsonb("email_templates"),
       // { interview: {subject, body}, offer: {subject, body}, ... }
@@ -70,6 +105,7 @@ var init_schema = __esm({
     });
     jobs = pgTable("jobs", {
       id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
       title: text("title").notNull(),
       suggestedTitle: text("suggested_title"),
       description: text("description").notNull(),
@@ -108,6 +144,7 @@ var init_schema = __esm({
     });
     jobPlatforms = pgTable("job_platforms", {
       id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
       jobId: integer("job_id").references(() => jobs.id).notNull(),
       platform: text("platform").notNull(),
       // LinkedIn, onlinejobs.ph, etc
@@ -121,6 +158,8 @@ var init_schema = __esm({
     });
     platformIntegrations = pgTable("platform_integrations", {
       id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }),
+      // Multi-tenant: NULL for system-wide integrations
       userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
       // For user-scoped integrations (CRM/ATS). NULL for system-wide (job posting platforms)
       platformId: text("platform_id").notNull(),
@@ -154,8 +193,23 @@ var init_schema = __esm({
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
+    comments = pgTable("comments", {
+      id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
+      userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+      entityType: text("entity_type").notNull(),
+      // "candidate" or "job"
+      entityId: integer("entity_id").notNull(),
+      // ID of the candidate or job
+      content: text("content").notNull(),
+      mentions: jsonb("mentions"),
+      // Array of user IDs mentioned in the comment: [1, 2, 3]
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
     formTemplates = pgTable("form_templates", {
       id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
       name: text("name").notNull(),
       // "Default Application Form", "Developer Application Form", etc.
       description: text("description"),
@@ -167,6 +221,7 @@ var init_schema = __esm({
     });
     candidates = pgTable("candidates", {
       id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
       jobId: integer("job_id").references(() => jobs.id),
       name: text("name").notNull(),
       email: text("email").notNull(),
@@ -199,6 +254,10 @@ var init_schema = __esm({
       notes: text("notes"),
       applicationData: jsonb("application_data"),
       // Stores custom form field answers
+      matchScore: integer("match_score"),
+      // AI-generated match score (0-100) against job requirements
+      parsedResumeData: jsonb("parsed_resume_data"),
+      // Extracted data from resume parsing (education, experience details, etc.)
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull(),
       job: jsonb("job")
@@ -206,11 +265,14 @@ var init_schema = __esm({
     });
     insertCandidateSchema = createInsertSchema(candidates).omit({
       id: true,
+      accountId: true,
+      // Added server-side, not from client
       createdAt: true,
       updatedAt: true
     });
     interviews = pgTable("interviews", {
       id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
       candidateId: integer("candidate_id").references(() => candidates.id).notNull(),
       scheduledDate: timestamp("scheduled_date"),
       conductedDate: timestamp("conducted_date"),
@@ -226,6 +288,7 @@ var init_schema = __esm({
     });
     evaluations = pgTable("evaluations", {
       id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
       interviewId: integer("interview_id").references(() => interviews.id).notNull(),
       technicalScore: integer("technical_score"),
       communicationScore: integer("communication_score"),
@@ -244,6 +307,7 @@ var init_schema = __esm({
     });
     offers = pgTable("offers", {
       id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
       candidateId: integer("candidate_id").references(() => candidates.id).notNull(),
       offerType: text("offer_type").notNull(),
       // Full-time, Contract
@@ -262,6 +326,7 @@ var init_schema = __esm({
     });
     activityLogs = pgTable("activity_logs", {
       id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
       userId: integer("user_id").references(() => users.id),
       action: text("action").notNull(),
       // Created job, sent assessment, scheduled interview, etc.
@@ -281,6 +346,21 @@ var init_schema = __esm({
       // pending, sent, failed
       error: text("error"),
       sentAt: timestamp("sent_at"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    inAppNotifications = pgTable("in_app_notifications", {
+      id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
+      userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+      type: text("type").notNull(),
+      // "interview_scheduled", "offer_sent", "offer_accepted", "offer_rejected", "job_posted", "new_application", "candidate_status_changed", "interview_evaluated"
+      title: text("title").notNull(),
+      message: text("message").notNull(),
+      read: boolean("read").default(false).notNull(),
+      link: text("link"),
+      // URL to navigate to when clicked (e.g., "/candidates/123")
+      metadata: jsonb("metadata"),
+      // Additional data: { candidateId, jobId, interviewId, etc. }
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     notificationQueue = pgTable("notification_queue", {
@@ -306,6 +386,60 @@ var init_schema = __esm({
       // optional: match GHL companyId if needed
       updatedAt: timestamp("updated_at").defaultNow(),
       expiresAt: timestamp("expires_at")
+    });
+    workflows = pgTable("workflows", {
+      id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
+      name: text("name").notNull(),
+      description: text("description"),
+      isActive: boolean("is_active").default(true).notNull(),
+      triggerType: text("trigger_type").notNull(),
+      // "candidate_status_change", "interview_scheduled", "interview_completed", "manual", "scheduled"
+      triggerConfig: jsonb("trigger_config"),
+      // { status: "interview_scheduled", jobId: 123, etc. }
+      steps: jsonb("steps").notNull(),
+      // Array of workflow steps with actions and conditions
+      createdById: integer("created_by_id").references(() => users.id),
+      executionCount: integer("execution_count").default(0).notNull(),
+      // Track how many times workflow has run
+      lastExecutedAt: timestamp("last_executed_at"),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    workflowExecutions = pgTable("workflow_executions", {
+      id: serial("id").primaryKey(),
+      accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
+      workflowId: integer("workflow_id").references(() => workflows.id, { onDelete: "cascade" }).notNull(),
+      status: text("status").notNull().default("running"),
+      // "running", "completed", "failed", "cancelled"
+      triggerEntityType: text("trigger_entity_type"),
+      // "candidate", "interview", "job"
+      triggerEntityId: integer("trigger_entity_id"),
+      // ID of the candidate/interview/job that triggered this
+      executionData: jsonb("execution_data"),
+      // Store context data (candidate info, interview info, etc.)
+      errorMessage: text("error_message"),
+      startedAt: timestamp("started_at").defaultNow().notNull(),
+      completedAt: timestamp("completed_at"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    workflowExecutionSteps = pgTable("workflow_execution_steps", {
+      id: serial("id").primaryKey(),
+      executionId: integer("execution_id").references(() => workflowExecutions.id, { onDelete: "cascade" }).notNull(),
+      stepIndex: integer("step_index").notNull(),
+      // Which step in the workflow (0, 1, 2, etc.)
+      actionType: text("action_type").notNull(),
+      // "send_email", "update_status", "create_interview", "notify_slack", etc.
+      actionConfig: jsonb("action_config").notNull(),
+      // Configuration for this action
+      status: text("status").notNull().default("pending"),
+      // "pending", "running", "completed", "failed", "skipped"
+      result: jsonb("result"),
+      // Store action result (e.g., email sent, status updated, etc.)
+      errorMessage: text("error_message"),
+      startedAt: timestamp("started_at"),
+      completedAt: timestamp("completed_at"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
     });
     UserRoles = {
       HIRING_MANAGER: "hiringManager",
@@ -356,6 +490,11 @@ var init_email_validator = __esm({
 });
 
 // server/db.ts
+var db_exports = {};
+__export(db_exports, {
+  db: () => db,
+  pool: () => pool
+});
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 var dbUrl, isSupabase, pool, db;
@@ -363,8 +502,12 @@ var init_db = __esm({
   "server/db.ts"() {
     "use strict";
     init_schema();
-    if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+    if (process.env.NODE_ENV !== "production" && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+      console.warn("\u26A0\uFE0F  WARNING: TLS certificate validation disabled in development mode only");
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    } else if (process.env.NODE_ENV === "production") {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = "1";
+      console.log("\u2705 TLS certificate validation enabled for production");
     }
     if (!process.env.DATABASE_URL) {
       throw new Error(
@@ -378,10 +521,11 @@ var init_db = __esm({
     isSupabase = dbUrl.includes("supabase.co") || dbUrl.includes("pooler.supabase.com");
     pool = new Pool({
       connectionString: dbUrl,
-      // Force SSL config for Supabase - rejectUnauthorized: false allows self-signed certs
-      // This is required for Supabase's SSL certificates
+      // SECURITY FIX: Validate SSL certificates in production
+      // Supabase uses valid SSL certificates - we should validate them
       ssl: isSupabase ? {
-        rejectUnauthorized: false
+        rejectUnauthorized: process.env.NODE_ENV === "production"
+        // Validate in production
       } : dbUrl.includes("sslmode=require") ? true : void 0,
       connectionTimeoutMillis: 15e3,
       idleTimeoutMillis: 3e4,
@@ -408,10 +552,440 @@ var init_db = __esm({
   }
 });
 
+// server/security/encryption.ts
+import crypto from "crypto";
+function encrypt(plaintext) {
+  if (!ENCRYPTION_KEY) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Encryption disabled: ENCRYPTION_KEY not set");
+      return plaintext;
+    }
+    throw new Error("ENCRYPTION_KEY must be set in production");
+  }
+  if (!plaintext) {
+    return "";
+  }
+  try {
+    const key = Buffer.from(ENCRYPTION_KEY, "hex");
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+    let encrypted = cipher.update(plaintext, "utf8", "base64");
+    encrypted += cipher.final("base64");
+    const authTag = cipher.getAuthTag();
+    return `${iv.toString("base64")}:${authTag.toString("base64")}:${encrypted}`;
+  } catch (error) {
+    console.error("Encryption error:", error);
+    throw new Error("Failed to encrypt data");
+  }
+}
+function isValidBase64(str) {
+  try {
+    const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
+    if (!base64Regex.test(str)) {
+      return false;
+    }
+    Buffer.from(str, "base64");
+    return true;
+  } catch {
+    return false;
+  }
+}
+function decrypt(ciphertext) {
+  if (!ENCRYPTION_KEY) {
+    if (process.env.NODE_ENV !== "production") {
+      return ciphertext;
+    }
+    throw new Error("ENCRYPTION_KEY must be set in production");
+  }
+  if (!ciphertext) {
+    return ciphertext;
+  }
+  const parts = ciphertext.split(":");
+  if (parts.length !== 3) {
+    return ciphertext;
+  }
+  const [ivPart, authTagPart, encryptedPart] = parts;
+  if (!isValidBase64(ivPart) || !isValidBase64(authTagPart) || !isValidBase64(encryptedPart)) {
+    return ciphertext;
+  }
+  try {
+    const iv = Buffer.from(ivPart, "base64");
+    const authTag = Buffer.from(authTagPart, "base64");
+    if (iv.length !== 16 || authTag.length !== 16) {
+      return ciphertext;
+    }
+  } catch {
+    return ciphertext;
+  }
+  try {
+    const key = Buffer.from(ENCRYPTION_KEY, "hex");
+    const iv = Buffer.from(parts[0], "base64");
+    const authTag = Buffer.from(parts[1], "base64");
+    const encrypted = parts[2];
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
+    let decrypted = decipher.update(encrypted, "base64", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("Decryption failed, returning original value (may be legacy data):", error);
+    }
+    return ciphertext;
+  }
+}
+var ENCRYPTION_KEY, ALGORITHM;
+var init_encryption = __esm({
+  "server/security/encryption.ts"() {
+    "use strict";
+    ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+    ALGORITHM = "aes-256-gcm";
+    if (!ENCRYPTION_KEY) {
+      console.warn("\u26A0\uFE0F  WARNING: ENCRYPTION_KEY not set. Sensitive data will not be encrypted.");
+    }
+    if (ENCRYPTION_KEY && ENCRYPTION_KEY.length !== 64) {
+      console.warn("\u26A0\uFE0F  WARNING: ENCRYPTION_KEY should be 64 hex characters (32 bytes) for AES-256");
+    }
+  }
+});
+
+// server/api/utils.ts
+import { z as z2 } from "zod";
+function validateRequest(schema) {
+  return (req, res, next) => {
+    try {
+      const result = schema.parse(req.body);
+      req.body = result;
+      next();
+    } catch (error) {
+      if (error instanceof z2.ZodError) {
+        return res.status(400).json({
+          message: "Invalid request data",
+          errors: error.errors.map((err) => ({
+            path: err.path.join("."),
+            message: err.message
+          }))
+        });
+      }
+      next(error);
+    }
+  };
+}
+function handleApiError(error, res) {
+  console.error("API Error:", error);
+  if (error instanceof z2.ZodError) {
+    return res.status(400).json({
+      message: "Invalid request data",
+      errors: error.errors.map((err) => ({
+        path: err.path.join("."),
+        message: err.message
+      }))
+    });
+  }
+  if (error instanceof Error) {
+    if (error.message === "Candidate email does not exist" || error.isNonExistentEmailError) {
+      return res.status(422).json({
+        message: "Candidate email does not exist",
+        errorType: "non_existent_email"
+      });
+    }
+    if (error.message.includes("not found") || error.message.includes("doesn't exist")) {
+      return res.status(404).json({ message: error.message });
+    }
+    if (error.message.includes("unauthorized") || error.message.includes("not authenticated")) {
+      return res.status(401).json({ message: error.message });
+    }
+    if (error.message.includes("forbidden") || error.message.includes("not allowed")) {
+      return res.status(403).json({ message: error.message });
+    }
+    if (error.message.includes("already exists") || error.message.includes("duplicate")) {
+      return res.status(409).json({ message: error.message });
+    }
+    return res.status(500).json({
+      message: "An error occurred while processing your request",
+      error: error.message
+    });
+  }
+  return res.status(500).json({
+    message: "An unexpected error occurred",
+    error: String(error)
+  });
+}
+function isAuthorized(req) {
+  if (req.isAuthenticated()) {
+    return true;
+  }
+  const apiKey = req.headers["x-api-key"] || req.headers["authorization"]?.replace("Bearer ", "");
+  const validApiKey = process.env.HireOS_API_Key;
+  return apiKey === validApiKey;
+}
+var init_utils = __esm({
+  "server/api/utils.ts"() {
+    "use strict";
+  }
+});
+
+// server/api/gmail-integration.ts
+var gmail_integration_exports = {};
+__export(gmail_integration_exports, {
+  sendGmailEmail: () => sendGmailEmail,
+  setupGmailIntegrationRoutes: () => setupGmailIntegrationRoutes
+});
+import { google } from "googleapis";
+import { eq } from "drizzle-orm";
+function setupGmailIntegrationRoutes(app2) {
+  app2.get("/api/gmail/auth", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const protocol = req.get("x-forwarded-proto") || req.protocol || (req.secure ? "https" : "http");
+      const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5000";
+      let redirectUri = `${protocol}://${host}/api/gmail/callback`;
+      const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
+      if (envRedirectUri) {
+        try {
+          const envUrl = new URL(envRedirectUri);
+          const currentUrl = new URL(redirectUri);
+          if (envUrl.hostname === currentUrl.hostname || !host.includes("ngrok") && !host.includes("localhost")) {
+            redirectUri = `${envUrl.protocol}//${envUrl.host}/api/gmail/callback`;
+          }
+        } catch (e) {
+        }
+      }
+      redirectUri = redirectUri.replace(/\/$/, "");
+      const oauth2Client = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        redirectUri
+      );
+      const authUrl = oauth2Client.generateAuthUrl({
+        access_type: "offline",
+        // Get refresh token
+        scope: [
+          "https://www.googleapis.com/auth/gmail.send"
+          // Send emails only
+        ],
+        prompt: "consent",
+        // Force consent screen to get refresh token
+        state: JSON.stringify({ userId: req.user.id })
+        // Pass user ID in state
+      });
+      res.json({ authUrl });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/gmail/callback", async (req, res) => {
+    try {
+      const { code, state } = req.query;
+      if (!code) {
+        return res.redirect(`/integrations?error=oauth_cancelled`);
+      }
+      let userId;
+      try {
+        const stateData = JSON.parse(state);
+        userId = stateData.userId;
+      } catch {
+        return res.redirect(`/integrations?error=invalid_state`);
+      }
+      const protocol = req.get("x-forwarded-proto") || req.protocol || (req.secure ? "https" : "http");
+      const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5000";
+      let redirectUri = `${protocol}://${host}/api/gmail/callback`;
+      const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
+      if (envRedirectUri) {
+        try {
+          const envUrl = new URL(envRedirectUri);
+          const currentUrl = new URL(redirectUri);
+          if (envUrl.hostname === currentUrl.hostname || !host.includes("ngrok") && !host.includes("localhost")) {
+            redirectUri = `${envUrl.protocol}//${envUrl.host}/api/gmail/callback`;
+          }
+        } catch (e) {
+        }
+      }
+      redirectUri = redirectUri.replace(/\/$/, "");
+      const oauth2Client = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        redirectUri
+      );
+      const { tokens: tokens2 } = await oauth2Client.getToken(code);
+      if (!tokens2.access_token) {
+        return res.redirect(`/integrations?error=no_access_token`);
+      }
+      const existing = await storage.getPlatformIntegration("gmail", userId);
+      const credentials = {
+        accessToken: tokens2.access_token,
+        refreshToken: tokens2.refresh_token || null
+      };
+      if (existing) {
+        const existingId = existing.id;
+        if (existingId) {
+          await db.delete(platformIntegrations).where(eq(platformIntegrations.id, existingId));
+        }
+        await storage.createPlatformIntegration({
+          userId,
+          platformId: "gmail",
+          platformName: "Gmail",
+          platformType: "communication",
+          status: "connected",
+          credentials,
+          syncDirection: "one-way",
+          isEnabled: true
+        });
+      } else {
+        await storage.createPlatformIntegration({
+          userId,
+          platformId: "gmail",
+          platformName: "Gmail",
+          platformType: "communication",
+          status: "connected",
+          credentials,
+          syncDirection: "one-way",
+          isEnabled: true
+        });
+      }
+      res.redirect(`/integrations?gmail_connected=true`);
+    } catch (error) {
+      console.error("Gmail OAuth callback error:", error);
+      res.redirect(`/integrations?error=${encodeURIComponent(error.message)}`);
+    }
+  });
+  app2.get("/api/gmail/status", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = req.user.id;
+      const integration = await storage.getPlatformIntegration("gmail", userId);
+      res.json({
+        connected: integration?.status === "connected" || false
+      });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.post("/api/gmail/disconnect", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = req.user.id;
+      const integration = await storage.getPlatformIntegration("gmail", userId);
+      if (!integration) {
+        return res.status(404).json({ message: "Gmail integration not found" });
+      }
+      if (integration.id) {
+        const { db: dbInstance } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { platformIntegrations: platformIntegrationsTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq9 } = await import("drizzle-orm");
+        await dbInstance.delete(platformIntegrationsTable).where(eq9(platformIntegrationsTable.id, integration.id));
+      } else {
+        const { db: dbInstance } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { platformIntegrations: platformIntegrationsTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq9, and: and7 } = await import("drizzle-orm");
+        await dbInstance.delete(platformIntegrationsTable).where(
+          and7(
+            eq9(platformIntegrationsTable.platformId, "gmail"),
+            eq9(platformIntegrationsTable.userId, userId)
+          )
+        );
+      }
+      res.json({ message: "Gmail disconnected successfully" });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.post("/api/gmail/test", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const { to, subject, body } = req.body;
+      if (!to || !subject || !body) {
+        return res.status(400).json({ message: "to, subject, and body are required" });
+      }
+      const userId = req.user.id;
+      await sendGmailEmail(userId, to, subject, body);
+      res.json({ message: "Test email sent successfully" });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+}
+async function sendGmailEmail(userId, to, subject, body, fromName) {
+  try {
+    const integration = await storage.getPlatformIntegration("gmail", userId);
+    if (!integration || !integration.credentials) {
+      throw new Error("Gmail integration not found. Please connect your Gmail account first.");
+    }
+    const credentials = integration.credentials;
+    if (!credentials.accessToken) {
+      throw new Error("Gmail access token not found. Please reconnect your Gmail account.");
+    }
+    const user = await storage.getUser(userId);
+    const senderName = fromName || user?.fullName || "HireOS";
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET
+    );
+    oauth2Client.setCredentials({
+      access_token: credentials.accessToken,
+      refresh_token: credentials.refreshToken
+    });
+    if (credentials.refreshToken) {
+      try {
+        const { credentials: newCredentials } = await oauth2Client.refreshAccessToken();
+        if (newCredentials.access_token) {
+          await storage.updatePlatformIntegration("gmail", {
+            credentials: {
+              ...credentials,
+              accessToken: newCredentials.access_token,
+              refreshToken: newCredentials.refresh_token || credentials.refreshToken
+            }
+          });
+          oauth2Client.setCredentials(newCredentials);
+        }
+      } catch (refreshError) {
+        console.warn("Failed to refresh Gmail token, using existing token:", refreshError);
+      }
+    }
+    const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+    const emailLines = [
+      `From: ${senderName} <${user?.email || "noreply@hireos.com"}>`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      "Content-Type: text/html; charset=utf-8",
+      "",
+      body
+    ];
+    const email = emailLines.join("\r\n").trim();
+    const encodedMessage = Buffer.from(email).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    await gmail.users.messages.send({
+      userId: "me",
+      requestBody: {
+        raw: encodedMessage
+      }
+    });
+  } catch (error) {
+    console.error("Error sending Gmail email:", error);
+    throw new Error(`Failed to send email: ${error.message || "Unknown error"}`);
+  }
+}
+var init_gmail_integration = __esm({
+  "server/api/gmail-integration.ts"() {
+    "use strict";
+    init_storage();
+    init_utils();
+    init_db();
+    init_schema();
+  }
+});
+
 // server/storage.ts
 import session from "express-session";
 import connectPg from "connect-pg-simple";
-import { and, eq, or, isNull } from "drizzle-orm";
+import { and as and2, eq as eq2, or, isNull, desc, sql } from "drizzle-orm";
 var PostgresSessionStore, DatabaseStorage, storage;
 var init_storage = __esm({
   "server/storage.ts"() {
@@ -419,6 +993,7 @@ var init_storage = __esm({
     init_schema();
     init_email_validator();
     init_db();
+    init_encryption();
     PostgresSessionStore = connectPg(session);
     DatabaseStorage = class {
       sessionStore;
@@ -428,11 +1003,68 @@ var init_storage = __esm({
           createTableIfMissing: true
         });
       }
+      // SECURITY: Helper to decrypt sensitive user fields
+      decryptUserFields(user) {
+        if (!user) return user;
+        const decrypted = { ...user };
+        if (decrypted.openRouterApiKey) {
+          decrypted.openRouterApiKey = decrypt(decrypted.openRouterApiKey);
+        }
+        if (decrypted.calendlyToken) {
+          decrypted.calendlyToken = decrypt(decrypted.calendlyToken);
+        }
+        if (decrypted.slackWebhookUrl) {
+          decrypted.slackWebhookUrl = decrypt(decrypted.slackWebhookUrl);
+        }
+        return decrypted;
+      }
+      // SECURITY: Helper to encrypt sensitive user fields before saving
+      encryptUserFields(data) {
+        const encrypted = { ...data };
+        if (encrypted.openRouterApiKey !== void 0 && encrypted.openRouterApiKey !== null) {
+          encrypted.openRouterApiKey = encrypt(encrypted.openRouterApiKey);
+        }
+        if (encrypted.calendlyToken !== void 0 && encrypted.calendlyToken !== null) {
+          encrypted.calendlyToken = encrypt(encrypted.calendlyToken);
+        }
+        if (encrypted.slackWebhookUrl !== void 0 && encrypted.slackWebhookUrl !== null) {
+          encrypted.slackWebhookUrl = encrypt(encrypted.slackWebhookUrl);
+        }
+        return encrypted;
+      }
+      // Account operations
+      async getUserAccountId(userId) {
+        try {
+          const [member] = await db.select({ accountId: accountMembers.accountId }).from(accountMembers).where(eq2(accountMembers.userId, userId)).limit(1);
+          return member?.accountId || null;
+        } catch (error) {
+          console.error("Error getting user account ID:", error);
+          return null;
+        }
+      }
+      async createAccount(name, userId, role = UserRoles.ADMIN) {
+        const [account] = await db.insert(accounts).values({
+          name,
+          createdAt: /* @__PURE__ */ new Date(),
+          updatedAt: /* @__PURE__ */ new Date()
+        }).returning();
+        await db.insert(accountMembers).values({
+          accountId: account.id,
+          userId,
+          role,
+          joinedAt: /* @__PURE__ */ new Date()
+        });
+        return account;
+      }
+      async getAccountMembers(accountId) {
+        return await db.select().from(accountMembers).where(eq2(accountMembers.accountId, accountId));
+      }
       // User operations
       async getUser(id) {
         try {
-          const [user] = await db.select().from(users).where(eq(users.id, id));
-          return user || void 0;
+          const [user] = await db.select().from(users).where(eq2(users.id, id));
+          if (!user) return void 0;
+          return this.decryptUserFields(user);
         } catch (error) {
           console.error("Error getting user by ID:", error);
           return void 0;
@@ -440,8 +1072,9 @@ var init_storage = __esm({
       }
       async getUserByUsername(username) {
         try {
-          const [user] = await db.select().from(users).where(eq(users.username, username));
-          return user || void 0;
+          const [user] = await db.select().from(users).where(eq2(users.username, username));
+          if (!user) return void 0;
+          return this.decryptUserFields(user);
         } catch (error) {
           if (error instanceof Error) {
             console.error(`Error getting user by username "${username}":`, error.message);
@@ -456,23 +1089,50 @@ var init_storage = __esm({
       }
       async createUser(insertUser) {
         const role = insertUser.role || UserRoles.HIRING_MANAGER;
-        const [user] = await db.insert(users).values({ ...insertUser, role, createdAt: /* @__PURE__ */ new Date() }).returning();
-        return user;
+        const encryptedData = this.encryptUserFields(insertUser);
+        const [user] = await db.insert(users).values({ ...encryptedData, role, createdAt: /* @__PURE__ */ new Date() }).returning();
+        return this.decryptUserFields(user);
       }
-      async getAllUsers() {
-        return await db.select().from(users);
+      async getAllUsers(accountId) {
+        let usersList;
+        if (accountId) {
+          usersList = await db.select({
+            id: users.id,
+            username: users.username,
+            password: users.password,
+            fullName: users.fullName,
+            email: users.email,
+            role: users.role,
+            createdAt: users.createdAt,
+            calendarLink: users.calendarLink,
+            emailTemplates: users.emailTemplates,
+            calendarProvider: users.calendarProvider,
+            calendlyToken: users.calendlyToken,
+            calendlyWebhookId: users.calendlyWebhookId,
+            openRouterApiKey: users.openRouterApiKey,
+            slackWebhookUrl: users.slackWebhookUrl,
+            slackNotificationScope: users.slackNotificationScope,
+            slackNotificationRoles: users.slackNotificationRoles,
+            slackNotificationEvents: users.slackNotificationEvents
+          }).from(users).innerJoin(accountMembers, eq2(users.id, accountMembers.userId)).where(eq2(accountMembers.accountId, accountId));
+        } else {
+          usersList = await db.select().from(users);
+        }
+        return usersList.map((user) => this.decryptUserFields(user));
       }
       async updateUser(id, data) {
-        const [updatedUser] = await db.update(users).set(data).where(eq(users.id, id)).returning();
-        return updatedUser;
+        const encryptedData = this.encryptUserFields(data);
+        const [updatedUser] = await db.update(users).set(encryptedData).where(eq2(users.id, id)).returning();
+        return this.decryptUserFields(updatedUser);
       }
       async deleteUser(id) {
-        await db.delete(users).where(eq(users.id, id));
+        await db.delete(users).where(eq2(users.id, id));
       }
       // Job operations
       async createJob(job) {
         const [newJob] = await db.insert(jobs).values({
           ...job,
+          accountId: job.accountId,
           status: "draft",
           createdAt: /* @__PURE__ */ new Date(),
           updatedAt: /* @__PURE__ */ new Date(),
@@ -484,26 +1144,28 @@ var init_storage = __esm({
         }).returning();
         return newJob;
       }
-      async getJob(id) {
-        const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+      async getJob(id, accountId) {
+        const [job] = await db.select().from(jobs).where(and2(eq2(jobs.id, id), eq2(jobs.accountId, accountId)));
         return job || void 0;
       }
-      async getJobs(status) {
+      async getJobs(accountId, status) {
+        const conditions = [eq2(jobs.accountId, accountId)];
         if (status && status !== "all") {
-          return await db.select().from(jobs).where(eq(jobs.status, status));
+          conditions.push(eq2(jobs.status, status));
         }
-        return await db.select().from(jobs);
+        return await db.select().from(jobs).where(and2(...conditions));
       }
-      async updateJob(id, data) {
+      async updateJob(id, accountId, data) {
         const [updatedJob] = await db.update(jobs).set({
           ...data,
           updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq(jobs.id, id)).returning();
+        }).where(and2(eq2(jobs.id, id), eq2(jobs.accountId, accountId))).returning();
         return updatedJob;
       }
       // Job platform operations
       async createJobPlatform(platform) {
         const [newPlatform] = await db.insert(jobPlatforms).values({
+          accountId: platform.accountId,
           jobId: platform.jobId,
           platform: platform.platform,
           platformJobId: platform.platformJobId || "",
@@ -515,136 +1177,200 @@ var init_storage = __esm({
         }).returning();
         return newPlatform;
       }
-      async getJobPlatforms(jobId) {
-        return await db.select().from(jobPlatforms).where(eq(jobPlatforms.jobId, jobId));
+      async getJobPlatforms(jobId, accountId) {
+        return await db.select().from(jobPlatforms).where(and2(eq2(jobPlatforms.jobId, jobId), eq2(jobPlatforms.accountId, accountId)));
       }
       // Platform integration operations
       async getPlatformIntegrations(userId) {
+        let integrations;
         if (userId) {
-          return await db.select().from(platformIntegrations).where(
+          integrations = await db.select().from(platformIntegrations).where(
             // User's integrations OR system-wide (user_id IS NULL)
             or(
-              eq(platformIntegrations.userId, userId),
+              eq2(platformIntegrations.userId, userId),
               isNull(platformIntegrations.userId)
             )
           ).orderBy(platformIntegrations.platformName);
+        } else {
+          integrations = await db.select().from(platformIntegrations).orderBy(platformIntegrations.platformName);
         }
-        return await db.select().from(platformIntegrations).orderBy(platformIntegrations.platformName);
+        return integrations.map((integration) => this.decryptIntegrationFields(integration));
+      }
+      // SECURITY: Helper to decrypt sensitive platform integration fields
+      decryptIntegrationFields(integration) {
+        if (!integration) return integration;
+        const decrypted = { ...integration };
+        if (decrypted.oauthToken) {
+          decrypted.oauthToken = decrypt(decrypted.oauthToken);
+        }
+        if (decrypted.oauthRefreshToken) {
+          decrypted.oauthRefreshToken = decrypt(decrypted.oauthRefreshToken);
+        }
+        if (decrypted.credentials && typeof decrypted.credentials === "object") {
+          const creds = decrypted.credentials;
+          if (typeof creds === "string") {
+            try {
+              decrypted.credentials = JSON.parse(decrypt(creds));
+            } catch {
+              decrypted.credentials = creds;
+            }
+          } else {
+            const decryptedCreds = { ...creds };
+            if (decryptedCreds.apiKey) {
+              decryptedCreds.apiKey = decrypt(decryptedCreds.apiKey);
+            }
+            if (decryptedCreds.apiSecret) {
+              decryptedCreds.apiSecret = decrypt(decryptedCreds.apiSecret);
+            }
+            if (decryptedCreds.accessToken) {
+              decryptedCreds.accessToken = decrypt(decryptedCreds.accessToken);
+            }
+            decrypted.credentials = decryptedCreds;
+          }
+        }
+        return decrypted;
+      }
+      // SECURITY: Helper to encrypt sensitive platform integration fields before saving
+      encryptIntegrationFields(data) {
+        const encrypted = { ...data };
+        if (encrypted.oauthToken !== void 0 && encrypted.oauthToken !== null) {
+          encrypted.oauthToken = encrypt(encrypted.oauthToken);
+        }
+        if (encrypted.oauthRefreshToken !== void 0 && encrypted.oauthRefreshToken !== null) {
+          encrypted.oauthRefreshToken = encrypt(encrypted.oauthRefreshToken);
+        }
+        if (encrypted.credentials && typeof encrypted.credentials === "object") {
+          const creds = encrypted.credentials;
+          const encryptedCreds = { ...creds };
+          if (encryptedCreds.apiKey) {
+            encryptedCreds.apiKey = encrypt(encryptedCreds.apiKey);
+          }
+          if (encryptedCreds.apiSecret) {
+            encryptedCreds.apiSecret = encrypt(encryptedCreds.apiSecret);
+          }
+          if (encryptedCreds.accessToken) {
+            encryptedCreds.accessToken = encrypt(encryptedCreds.accessToken);
+          }
+          encrypted.credentials = encryptedCreds;
+        }
+        return encrypted;
       }
       async getPlatformIntegration(platformId, userId) {
+        let integration;
         if (userId) {
-          const [integration2] = await db.select().from(platformIntegrations).where(
-            and(
-              eq(platformIntegrations.platformId, platformId),
-              eq(platformIntegrations.userId, userId)
+          const [result] = await db.select().from(platformIntegrations).where(
+            and2(
+              eq2(platformIntegrations.platformId, platformId),
+              eq2(platformIntegrations.userId, userId)
             )
           );
-          return integration2 || void 0;
+          integration = result || void 0;
+        } else {
+          const [result] = await db.select().from(platformIntegrations).where(eq2(platformIntegrations.platformId, platformId));
+          integration = result || void 0;
         }
-        const [integration] = await db.select().from(platformIntegrations).where(eq(platformIntegrations.platformId, platformId));
-        return integration || void 0;
+        if (!integration) return void 0;
+        return this.decryptIntegrationFields(integration);
       }
       // Get CRM/ATS integrations for a user
       async getCRMIntegrations(userId) {
-        return await db.select().from(platformIntegrations).where(
-          and(
-            eq(platformIntegrations.userId, userId),
+        const integrations = await db.select().from(platformIntegrations).where(
+          and2(
+            eq2(platformIntegrations.userId, userId),
             or(
-              eq(platformIntegrations.platformType, "crm"),
-              eq(platformIntegrations.platformType, "ats")
+              eq2(platformIntegrations.platformType, "crm"),
+              eq2(platformIntegrations.platformType, "ats")
             )
           )
         ).orderBy(platformIntegrations.platformName);
+        return integrations.map((integration) => this.decryptIntegrationFields(integration));
       }
       async createPlatformIntegration(integration) {
+        const encryptedData = this.encryptIntegrationFields(integration);
         const [newIntegration] = await db.insert(platformIntegrations).values({
-          ...integration,
+          ...encryptedData,
           createdAt: /* @__PURE__ */ new Date(),
           updatedAt: /* @__PURE__ */ new Date()
         }).returning();
-        return newIntegration;
+        return this.decryptIntegrationFields(newIntegration);
       }
       async updatePlatformIntegration(platformId, data) {
+        const encryptedData = this.encryptIntegrationFields(data);
         const [updatedIntegration] = await db.update(platformIntegrations).set({
-          ...data,
+          ...encryptedData,
           updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq(platformIntegrations.platformId, platformId)).returning();
-        return updatedIntegration;
+        }).where(eq2(platformIntegrations.platformId, platformId)).returning();
+        return this.decryptIntegrationFields(updatedIntegration);
       }
       async deletePlatformIntegration(platformId) {
-        await db.delete(platformIntegrations).where(eq(platformIntegrations.platformId, platformId));
+        await db.delete(platformIntegrations).where(eq2(platformIntegrations.platformId, platformId));
       }
       // Form template operations
-      async getFormTemplates() {
-        return await db.select().from(formTemplates).orderBy(formTemplates.name);
+      async getFormTemplates(accountId) {
+        return await db.select().from(formTemplates).where(eq2(formTemplates.accountId, accountId)).orderBy(formTemplates.name);
       }
-      async getFormTemplate(id) {
-        const [template] = await db.select().from(formTemplates).where(eq(formTemplates.id, id));
+      async getFormTemplate(id, accountId) {
+        const [template] = await db.select().from(formTemplates).where(and2(eq2(formTemplates.id, id), eq2(formTemplates.accountId, accountId)));
         return template || void 0;
       }
-      async getDefaultFormTemplate() {
-        const [template] = await db.select().from(formTemplates).where(eq(formTemplates.isDefault, true)).limit(1);
+      async getDefaultFormTemplate(accountId) {
+        const [template] = await db.select().from(formTemplates).where(and2(eq2(formTemplates.isDefault, true), eq2(formTemplates.accountId, accountId))).limit(1);
         return template || void 0;
       }
       async createFormTemplate(template) {
         const [newTemplate] = await db.insert(formTemplates).values({
           ...template,
+          accountId: template.accountId,
           createdAt: /* @__PURE__ */ new Date(),
           updatedAt: /* @__PURE__ */ new Date()
         }).returning();
         return newTemplate;
       }
-      async updateFormTemplate(id, data) {
+      async updateFormTemplate(id, accountId, data) {
         const [updatedTemplate] = await db.update(formTemplates).set({
           ...data,
           updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq(formTemplates.id, id)).returning();
+        }).where(and2(eq2(formTemplates.id, id), eq2(formTemplates.accountId, accountId))).returning();
         return updatedTemplate;
       }
-      async deleteFormTemplate(id) {
-        await db.delete(formTemplates).where(eq(formTemplates.id, id));
+      async deleteFormTemplate(id, accountId) {
+        await db.delete(formTemplates).where(and2(eq2(formTemplates.id, id), eq2(formTemplates.accountId, accountId)));
       }
       // Candidate operations
       async createCandidate(candidate) {
         const [newCandidate] = await db.insert(candidates).values({
           ...candidate,
+          accountId: candidate.accountId,
           status: candidate.status || "new",
           finalDecisionStatus: null,
           // Explicitly set to null for new candidates
           createdAt: /* @__PURE__ */ new Date(),
           updatedAt: /* @__PURE__ */ new Date()
         }).returning();
-        const job = newCandidate.jobId ? await this.getJob(newCandidate.jobId) : null;
+        const job = newCandidate.jobId ? await this.getJob(newCandidate.jobId, candidate.accountId) : null;
         return { ...newCandidate, job: job || null };
       }
-      async getCandidate(id) {
-        const [candidate] = await db.select().from(candidates).where(eq(candidates.id, id));
+      async getCandidate(id, accountId) {
+        const [candidate] = await db.select().from(candidates).where(and2(eq2(candidates.id, id), eq2(candidates.accountId, accountId)));
         if (!candidate) return void 0;
-        const job = candidate.jobId ? await this.getJob(candidate.jobId) : null;
+        const job = candidate.jobId ? await this.getJob(candidate.jobId, accountId) : null;
         return { ...candidate, job: job || null };
       }
-      async getCandidates(filters) {
-        const conditions = [];
+      async getCandidates(accountId, filters) {
+        const conditions = [eq2(candidates.accountId, accountId)];
         if (filters.jobId !== void 0) {
-          conditions.push(eq(candidates.jobId, filters.jobId));
+          conditions.push(eq2(candidates.jobId, filters.jobId));
         }
         if (filters.status && filters.status !== "all") {
-          conditions.push(eq(candidates.status, filters.status));
+          conditions.push(eq2(candidates.status, filters.status));
         }
-        if (filters.hiPeoplePercentile !== void 0) {
-        }
-        let candidatesList;
-        if (conditions.length > 0) {
-          candidatesList = await db.select().from(candidates).where(and(...conditions));
-        } else {
-          candidatesList = await db.select().from(candidates);
-        }
+        const candidatesList = await db.select().from(candidates).where(and2(...conditions));
         const jobIdsArray = candidatesList.map((c) => c.jobId);
         const uniqueJobIds = jobIdsArray.filter((id, index) => jobIdsArray.indexOf(id) === index && id !== null);
         const jobsMap = /* @__PURE__ */ new Map();
         if (uniqueJobIds.length > 0) {
           const jobsList = await Promise.all(
-            uniqueJobIds.map((id) => this.getJob(id))
+            uniqueJobIds.map((id) => this.getJob(id, accountId))
           );
           jobsList.forEach((job) => {
             if (job) {
@@ -657,12 +1383,13 @@ var init_storage = __esm({
           job: jobsMap.get(candidate.jobId) || null
         }));
       }
-      async getCandidateByNameAndEmail(name, email) {
+      async getCandidateByNameAndEmail(name, email, accountId) {
         try {
           const result = await db.select().from(candidates).where(
-            and(
-              eq(candidates.name, name),
-              eq(candidates.email, email)
+            and2(
+              eq2(candidates.name, name),
+              eq2(candidates.email, email),
+              eq2(candidates.accountId, accountId)
             )
           ).limit(1);
           return result[0];
@@ -671,18 +1398,18 @@ var init_storage = __esm({
           return void 0;
         }
       }
-      async getCandidateByGHLContactId(ghlContactId) {
+      async getCandidateByGHLContactId(ghlContactId, accountId) {
         try {
-          const result = await db.select().from(candidates).where(eq(candidates.ghlContactId, ghlContactId)).limit(1);
+          const result = await db.select().from(candidates).where(and2(eq2(candidates.ghlContactId, ghlContactId), eq2(candidates.accountId, accountId))).limit(1);
           if (!result[0]) return void 0;
-          const job = result[0].jobId ? await this.getJob(result[0].jobId) : null;
+          const job = result[0].jobId ? await this.getJob(result[0].jobId, accountId) : null;
           return { ...result[0], job: job || null };
         } catch (error) {
           console.error("Error fetching candidate by GHL contact ID:", error);
           return void 0;
         }
       }
-      async updateCandidate(id, data) {
+      async updateCandidate(id, accountId, data) {
         const updatedData = { ...data };
         if (data.status === "200_rejected" && data.hasOwnProperty("finalDecisionStatus") && !data.finalDecisionStatus) {
           updatedData.finalDecisionStatus = "rejected";
@@ -698,13 +1425,14 @@ var init_storage = __esm({
           ...updatedData,
           updatedAt: /* @__PURE__ */ new Date()
         };
-        const [updatedCandidate] = await db.update(candidates).set(updateData).where(eq(candidates.id, id)).returning();
-        const job = updatedCandidate.jobId ? await this.getJob(updatedCandidate.jobId) : null;
+        const [updatedCandidate] = await db.update(candidates).set(updateData).where(and2(eq2(candidates.id, id), eq2(candidates.accountId, accountId))).returning();
+        const job = updatedCandidate.jobId ? await this.getJob(updatedCandidate.jobId, accountId) : null;
         return { ...updatedCandidate, job: job || null };
       }
       // Interview operations
       async createInterview(interviewData) {
         const [interview] = await db.insert(interviews).values({
+          accountId: interviewData.accountId,
           candidateId: interviewData.candidateId,
           type: interviewData.type || "video",
           status: interviewData.status || "scheduled",
@@ -718,24 +1446,25 @@ var init_storage = __esm({
         }).returning();
         return interview;
       }
-      async getInterview(id) {
-        const [interview] = await db.select().from(interviews).where(eq(interviews.id, id));
+      async getInterview(id, accountId) {
+        const [interview] = await db.select().from(interviews).where(and2(eq2(interviews.id, id), eq2(interviews.accountId, accountId)));
         return interview || void 0;
       }
-      async getInterviews(filters) {
+      async getInterviews(accountId, filters) {
         try {
-          const conditions = [];
+          const conditions = [eq2(interviews.accountId, accountId)];
           if (filters?.candidateId) {
-            conditions.push(eq(interviews.candidateId, filters.candidateId));
+            conditions.push(eq2(interviews.candidateId, filters.candidateId));
           }
           if (filters?.interviewerId) {
-            conditions.push(eq(interviews.interviewerId, filters.interviewerId));
+            conditions.push(eq2(interviews.interviewerId, filters.interviewerId));
           }
           if (filters?.status) {
-            conditions.push(eq(interviews.status, filters.status));
+            conditions.push(eq2(interviews.status, filters.status));
           }
           let baseQuery = db.select({
             id: interviews.id,
+            accountId: interviews.accountId,
             candidateId: interviews.candidateId,
             scheduledDate: interviews.scheduledDate,
             conductedDate: interviews.conductedDate,
@@ -751,13 +1480,12 @@ var init_storage = __esm({
             candidateEmail: candidates.email,
             // Interviewer info
             interviewerName: users.fullName
-          }).from(interviews).leftJoin(candidates, eq(interviews.candidateId, candidates.id)).leftJoin(users, eq(interviews.interviewerId, users.id));
-          if (conditions.length > 0) {
-            baseQuery = baseQuery.where(and(...conditions));
-          }
+          }).from(interviews).leftJoin(candidates, eq2(interviews.candidateId, candidates.id)).leftJoin(users, eq2(interviews.interviewerId, users.id));
+          baseQuery = baseQuery.where(and2(...conditions));
           const results = await baseQuery;
           return results.map((row) => ({
             id: row.id,
+            accountId: row.accountId,
             candidateId: row.candidateId,
             scheduledDate: row.scheduledDate,
             conductedDate: row.conductedDate,
@@ -783,44 +1511,47 @@ var init_storage = __esm({
           return [];
         }
       }
-      async updateInterview(id, data) {
+      async updateInterview(id, accountId, data) {
         const [updatedInterview] = await db.update(interviews).set({
           ...data,
           updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq(interviews.id, id)).returning();
+        }).where(and2(eq2(interviews.id, id), eq2(interviews.accountId, accountId))).returning();
         return updatedInterview;
       }
-      async deleteInterview(id) {
-        await db.delete(evaluations).where(eq(evaluations.interviewId, id));
-        await db.delete(interviews).where(eq(interviews.id, id));
+      async deleteInterview(id, accountId) {
+        await db.delete(evaluations).where(and2(eq2(evaluations.interviewId, id), eq2(evaluations.accountId, accountId)));
+        await db.delete(interviews).where(and2(eq2(interviews.id, id), eq2(interviews.accountId, accountId)));
       }
       // Evaluation operations
       async createEvaluation(evaluationData) {
+        const { accountId, ...rest } = evaluationData;
         const [evaluation] = await db.insert(evaluations).values({
+          accountId,
           interviewId: evaluationData.interviewId,
           evaluatorId: evaluationData.evaluatorId,
           overallRating: evaluationData.overallRating,
           createdAt: /* @__PURE__ */ new Date(),
           updatedAt: /* @__PURE__ */ new Date(),
-          ...evaluationData
+          ...rest
         }).returning();
         return evaluation;
       }
-      async getEvaluationByInterview(interviewId) {
-        const [evaluation] = await db.select().from(evaluations).where(eq(evaluations.interviewId, interviewId));
+      async getEvaluationByInterview(interviewId, accountId) {
+        const [evaluation] = await db.select().from(evaluations).where(and2(eq2(evaluations.interviewId, interviewId), eq2(evaluations.accountId, accountId)));
         return evaluation || void 0;
       }
-      async updateEvaluation(id, data) {
+      async updateEvaluation(id, accountId, data) {
         const [updatedEvaluation] = await db.update(evaluations).set({
           ...data,
           updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq(evaluations.id, id)).returning();
+        }).where(and2(eq2(evaluations.id, id), eq2(evaluations.accountId, accountId))).returning();
         return updatedEvaluation;
       }
       // Activity logs
       async createActivityLog(log2) {
         const [activityLog] = await db.insert(activityLogs).values({
           ...log2,
+          accountId: log2.accountId,
           timestamp: log2.timestamp || /* @__PURE__ */ new Date()
         }).returning();
         return activityLog;
@@ -841,9 +1572,10 @@ var init_storage = __esm({
       }
       // Offer operations
       async createOffer(offerData) {
-        const crypto = await import("crypto");
-        const acceptanceToken = crypto.randomBytes(32).toString("hex");
+        const crypto2 = await import("crypto");
+        const acceptanceToken = crypto2.randomBytes(32).toString("hex");
         const [offer] = await db.insert(offers).values({
+          accountId: offerData.accountId,
           candidateId: offerData.candidateId,
           offerType: offerData.offerType,
           compensation: offerData.compensation,
@@ -859,26 +1591,24 @@ var init_storage = __esm({
         }).returning();
         return offer;
       }
-      async getOfferByCandidate(candidateId) {
-        const [offer] = await db.select().from(offers).where(eq(offers.candidateId, candidateId)).limit(1);
+      async getOfferByCandidate(candidateId, accountId) {
+        const [offer] = await db.select().from(offers).where(and2(eq2(offers.candidateId, candidateId), eq2(offers.accountId, accountId))).limit(1);
         return offer || void 0;
       }
       async getOfferByToken(token) {
-        const [offer] = await db.select().from(offers).where(eq(offers.acceptanceToken, token));
+        const [offer] = await db.select().from(offers).where(eq2(offers.acceptanceToken, token));
         return offer || void 0;
       }
-      async updateOffer(id, data) {
+      async updateOffer(id, accountId, data) {
         const [updatedOffer] = await db.update(offers).set({
           ...data,
           updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq(offers.id, id)).returning();
+        }).where(and2(eq2(offers.id, id), eq2(offers.accountId, accountId))).returning();
         return updatedOffer;
       }
       // Direct email sending (bypasses notification queue)
-      async sendDirectEmail(to, subject, body) {
-        const nodemailer = await import("nodemailer");
+      async sendDirectEmail(to, subject, body, userId) {
         if (isLikelyInvalidEmail(to)) {
-          console.error(`\u274C Rejected likely non-existent email: ${to}`);
           await db.insert(emailLogs).values({
             recipientEmail: to,
             subject,
@@ -892,22 +1622,22 @@ var init_storage = __esm({
           error.isNonExistentEmailError = true;
           throw error;
         }
-        try {
-          const transporter = nodemailer.createTransport({
-            service: "gmail",
-            auth: {
-              user: "upaksabraham24@gmail.com",
-              pass: "znjpubjqmqxkyuht"
-              // Gmail App Password (spaces removed)
-            }
-          });
-          const mailOptions = {
-            from: "upaksabraham24@gmail.com",
-            to,
+        if (!userId) {
+          const error = new Error("Gmail integration required. Please connect your Gmail account in Settings > Integrations to send emails.");
+          await db.insert(emailLogs).values({
+            recipientEmail: to,
             subject,
-            html: body
-          };
-          await transporter.sendMail(mailOptions);
+            template: "direct",
+            context: { body },
+            status: "failed",
+            error: error.message,
+            createdAt: /* @__PURE__ */ new Date()
+          });
+          throw error;
+        }
+        try {
+          const { sendGmailEmail: sendGmailEmail2 } = await Promise.resolve().then(() => (init_gmail_integration(), gmail_integration_exports));
+          await sendGmailEmail2(userId, to, subject, body);
           await db.insert(emailLogs).values({
             recipientEmail: to,
             subject,
@@ -918,7 +1648,6 @@ var init_storage = __esm({
             createdAt: /* @__PURE__ */ new Date()
           });
         } catch (error) {
-          console.error("\u274C Error sending direct email:", error);
           const errorMessage = error instanceof Error ? error.message : String(error);
           const isNonExistentEmailError = errorMessage.includes("User doesn't exist") || errorMessage.includes("User unknown") || errorMessage.includes("550") || errorMessage.includes("No such user") || errorMessage.includes("recipient rejected") || errorMessage.includes("Invalid recipient");
           const errorType = isNonExistentEmailError ? "non_existent_email" : "email_error";
@@ -940,8 +1669,462 @@ var init_storage = __esm({
           throw enhancedError;
         }
       }
+      // Direct Slack notification (no queue, immediate send)
+      async sendSlackNotification(userId, message) {
+        try {
+          const user = await this.getUser(userId);
+          if (!user || !user.slackWebhookUrl) {
+            return;
+          }
+          const axios10 = await import("axios");
+          await axios10.default.post(user.slackWebhookUrl, {
+            text: message
+          });
+        } catch (error) {
+          console.error(`Failed to send Slack notification to user ${userId}:`, error);
+        }
+      }
+      // Get users who should receive Slack notifications based on scope
+      async getUsersForSlackNotification(triggerUserId, eventType) {
+        const triggerUser = await this.getUser(triggerUserId);
+        if (!triggerUser) {
+          return [];
+        }
+        const userEvents = triggerUser.slackNotificationEvents;
+        if (!triggerUser.slackWebhookUrl || !userEvents?.includes(eventType)) {
+          return [];
+        }
+        const scope = triggerUser.slackNotificationScope;
+        if (scope === "all_users") {
+          const allUsers = await db.select().from(users);
+          const decryptedUsers = allUsers.map((user) => this.decryptUserFields(user));
+          return decryptedUsers.filter((user) => {
+            if (!user.slackWebhookUrl) return false;
+            const events = user.slackNotificationEvents;
+            return events?.includes(eventType) || false;
+          });
+        } else if (scope === "specific_roles") {
+          const allowedRoles = triggerUser.slackNotificationRoles;
+          if (!allowedRoles || allowedRoles.length === 0) {
+            return [triggerUser];
+          }
+          const allUsers = await db.select().from(users);
+          const decryptedUsers = allUsers.map((user) => this.decryptUserFields(user));
+          return decryptedUsers.filter((user) => {
+            if (!user.slackWebhookUrl) return false;
+            if (!allowedRoles.includes(user.role)) return false;
+            const events = user.slackNotificationEvents;
+            return events?.includes(eventType) || false;
+          });
+        } else {
+          return [triggerUser];
+        }
+      }
+      // Comment operations
+      async createComment(comment) {
+        const [newComment] = await db.insert(comments).values({
+          ...comment,
+          accountId: comment.accountId,
+          createdAt: /* @__PURE__ */ new Date(),
+          updatedAt: /* @__PURE__ */ new Date()
+        }).returning();
+        return newComment;
+      }
+      async getComments(entityType, entityId, accountId) {
+        const commentsList = await db.select({
+          id: comments.id,
+          accountId: comments.accountId,
+          userId: comments.userId,
+          entityType: comments.entityType,
+          entityId: comments.entityId,
+          content: comments.content,
+          mentions: comments.mentions,
+          createdAt: comments.createdAt,
+          updatedAt: comments.updatedAt,
+          // Join with users to get author info
+          userFullName: users.fullName,
+          userEmail: users.email,
+          userRole: users.role
+        }).from(comments).leftJoin(users, eq2(comments.userId, users.id)).where(
+          and2(
+            eq2(comments.entityType, entityType),
+            eq2(comments.entityId, entityId),
+            eq2(comments.accountId, accountId)
+          )
+        ).orderBy(desc(comments.createdAt));
+        return commentsList.map((row) => ({
+          id: row.id,
+          accountId: row.accountId,
+          userId: row.userId,
+          entityType: row.entityType,
+          entityId: row.entityId,
+          content: row.content,
+          mentions: row.mentions,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          user: row.userFullName ? {
+            id: row.userId,
+            fullName: row.userFullName,
+            email: row.userEmail,
+            role: row.userRole
+          } : void 0
+        }));
+      }
+      async deleteComment(id, userId, accountId) {
+        const [comment] = await db.select().from(comments).where(and2(eq2(comments.id, id), eq2(comments.accountId, accountId)));
+        if (!comment) {
+          throw new Error("Comment not found");
+        }
+        const user = await this.getUser(userId);
+        const isAdmin = user?.role === "admin" || user?.role === "ceo" || user?.role === "coo";
+        if (comment.userId !== userId && !isAdmin) {
+          throw new Error("Unauthorized: You can only delete your own comments");
+        }
+        await db.delete(comments).where(and2(eq2(comments.id, id), eq2(comments.accountId, accountId)));
+      }
+      async getUsersForMentionAutocomplete(accountId, query) {
+        const conditions = [eq2(accountMembers.accountId, accountId)];
+        if (query && query.trim()) {
+          const searchTerm = `%${query.trim().toLowerCase()}%`;
+          conditions.push(
+            or(
+              sql`LOWER(${users.fullName}) LIKE ${searchTerm}`,
+              sql`LOWER(${users.email}) LIKE ${searchTerm}`,
+              sql`LOWER(${users.username}) LIKE ${searchTerm}`
+            )
+          );
+        }
+        const usersList = await db.select({
+          id: users.id,
+          username: users.username,
+          password: users.password,
+          fullName: users.fullName,
+          email: users.email,
+          role: users.role,
+          createdAt: users.createdAt,
+          calendarLink: users.calendarLink,
+          emailTemplates: users.emailTemplates,
+          calendarProvider: users.calendarProvider,
+          calendlyToken: users.calendlyToken,
+          calendlyWebhookId: users.calendlyWebhookId,
+          openRouterApiKey: users.openRouterApiKey,
+          slackWebhookUrl: users.slackWebhookUrl,
+          slackNotificationScope: users.slackNotificationScope,
+          slackNotificationRoles: users.slackNotificationRoles,
+          slackNotificationEvents: users.slackNotificationEvents
+        }).from(users).innerJoin(accountMembers, eq2(users.id, accountMembers.userId)).where(and2(...conditions)).limit(20);
+        return usersList.map((user) => this.decryptUserFields(user));
+      }
+      // In-app notification operations
+      async createInAppNotification(notification) {
+        const [newNotification] = await db.insert(inAppNotifications).values({
+          ...notification,
+          createdAt: /* @__PURE__ */ new Date()
+        }).returning();
+        return newNotification;
+      }
+      async getInAppNotifications(accountId, userId, filters) {
+        let conditions = [
+          eq2(inAppNotifications.accountId, accountId),
+          eq2(inAppNotifications.userId, userId)
+        ];
+        if (filters?.read !== void 0) {
+          conditions.push(eq2(inAppNotifications.read, filters.read));
+        }
+        let query = db.select().from(inAppNotifications).where(and2(...conditions)).orderBy(desc(inAppNotifications.createdAt));
+        if (filters?.limit) {
+          query = query.limit(filters.limit);
+        }
+        return await query;
+      }
+      async markNotificationAsRead(id, accountId, userId) {
+        const [notification] = await db.select().from(inAppNotifications).where(
+          and2(
+            eq2(inAppNotifications.id, id),
+            eq2(inAppNotifications.accountId, accountId),
+            eq2(inAppNotifications.userId, userId)
+          )
+        );
+        if (!notification) {
+          throw new Error("Notification not found or unauthorized");
+        }
+        await db.update(inAppNotifications).set({ read: true }).where(eq2(inAppNotifications.id, id));
+      }
+      async markAllNotificationsAsRead(accountId, userId) {
+        await db.update(inAppNotifications).set({ read: true }).where(and2(
+          eq2(inAppNotifications.accountId, accountId),
+          eq2(inAppNotifications.userId, userId)
+        ));
+      }
+      async getUnreadNotificationCount(accountId, userId) {
+        const result = await db.select({ count: sql`count(*)` }).from(inAppNotifications).where(
+          and2(
+            eq2(inAppNotifications.accountId, accountId),
+            eq2(inAppNotifications.userId, userId),
+            eq2(inAppNotifications.read, false)
+          )
+        );
+        return Number(result[0]?.count || 0);
+      }
+      // =====================================================
+      // WORKFLOW OPERATIONS
+      // =====================================================
+      async createWorkflow(workflow) {
+        const [newWorkflow] = await db.insert(workflows).values({
+          accountId: workflow.accountId,
+          name: workflow.name,
+          description: workflow.description,
+          isActive: workflow.isActive ?? true,
+          triggerType: workflow.triggerType,
+          triggerConfig: workflow.triggerConfig,
+          steps: workflow.steps,
+          createdById: workflow.createdById
+        }).returning();
+        return newWorkflow;
+      }
+      async getWorkflows(accountId) {
+        return await db.select().from(workflows).where(eq2(workflows.accountId, accountId)).orderBy(desc(workflows.updatedAt));
+      }
+      async getWorkflow(id, accountId) {
+        const [workflow] = await db.select().from(workflows).where(and2(eq2(workflows.id, id), eq2(workflows.accountId, accountId)));
+        return workflow;
+      }
+      async updateWorkflow(id, accountId, data) {
+        const [updated] = await db.update(workflows).set(data).where(and2(eq2(workflows.id, id), eq2(workflows.accountId, accountId))).returning();
+        return updated;
+      }
+      async deleteWorkflow(id, accountId) {
+        await db.delete(workflows).where(and2(eq2(workflows.id, id), eq2(workflows.accountId, accountId)));
+      }
+      async getActiveWorkflowsByTrigger(accountId, triggerType, triggerConfig) {
+        const allWorkflows = await db.select().from(workflows).where(
+          and2(
+            eq2(workflows.accountId, accountId),
+            eq2(workflows.isActive, true),
+            eq2(workflows.triggerType, triggerType)
+          )
+        );
+        if (triggerConfig) {
+          return allWorkflows.filter((workflow) => {
+            const config = workflow.triggerConfig;
+            if (!config) return false;
+            if (triggerConfig.fromStatus && config.fromStatus !== triggerConfig.fromStatus) {
+              return false;
+            }
+            if (triggerConfig.toStatus && config.toStatus !== triggerConfig.toStatus) {
+              return false;
+            }
+            if (triggerConfig.jobId && config.jobId && config.jobId !== triggerConfig.jobId) {
+              return false;
+            }
+            return true;
+          });
+        }
+        return allWorkflows;
+      }
+      async createWorkflowExecution(execution) {
+        const [newExecution] = await db.insert(workflowExecutions).values({
+          accountId: execution.accountId,
+          workflowId: execution.workflowId,
+          status: execution.status ?? "running",
+          triggerEntityType: execution.triggerEntityType,
+          triggerEntityId: execution.triggerEntityId,
+          executionData: execution.executionData
+        }).returning();
+        return newExecution;
+      }
+      async updateWorkflowExecution(id, accountId, data) {
+        const [updated] = await db.update(workflowExecutions).set(data).where(and2(eq2(workflowExecutions.id, id), eq2(workflowExecutions.accountId, accountId))).returning();
+        return updated;
+      }
+      async createWorkflowExecutionStep(step) {
+        const [newStep] = await db.insert(workflowExecutionSteps).values({
+          executionId: step.executionId,
+          stepIndex: step.stepIndex,
+          actionType: step.actionType,
+          actionConfig: step.actionConfig,
+          status: step.status ?? "pending",
+          result: step.result,
+          errorMessage: step.errorMessage,
+          startedAt: step.startedAt,
+          completedAt: step.completedAt
+        }).returning();
+        return newStep;
+      }
+      async updateWorkflowExecutionStep(id, data) {
+        const [updated] = await db.update(workflowExecutionSteps).set(data).where(eq2(workflowExecutionSteps.id, id)).returning();
+        return updated;
+      }
+      async getWorkflowExecutions(workflowId, accountId, limit = 50) {
+        return await db.select().from(workflowExecutions).where(
+          and2(
+            eq2(workflowExecutions.workflowId, workflowId),
+            eq2(workflowExecutions.accountId, accountId)
+          )
+        ).orderBy(desc(workflowExecutions.startedAt)).limit(limit);
+      }
+      async getWorkflowExecutionSteps(executionId) {
+        return await db.select().from(workflowExecutionSteps).where(eq2(workflowExecutionSteps.executionId, executionId)).orderBy(workflowExecutionSteps.stepIndex);
+      }
+      async incrementWorkflowExecutionCount(workflowId, accountId) {
+        await db.update(workflows).set({
+          executionCount: sql`${workflows.executionCount} + 1`,
+          lastExecutedAt: sql`NOW()`
+        }).where(and2(eq2(workflows.id, workflowId), eq2(workflows.accountId, accountId)));
+      }
     };
     storage = new DatabaseStorage();
+  }
+});
+
+// server/api/notifications.ts
+var notifications_exports = {};
+__export(notifications_exports, {
+  createNotification: () => createNotification,
+  setupNotificationRoutes: () => setupNotificationRoutes
+});
+import { z as z4 } from "zod";
+function setupNotificationRoutes(app2) {
+  app2.get("/api/notifications", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const userId = req.user.id;
+      const { read, limit } = req.query;
+      const filters = {};
+      if (read !== void 0) {
+        filters.read = read === "true";
+      }
+      if (limit) {
+        filters.limit = parseInt(limit);
+      }
+      const notifications = await storage.getInAppNotifications(accountId, userId, filters);
+      res.json(notifications);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/notifications/unread-count", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const userId = req.user.id;
+      const count3 = await storage.getUnreadNotificationCount(accountId, userId);
+      res.json({ count: count3 });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.patch("/api/notifications/:id/read", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const { id } = req.params;
+      const userId = req.user.id;
+      await storage.markNotificationAsRead(parseInt(id), accountId, userId);
+      res.json({ message: "Notification marked as read" });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.patch("/api/notifications/read-all", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const userId = req.user.id;
+      await storage.markAllNotificationsAsRead(accountId, userId);
+      res.json({ message: "All notifications marked as read" });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.post("/api/notifications", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const validationResult = createNotificationSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          message: "Validation error",
+          errors: validationResult.error.errors
+        });
+      }
+      const data = validationResult.data;
+      const notification = await storage.createInAppNotification({ ...data, accountId });
+      res.status(201).json(notification);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+}
+async function createNotification(userId, type, title, message, link, metadata) {
+  try {
+    const accountId = await storage.getUserAccountId(userId);
+    if (!accountId) {
+      console.error(`[Notification] User ${userId} is not associated with any account`);
+      return;
+    }
+    const notification = await storage.createInAppNotification({
+      accountId,
+      userId,
+      type,
+      title,
+      message,
+      link,
+      metadata
+    });
+  } catch (error) {
+    console.error(`[Notification] Failed to create notification for user ${userId}:`, error);
+  }
+}
+var createNotificationSchema;
+var init_notifications = __esm({
+  "server/api/notifications.ts"() {
+    "use strict";
+    init_storage();
+    init_utils();
+    createNotificationSchema = z4.object({
+      userId: z4.number().int().positive(),
+      type: z4.enum([
+        "interview_scheduled",
+        "offer_sent",
+        "offer_accepted",
+        "offer_rejected",
+        "job_posted",
+        "new_application",
+        "candidate_status_changed",
+        "interview_evaluated"
+      ]),
+      title: z4.string().min(1).max(200),
+      message: z4.string().min(1).max(1e3),
+      link: z4.string().optional(),
+      metadata: z4.record(z4.any()).optional()
+    });
   }
 });
 
@@ -1272,6 +2455,230 @@ var init_ghl_integration = __esm({
   }
 });
 
+// server/api/resume-parser.ts
+var resume_parser_exports = {};
+__export(resume_parser_exports, {
+  parseResume: () => parseResume
+});
+import axios3 from "axios";
+async function extractTextFromPDF(pdfBuffer) {
+  try {
+    const module = await import("module");
+    const createRequire = module.createRequire || module.default.createRequire;
+    if (!createRequire) {
+      throw new Error("createRequire not found in module");
+    }
+    const require2 = createRequire(import.meta.url);
+    const pdfParseModule = require2("pdf-parse");
+    const PDFParse = pdfParseModule.PDFParse;
+    if (!PDFParse || typeof PDFParse !== "function") {
+      throw new Error("PDFParse class not found in pdf-parse module");
+    }
+    const parser = new PDFParse({ data: pdfBuffer });
+    const result = await parser.getText();
+    return result.text || "";
+  } catch (error) {
+    console.error("Error extracting text from PDF:", error);
+    throw new Error("Failed to extract text from PDF. Please ensure the file is a valid PDF.");
+  }
+}
+async function parseResume(resumeUrl, apiKey) {
+  try {
+    if (!apiKey) {
+      throw new Error("OpenRouter API key is required");
+    }
+    const resumeResponse = await axios3.get(resumeUrl, {
+      responseType: "arraybuffer"
+    });
+    const pdfBuffer = Buffer.from(resumeResponse.data);
+    const resumeText = await extractTextFromPDF(pdfBuffer);
+    if (!resumeText || resumeText.trim().length < 50) {
+      throw new Error("Could not extract sufficient text from resume PDF");
+    }
+    const prompt = `Please parse the following resume text and extract structured information. Return ONLY valid JSON with this exact structure (no markdown, no code blocks, just JSON):
+
+{
+  "name": "Full Name",
+  "email": "email@example.com",
+  "phone": "+1234567890",
+  "location": "City, Country",
+  "skills": ["Skill1", "Skill2", "Skill3"],
+  "experienceYears": 5,
+  "experience": [
+    {
+      "company": "Company Name",
+      "position": "Job Title",
+      "duration": "Jan 2020 - Present",
+      "description": "Job description"
+    }
+  ],
+  "education": [
+    {
+      "institution": "University Name",
+      "degree": "Bachelor of Science",
+      "field": "Computer Science",
+      "year": "2020"
+    }
+  ],
+  "summary": "Professional summary"
+}
+
+Resume text:
+${resumeText.substring(0, 8e3)}`;
+    const url = "https://openrouter.ai/api/v1/chat/completions";
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://hireos.app",
+      "X-Title": "HireOS Resume Parser"
+    };
+    const data = {
+      model: "google/gemini-2.0-flash-001",
+      // Cost-effective and fast
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert resume parser. Extract structured data from resumes and return ONLY valid JSON. Do not include any markdown formatting, code blocks, or explanations - just the raw JSON object."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.1,
+      // Low temperature for consistent parsing
+      max_tokens: 2e3
+    };
+    const response = await axios3.post(url, data, { headers });
+    const content = response.data.choices[0].message.content || "";
+    let jsonText = content.trim();
+    if (jsonText.startsWith("```json")) {
+      jsonText = jsonText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    } else if (jsonText.startsWith("```")) {
+      jsonText = jsonText.replace(/```\n?/g, "").trim();
+    }
+    const parsed = JSON.parse(jsonText);
+    if (parsed.skills && Array.isArray(parsed.skills)) {
+      parsed.skills = parsed.skills.filter((skill) => skill && typeof skill === "string");
+    }
+    return parsed;
+  } catch (error) {
+    const axiosError = error;
+    const errorResponse = axiosError.response?.data;
+    const errorMessage = errorResponse ? `${errorResponse.error?.message || JSON.stringify(errorResponse)}` : error instanceof Error ? error.message : String(error);
+    console.error("Error parsing resume:", errorMessage);
+    throw new Error(`Failed to parse resume: ${errorMessage}`);
+  }
+}
+var init_resume_parser = __esm({
+  "server/api/resume-parser.ts"() {
+    "use strict";
+  }
+});
+
+// server/api/ai-matching.ts
+var ai_matching_exports = {};
+__export(ai_matching_exports, {
+  calculateMatchScore: () => calculateMatchScore
+});
+import axios4 from "axios";
+async function calculateMatchScore(candidate, job, apiKey) {
+  try {
+    if (!apiKey) {
+      throw new Error("OpenRouter API key is required");
+    }
+    const candidateSkills = candidate.skills || (candidate.parsedResumeData?.skills || []).map((s) => s.toLowerCase());
+    const candidateExperience = candidate.experienceYears || candidate.parsedResumeData?.experienceYears || 0;
+    const jobSkills = (job.skills || "").split(/[,;]/).map((s) => s.trim().toLowerCase()).filter((s) => s.length > 0);
+    const prompt = `You are an expert recruiter. Analyze how well this candidate matches the job requirements and provide a match score (0-100).
+
+JOB REQUIREMENTS:
+Title: ${job.title}
+Department: ${job.department || "Not specified"}
+Type: ${job.type || "Not specified"}
+Required Skills: ${jobSkills.length > 0 ? jobSkills.join(", ") : "Not specified"}
+Description: ${job.description?.substring(0, 1e3) || "Not provided"}
+
+CANDIDATE PROFILE:
+Name: ${candidate.name}
+Skills: ${candidateSkills.length > 0 ? candidateSkills.join(", ") : "Not specified"}
+Years of Experience: ${candidateExperience}
+${candidate.parsedResumeData?.summary ? `Summary: ${candidate.parsedResumeData.summary.substring(0, 500)}` : ""}
+
+Please analyze the match and return ONLY valid JSON with this exact structure (no markdown, no code blocks, just JSON):
+
+{
+  "score": 85,
+  "explanation": "Detailed explanation of why this score was given (2-3 sentences)",
+  "strengths": ["Has React experience", "5+ years in software development"],
+  "weaknesses": ["Missing Python skills", "No experience with cloud platforms"],
+  "recommendations": ["Consider if Python can be learned on the job", "Assess cloud experience in interview"]
+}
+
+The score should be:
+- 90-100: Excellent match, highly recommended
+- 70-89: Good match, strong candidate
+- 50-69: Moderate match, some gaps but viable
+- 30-49: Weak match, significant gaps
+- 0-29: Poor match, not recommended
+
+Be honest and specific in your analysis.`;
+    const url = "https://openrouter.ai/api/v1/chat/completions";
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://hireos.app",
+      "X-Title": "HireOS AI Matching"
+    };
+    const data = {
+      model: "google/gemini-2.0-flash-001",
+      // Cost-effective and fast
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert recruiter who analyzes candidate-job matches. Return ONLY valid JSON with the match analysis. Do not include any markdown formatting, code blocks, or explanations outside the JSON - just the raw JSON object."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.3,
+      // Moderate temperature for balanced analysis
+      max_tokens: 1500
+    };
+    const response = await axios4.post(url, data, { headers });
+    const content = response.data.choices[0].message.content || "";
+    let jsonText = content.trim();
+    if (jsonText.startsWith("```json")) {
+      jsonText = jsonText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    } else if (jsonText.startsWith("```")) {
+      jsonText = jsonText.replace(/```\n?/g, "").trim();
+    }
+    const parsed = JSON.parse(jsonText);
+    if (typeof parsed.score !== "number") {
+      parsed.score = 0;
+    } else {
+      parsed.score = Math.max(0, Math.min(100, Math.round(parsed.score)));
+    }
+    parsed.strengths = parsed.strengths || [];
+    parsed.weaknesses = parsed.weaknesses || [];
+    parsed.recommendations = parsed.recommendations || [];
+    return parsed;
+  } catch (error) {
+    const axiosError = error;
+    const errorResponse = axiosError.response?.data;
+    const errorMessage = errorResponse ? `${errorResponse.error?.message || JSON.stringify(errorResponse)}` : error instanceof Error ? error.message : String(error);
+    console.error("Error calculating match score:", errorMessage);
+    throw new Error(`Failed to calculate match score: ${errorMessage}`);
+  }
+}
+var init_ai_matching = __esm({
+  "server/api/ai-matching.ts"() {
+    "use strict";
+  }
+});
+
 // server/airtable-integration.ts
 var airtable_integration_exports = {};
 __export(airtable_integration_exports, {
@@ -1281,7 +2688,7 @@ __export(airtable_integration_exports, {
   getAirtableFieldValue: () => getAirtableFieldValue,
   updateCandidateInAirtable: () => updateCandidateInAirtable
 });
-import axios3 from "axios";
+import axios5 from "axios";
 async function getAirtableCredentials(userId) {
   if (!userId) {
     return null;
@@ -1333,7 +2740,7 @@ async function createOrUpdateAirtableContact(contactData, userId) {
     if (!emailValue) {
       throw new Error("Email is required to find or create Airtable contact");
     }
-    const searchResponse = await axios3.get(
+    const searchResponse = await axios5.get(
       `${AIRTABLE_API_BASE}/${credentials.baseId}/${tableName}`,
       {
         headers: {
@@ -1366,7 +2773,7 @@ async function createOrUpdateAirtableContact(contactData, userId) {
         }
       }
       try {
-        const updateResponse = await axios3.patch(
+        const updateResponse = await axios5.patch(
           `${AIRTABLE_API_BASE}/${credentials.baseId}/${tableName}/${recordId}`,
           {
             fields: cleanContactData
@@ -1389,7 +2796,7 @@ async function createOrUpdateAirtableContact(contactData, userId) {
               const unknownField = fieldMatch[1];
               delete cleanContactData[unknownField];
               try {
-                const retryResponse = await axios3.patch(
+                const retryResponse = await axios5.patch(
                   `${AIRTABLE_API_BASE}/${credentials.baseId}/${tableName}/${recordId}`,
                   {
                     fields: cleanContactData
@@ -1407,7 +2814,7 @@ async function createOrUpdateAirtableContact(contactData, userId) {
                   Name: contactData.Name,
                   Email: contactData.Email
                 };
-                const minimalResponse = await axios3.patch(
+                const minimalResponse = await axios5.patch(
                   `${AIRTABLE_API_BASE}/${credentials.baseId}/${tableName}/${recordId}`,
                   {
                     fields: minimalData
@@ -1425,7 +2832,7 @@ async function createOrUpdateAirtableContact(contactData, userId) {
           }
           if (errorType === "INVALID_MULTIPLE_CHOICE_OPTIONS" && cleanContactData.Status) {
             delete cleanContactData.Status;
-            const retryResponse = await axios3.patch(
+            const retryResponse = await axios5.patch(
               `${AIRTABLE_API_BASE}/${credentials.baseId}/${tableName}/${recordId}`,
               {
                 fields: cleanContactData
@@ -1450,7 +2857,7 @@ async function createOrUpdateAirtableContact(contactData, userId) {
         }
       }
       try {
-        const createResponse = await axios3.post(
+        const createResponse = await axios5.post(
           `${AIRTABLE_API_BASE}/${credentials.baseId}/${tableName}`,
           {
             fields: cleanContactData
@@ -1473,7 +2880,7 @@ async function createOrUpdateAirtableContact(contactData, userId) {
               const unknownField = fieldMatch[1];
               delete cleanContactData[unknownField];
               try {
-                const retryResponse = await axios3.post(
+                const retryResponse = await axios5.post(
                   `${AIRTABLE_API_BASE}/${credentials.baseId}/${tableName}`,
                   {
                     fields: cleanContactData
@@ -1491,7 +2898,7 @@ async function createOrUpdateAirtableContact(contactData, userId) {
                   Name: contactData.Name,
                   Email: contactData.Email
                 };
-                const minimalResponse = await axios3.post(
+                const minimalResponse = await axios5.post(
                   `${AIRTABLE_API_BASE}/${credentials.baseId}/${tableName}`,
                   {
                     fields: minimalData
@@ -1509,7 +2916,7 @@ async function createOrUpdateAirtableContact(contactData, userId) {
           }
           if (errorType === "INVALID_MULTIPLE_CHOICE_OPTIONS" && cleanContactData.Status) {
             delete cleanContactData.Status;
-            const retryResponse = await axios3.post(
+            const retryResponse = await axios5.post(
               `${AIRTABLE_API_BASE}/${credentials.baseId}/${tableName}`,
               {
                 fields: cleanContactData
@@ -1607,7 +3014,7 @@ async function fetchAirtableContacts(limit = 100, userId) {
       if (offset) {
         params.offset = offset;
       }
-      const response = await axios3.get(
+      const response = await axios5.get(
         `${AIRTABLE_API_BASE}/${credentials.baseId}/${tableName}`,
         {
           headers: {
@@ -1662,7 +3069,7 @@ __export(google_sheets_integration_exports, {
   getGoogleSheetsFieldValue: () => getGoogleSheetsFieldValue,
   getGoogleSheetsSchema: () => getGoogleSheetsSchema
 });
-import { google } from "googleapis";
+import { google as google2 } from "googleapis";
 async function getGoogleSheetsCredentials(userId) {
   const integration = await storage.getPlatformIntegration("google-sheets", userId);
   if (!integration || integration.status !== "connected" || !integration.credentials) {
@@ -1671,7 +3078,7 @@ async function getGoogleSheetsCredentials(userId) {
   return integration.credentials;
 }
 async function getSheetsClient(credentials, userId) {
-  const oauth2Client = new google.auth.OAuth2(
+  const oauth2Client = new google2.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
     process.env.GOOGLE_REDIRECT_URI
@@ -1688,7 +3095,7 @@ async function getSheetsClient(credentials, userId) {
     }
   } catch (error) {
   }
-  return google.sheets({ version: GOOGLE_SHEETS_API_VERSION, auth: oauth2Client });
+  return google2.sheets({ version: GOOGLE_SHEETS_API_VERSION, auth: oauth2Client });
 }
 function getGoogleSheetsFieldName(hireOSField, mappings) {
   if (!mappings) {
@@ -1885,6 +3292,337 @@ var init_google_sheets_integration = __esm({
   }
 });
 
+// server/workflow-engine.ts
+var workflow_engine_exports = {};
+__export(workflow_engine_exports, {
+  WorkflowActionLibrary: () => WorkflowActionLibrary,
+  executeWorkflow: () => executeWorkflow,
+  triggerWorkflows: () => triggerWorkflows
+});
+function replaceVariables(template, context) {
+  let result = template;
+  const variableRegex = /\{\{([^}]+)\}\}/g;
+  result = result.replace(variableRegex, (match, path2) => {
+    const keys = path2.trim().split(".");
+    let value = context;
+    for (const key of keys) {
+      if (value && typeof value === "object" && key in value) {
+        value = value[key];
+      } else {
+        return match;
+      }
+    }
+    if (value instanceof Date) {
+      return value.toLocaleString();
+    }
+    return value != null ? String(value) : match;
+  });
+  return result;
+}
+function evaluateCondition(condition, context) {
+  try {
+    let evalCondition = replaceVariables(condition, context);
+    const varRegex = /\{\{([^}]+)\}\}/g;
+    evalCondition = evalCondition.replace(varRegex, (match, path2) => {
+      const keys = path2.trim().split(".");
+      let value = context;
+      for (const key of keys) {
+        if (value && typeof value === "object" && key in value) {
+          value = value[key];
+        } else {
+          return "null";
+        }
+      }
+      return value != null ? String(value) : "null";
+    });
+    return new Function("return " + evalCondition)();
+  } catch (error) {
+    console.error("[Workflow Engine] Condition evaluation error:", error);
+    return false;
+  }
+}
+async function executeWorkflow(workflow, accountId, executionData = {}) {
+  const execution = await storage.createWorkflowExecution({
+    accountId,
+    workflowId: workflow.id,
+    status: "running",
+    triggerEntityType: executionData.entityType,
+    triggerEntityId: executionData.entityId,
+    executionData
+  });
+  try {
+    const context = {
+      ...executionData,
+      candidate: executionData.candidate,
+      interview: executionData.interview,
+      job: executionData.job,
+      user: executionData.user
+    };
+    const steps = workflow.steps || [];
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const stepExecution = await storage.createWorkflowExecutionStep({
+        executionId: execution.id,
+        stepIndex: i,
+        actionType: step.type,
+        actionConfig: step.config,
+        status: "running",
+        startedAt: /* @__PURE__ */ new Date()
+      });
+      try {
+        const result = await WorkflowActionLibrary.executeAction(
+          step.type,
+          step.config,
+          context,
+          accountId
+        );
+        await storage.updateWorkflowExecutionStep(stepExecution.id, {
+          status: "completed",
+          result,
+          completedAt: /* @__PURE__ */ new Date()
+        });
+      } catch (error) {
+        await storage.updateWorkflowExecutionStep(stepExecution.id, {
+          status: "failed",
+          errorMessage: error.message,
+          completedAt: /* @__PURE__ */ new Date()
+        });
+        console.error(`[Workflow ${workflow.id}] Step ${i} failed:`, error);
+      }
+    }
+    await storage.updateWorkflowExecution(execution.id, accountId, {
+      status: "completed",
+      completedAt: /* @__PURE__ */ new Date()
+    });
+    await storage.incrementWorkflowExecutionCount(workflow.id, accountId);
+    return await storage.getWorkflowExecutions(workflow.id, accountId, 1).then((execs) => execs[0]);
+  } catch (error) {
+    await storage.updateWorkflowExecution(execution.id, accountId, {
+      status: "failed",
+      errorMessage: error.message,
+      completedAt: /* @__PURE__ */ new Date()
+    });
+    throw error;
+  }
+}
+async function triggerWorkflows(triggerType, triggerData, accountId) {
+  try {
+    const workflows3 = await storage.getActiveWorkflowsByTrigger(
+      accountId,
+      triggerType,
+      triggerData
+    );
+    for (const workflow of workflows3) {
+      executeWorkflow(workflow, accountId, triggerData).catch((error) => {
+        console.error(`[Workflow ${workflow.id}] Execution error:`, error);
+      });
+    }
+  } catch (error) {
+    console.error("[Workflow Trigger] Error:", error);
+  }
+}
+var WorkflowActionLibrary;
+var init_workflow_engine = __esm({
+  "server/workflow-engine.ts"() {
+    "use strict";
+    init_storage();
+    init_gmail_integration();
+    WorkflowActionLibrary = class {
+      static getAvailableActions() {
+        return [
+          {
+            type: "send_email",
+            name: "Send Email",
+            description: "Send an email to candidate or team member",
+            icon: "\u{1F4E7}",
+            configFields: [
+              { name: "to", label: "To", type: "text", required: true, placeholder: "{{candidate.email}}" },
+              { name: "subject", label: "Subject", type: "text", required: true },
+              { name: "body", label: "Body", type: "textarea", required: true },
+              { name: "template", label: "Email Template", type: "select", options: ["welcome", "interview_confirmation", "rejection", "offer"] }
+            ]
+          },
+          {
+            type: "update_status",
+            name: "Update Candidate Status",
+            description: "Change candidate's status in the pipeline",
+            icon: "\u{1F504}",
+            configFields: [
+              { name: "status", label: "New Status", type: "select", required: true, options: [
+                "new",
+                "assessment_sent",
+                "assessment_completed",
+                "interview_scheduled",
+                "interview_completed",
+                "offer_sent",
+                "offer_accepted",
+                "rejected",
+                "hired"
+              ] }
+            ]
+          },
+          {
+            type: "create_interview",
+            name: "Schedule Interview",
+            description: "Automatically create an interview",
+            icon: "\u{1F4C5}",
+            configFields: [
+              { name: "type", label: "Interview Type", type: "select", required: true, options: ["phone", "video", "onsite"] },
+              { name: "interviewerId", label: "Interviewer", type: "user_select", required: true },
+              { name: "scheduledDate", label: "Scheduled Date", type: "datetime", required: true }
+            ]
+          },
+          {
+            type: "notify_slack",
+            name: "Notify Slack",
+            description: "Send notification to Slack channel",
+            icon: "\u{1F4AC}",
+            configFields: [
+              { name: "channel", label: "Channel", type: "text", required: true, placeholder: "#hiring" },
+              { name: "message", label: "Message", type: "textarea", required: true }
+            ]
+          },
+          {
+            type: "update_crm",
+            name: "Update CRM",
+            description: "Sync data to Google Sheets or Airtable",
+            icon: "\u{1F4CA}",
+            configFields: [
+              { name: "platform", label: "Platform", type: "select", required: true, options: ["google_sheets", "airtable"] },
+              { name: "action", label: "Action", type: "select", required: true, options: ["create", "update"] },
+              { name: "data", label: "Data", type: "json", required: true }
+            ]
+          },
+          {
+            type: "wait",
+            name: "Wait/Delay",
+            description: "Pause workflow for specified duration",
+            icon: "\u23F3",
+            configFields: [
+              { name: "duration", label: "Duration (hours)", type: "number", required: true }
+            ]
+          },
+          {
+            type: "condition",
+            name: "Conditional Logic",
+            description: "Run different actions based on condition",
+            icon: "\u{1F500}",
+            configFields: [
+              { name: "condition", label: "Condition", type: "text", required: true, placeholder: "{{candidate.hiPeopleScore}} >= 80" }
+            ]
+          }
+        ];
+      }
+      static async executeAction(actionType, actionConfig, context, accountId) {
+        switch (actionType) {
+          case "send_email":
+            return await this.sendEmail(actionConfig, context, accountId);
+          case "update_status":
+            return await this.updateStatus(actionConfig, context, accountId);
+          case "create_interview":
+            return await this.createInterview(actionConfig, context, accountId);
+          case "notify_slack":
+            return await this.notifySlack(actionConfig, context, accountId);
+          case "update_crm":
+            return await this.updateCRM(actionConfig, context, accountId);
+          case "wait":
+            return await this.wait(actionConfig);
+          case "condition":
+            return await this.condition(actionConfig, context, accountId);
+          default:
+            throw new Error(`Unknown action type: ${actionType}`);
+        }
+      }
+      static async sendEmail(config, context, accountId) {
+        let to = replaceVariables(config.to || "", context);
+        let subject = replaceVariables(config.subject || "", context);
+        let body = replaceVariables(config.body || "", context);
+        if (config.template && context.user) {
+          const user = await storage.getUser(context.user.id);
+          const templates = user?.emailTemplates || {};
+          const template = templates[config.template];
+          if (template) {
+            body = replaceVariables(template.body || "", context);
+            const templateSubject = replaceVariables(template.subject || "", context);
+            if (templateSubject) subject = templateSubject;
+            if (template.to) {
+              to = replaceVariables(template.to, context);
+            }
+          }
+        }
+        if (!to || !to.includes("@") || to.includes("{{") || to.includes("}}")) {
+          throw new Error(`Invalid or missing email address: ${to}. Please ensure candidate email is provided.`);
+        }
+        try {
+          if (context.user) {
+            await sendGmailEmail(context.user.id, to, subject, body);
+            return { success: true, method: "gmail" };
+          }
+        } catch (error) {
+          console.error("[Workflow] Gmail send failed, trying direct email:", error);
+        }
+        await storage.sendDirectEmail(to, subject, body, context.user?.id);
+        return { success: true, method: "direct" };
+      }
+      static async updateStatus(config, context, accountId) {
+        if (!context.candidate) {
+          throw new Error("Candidate context required for update_status action");
+        }
+        await storage.updateCandidate(context.candidate.id, accountId, {
+          status: config.status
+        });
+        return { success: true, newStatus: config.status };
+      }
+      static async createInterview(config, context, accountId) {
+        if (!context.candidate) {
+          throw new Error("Candidate context required for create_interview action");
+        }
+        const interview = await storage.createInterview({
+          accountId,
+          candidateId: context.candidate.id,
+          interviewerId: config.interviewerId,
+          type: config.type || "video",
+          scheduledDate: config.scheduledDate ? new Date(config.scheduledDate) : void 0,
+          status: "scheduled"
+        });
+        return { success: true, interviewId: interview.id };
+      }
+      static async notifySlack(config, context, accountId) {
+        const channel = config.channel || "#hiring";
+        const message = replaceVariables(config.message || "", context);
+        if (!message) {
+          throw new Error("Slack message is required");
+        }
+        if (context.user) {
+          await storage.sendSlackNotification(context.user.id, message);
+        } else {
+          throw new Error("User context required for Slack notification");
+        }
+        return { success: true, channel, message };
+      }
+      static async updateCRM(config, context, accountId) {
+        return { success: true, platform: config.platform };
+      }
+      static async wait(config) {
+        const hours = config.duration || 0;
+        const ms = hours * 60 * 60 * 1e3;
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        return { success: true, waitedHours: hours };
+      }
+      static async condition(config, context, accountId) {
+        const conditionMet = evaluateCondition(config.condition, context);
+        const stepsToExecute = conditionMet ? config.thenSteps : config.elseSteps;
+        if (stepsToExecute && Array.isArray(stepsToExecute)) {
+          for (const step of stepsToExecute) {
+            await this.executeAction(step.type, step.config, context, accountId);
+          }
+        }
+        return { success: true, conditionMet };
+      }
+    };
+  }
+});
+
 // server/index.ts
 import dns2 from "dns";
 import "dotenv/config";
@@ -1901,6 +3639,177 @@ import { Strategy as LocalStrategy } from "passport-local";
 import session2 from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
+
+// server/security/rate-limit.ts
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+var apiRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1e3,
+  // 15 minutes
+  max: 100,
+  // 100 requests per window
+  message: {
+    error: "Too many requests from this IP, please try again later",
+    retryAfter: "15 minutes"
+  },
+  standardHeaders: true,
+  // Return rate limit info in `RateLimit-*` headers
+  legacyHeaders: false,
+  // Disable `X-RateLimit-*` headers
+  // Skip rate limiting for authenticated users in some cases
+  skip: (req) => {
+    return false;
+  }
+});
+var authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1e3,
+  // 15 minutes
+  max: 5,
+  // 5 attempts per window
+  message: {
+    error: "Too many authentication attempts, please try again later",
+    retryAfter: "15 minutes"
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // SECURITY: Use proper IP key generator for IPv6 support
+  keyGenerator: (req) => {
+    return ipKeyGenerator(req.ip || req.socket.remoteAddress || "unknown");
+  }
+});
+var sensitiveRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1e3,
+  // 15 minutes
+  max: 20,
+  // 20 requests per window
+  message: {
+    error: "Too many requests to this endpoint, please try again later",
+    retryAfter: "15 minutes"
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+var uploadRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1e3,
+  // 1 hour
+  max: 10,
+  // 10 uploads per hour
+  message: {
+    error: "Too many file uploads, please try again later",
+    retryAfter: "1 hour"
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// server/security/sanitize.ts
+import sanitizeHtml from "sanitize-html";
+function sanitizeTextInput(text2) {
+  if (!text2 || typeof text2 !== "string") {
+    return "";
+  }
+  return text2.replace(/[<>]/g, "").replace(/javascript:/gi, "").replace(/on\w+\s*=/gi, "").trim();
+}
+function sanitizeEmailContent(html) {
+  return sanitizeHtml(html, {
+    allowedTags: ["p", "br", "a", "b", "i", "u", "strong", "em", "ul", "ol", "li"],
+    allowedAttributes: {
+      "a": ["href"]
+    },
+    allowedSchemes: ["http", "https", "mailto"]
+  });
+}
+function sanitizeForLogging(data) {
+  if (!data || typeof data !== "object") {
+    return data;
+  }
+  const sensitiveFields = [
+    "password",
+    "apiKey",
+    "api_key",
+    "token",
+    "secret",
+    "key",
+    "openRouterApiKey",
+    "calendlyToken",
+    "oauthToken",
+    "oauthRefreshToken",
+    "credentials",
+    "slackWebhookUrl"
+  ];
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizeForLogging(item));
+  }
+  const sanitized = { ...data };
+  for (const key of Object.keys(sanitized)) {
+    const lowerKey = key.toLowerCase();
+    if (sensitiveFields.some((field) => lowerKey.includes(field.toLowerCase()))) {
+      sanitized[key] = "[REDACTED]";
+    } else if (typeof sanitized[key] === "object" && sanitized[key] !== null) {
+      sanitized[key] = sanitizeForLogging(sanitized[key]);
+    }
+  }
+  return sanitized;
+}
+
+// server/security/logger.ts
+var SecureLogger = class {
+  /**
+   * Log info message (sanitized)
+   */
+  static info(message, data) {
+    const sanitizedData = data ? sanitizeForLogging(data) : void 0;
+    if (sanitizedData) {
+      console.log(`[INFO] ${message}`, sanitizedData);
+    } else {
+      console.log(`[INFO] ${message}`);
+    }
+  }
+  /**
+   * Log error message (sanitized)
+   */
+  static error(message, error) {
+    if (error) {
+      const sanitizedError = sanitizeForLogging(error);
+      if (process.env.NODE_ENV === "production") {
+        console.error(`[ERROR] ${message}`, {
+          message: error?.message || String(error)
+          // Don't include stack in production
+        });
+      } else {
+        console.error(`[ERROR] ${message}`, sanitizedError);
+      }
+    } else {
+      console.error(`[ERROR] ${message}`);
+    }
+  }
+  /**
+   * Log warning message (sanitized)
+   */
+  static warn(message, data) {
+    const sanitizedData = data ? sanitizeForLogging(data) : void 0;
+    if (sanitizedData) {
+      console.warn(`[WARN] ${message}`, sanitizedData);
+    } else {
+      console.warn(`[WARN] ${message}`);
+    }
+  }
+  /**
+   * Log debug message (only in development)
+   */
+  static debug(message, data) {
+    if (process.env.NODE_ENV === "development") {
+      const sanitizedData = data ? sanitizeForLogging(data) : void 0;
+      if (sanitizedData) {
+        console.debug(`[DEBUG] ${message}`, sanitizedData);
+      } else {
+        console.debug(`[DEBUG] ${message}`);
+      }
+    }
+  }
+};
+
+// server/auth.ts
+import { z as z3 } from "zod";
 var scryptAsync = promisify(scrypt);
 async function hashPassword(password) {
   const salt = randomBytes(16).toString("hex");
@@ -1913,14 +3822,29 @@ async function comparePasswords(supplied, stored) {
   const suppliedBuf = await scryptAsync(supplied, salt, 64);
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
+var passwordSchema = z3.string().min(12, "Password must be at least 12 characters").regex(/[A-Z]/, "Password must contain at least one uppercase letter").regex(/[a-z]/, "Password must contain at least one lowercase letter").regex(/[0-9]/, "Password must contain at least one number").regex(/[^A-Za-z0-9]/, "Password must contain at least one special character");
 function setupAuth(app2) {
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret || sessionSecret === "hireos-development-secret") {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("SESSION_SECRET must be set to a strong random value in production");
+    }
+    SecureLogger.warn("Using default SESSION_SECRET - this is insecure for production!");
+  }
+  if (sessionSecret && sessionSecret.length < 32) {
+    SecureLogger.warn("SESSION_SECRET should be at least 32 characters for security");
+  }
   const sessionSettings = {
-    secret: process.env.SESSION_SECRET || "hireos-development-secret",
+    secret: sessionSecret || "hireos-development-secret",
     resave: false,
     saveUninitialized: false,
     store: storage.sessionStore,
     cookie: {
       secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      // SECURITY: Prevent XSS access to cookies
+      // Use 'lax' in development/ngrok to allow cross-browser access, 'strict' in production
+      sameSite: process.env.NODE_ENV === "production" && !process.env.USE_NGROK ? "strict" : "lax",
       maxAge: 24 * 60 * 60 * 1e3
       // 24 hours
     }
@@ -1952,12 +3876,23 @@ function setupAuth(app2) {
       done(error);
     }
   });
-  app2.post("/api/register", async (req, res, next) => {
+  app2.post("/api/register", authRateLimiter, async (req, res, next) => {
     try {
       if (!req.body.username || !req.body.password || !req.body.email || !req.body.fullName) {
         return res.status(400).json({
           message: "Missing required fields: username, password, email, and fullName are required"
         });
+      }
+      try {
+        passwordSchema.parse(req.body.password);
+      } catch (error) {
+        if (error instanceof z3.ZodError) {
+          return res.status(400).json({
+            message: "Password does not meet security requirements",
+            errors: error.errors.map((err) => err.message)
+          });
+        }
+        return res.status(400).json({ message: "Invalid password format" });
       }
       const existingUserByUsername = await storage.getUserByUsername(req.body.username);
       if (existingUserByUsername) {
@@ -1969,18 +3904,27 @@ function setupAuth(app2) {
         return res.status(400).json({ message: "Email already exists" });
       }
       if (!req.body.role) {
-        req.body.role = UserRoles.HIRING_MANAGER;
+        req.body.role = UserRoles.ADMIN;
       }
       const user = await storage.createUser({
         ...req.body,
         password: await hashPassword(req.body.password)
       });
+      const accountName = user.fullName ? `${user.fullName}'s Account` : "My Account";
+      const account = await storage.createAccount(accountName, user.id, user.role);
       const { password, ...userWithoutPassword } = user;
+      SecureLogger.info("User registered", {
+        userId: user.id,
+        username: user.username,
+        email: user.email,
+        accountId: account.id
+      });
       req.login(user, (err) => {
         if (err) return next(err);
         res.status(201).json(userWithoutPassword);
       });
     } catch (error) {
+      SecureLogger.error("Registration error", { error: error.message });
       if (error.code === "23505") {
         if (error.constraint?.includes("username")) {
           return res.status(400).json({ message: "Username already exists" });
@@ -1992,10 +3936,17 @@ function setupAuth(app2) {
       next(error);
     }
   });
-  app2.post("/api/login", (req, res, next) => {
+  app2.post("/api/login", authRateLimiter, (req, res, next) => {
     passport.authenticate("local", (err, user, info) => {
-      if (err) return next(err);
-      if (!user) return res.status(401).json({ message: info?.message || "Authentication failed" });
+      if (err) {
+        SecureLogger.error("Login error", { error: err.message });
+        return next(err);
+      }
+      if (!user) {
+        SecureLogger.warn("Failed login attempt", { username: req.body.username, ip: req.ip });
+        return res.status(401).json({ message: info?.message || "Authentication failed" });
+      }
+      SecureLogger.info("User logged in", { userId: user.id, username: user.username });
       req.login(user, (err2) => {
         if (err2) return next(err2);
         const { password, ...userWithoutPassword } = user;
@@ -2039,6 +3990,9 @@ function setupAuth(app2) {
     next();
   });
   app2.use("/api/users", (req, res, next) => {
+    if (req.path.includes("/public")) {
+      return next();
+    }
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const userRole = req.user?.role;
     if (![UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN].includes(userRole)) {
@@ -2051,77 +4005,7 @@ function setupAuth(app2) {
 // server/api/job.ts
 init_storage();
 init_schema();
-
-// server/api/utils.ts
-import { z as z2 } from "zod";
-function validateRequest(schema) {
-  return (req, res, next) => {
-    try {
-      const result = schema.parse(req.body);
-      req.body = result;
-      next();
-    } catch (error) {
-      if (error instanceof z2.ZodError) {
-        return res.status(400).json({
-          message: "Invalid request data",
-          errors: error.errors.map((err) => ({
-            path: err.path.join("."),
-            message: err.message
-          }))
-        });
-      }
-      next(error);
-    }
-  };
-}
-function handleApiError(error, res) {
-  console.error("API Error:", error);
-  if (error instanceof z2.ZodError) {
-    return res.status(400).json({
-      message: "Invalid request data",
-      errors: error.errors.map((err) => ({
-        path: err.path.join("."),
-        message: err.message
-      }))
-    });
-  }
-  if (error instanceof Error) {
-    if (error.message === "Candidate email does not exist" || error.isNonExistentEmailError) {
-      return res.status(422).json({
-        message: "Candidate email does not exist",
-        errorType: "non_existent_email"
-      });
-    }
-    if (error.message.includes("not found") || error.message.includes("doesn't exist")) {
-      return res.status(404).json({ message: error.message });
-    }
-    if (error.message.includes("unauthorized") || error.message.includes("not authenticated")) {
-      return res.status(401).json({ message: error.message });
-    }
-    if (error.message.includes("forbidden") || error.message.includes("not allowed")) {
-      return res.status(403).json({ message: error.message });
-    }
-    if (error.message.includes("already exists") || error.message.includes("duplicate")) {
-      return res.status(409).json({ message: error.message });
-    }
-    return res.status(500).json({
-      message: "An error occurred while processing your request",
-      error: error.message
-    });
-  }
-  return res.status(500).json({
-    message: "An unexpected error occurred",
-    error: String(error)
-  });
-}
-function isAuthorized(req) {
-  if (req.isAuthenticated()) {
-    return true;
-  }
-  const apiKey = req.headers["x-api-key"] || req.headers["authorization"]?.replace("Bearer ", "");
-  const validApiKey = process.env.HireOS_API_Key;
-  return apiKey === validApiKey;
-}
+init_utils();
 
 // server/api/openai.ts
 import axios from "axios";
@@ -2157,7 +4041,6 @@ async function generateJobDescription(jobData) {
     }
     prompt += "Format the job description using markdown syntax. Keep the tone professional and approachable.\n\n";
     prompt += "Additionally, if you think the job title could be improved or modernized, suggest a better title in a separate suggestion at the end of your response using the format: SUGGESTED_TITLE: [your title suggestion].";
-    console.log("Sending job description prompt to OpenRouter...");
     const url = "https://openrouter.ai/api/v1/chat/completions";
     const headers = {
       "Content-Type": "application/json",
@@ -2202,13 +4085,78 @@ async function generateJobDescription(jobData) {
 
 // server/api/job.ts
 init_db();
-import { eq as eq2 } from "drizzle-orm";
+import { eq as eq3, and as and3 } from "drizzle-orm";
 import { count } from "drizzle-orm";
+
+// server/slack-notifications.ts
+init_storage();
+async function notifySlackUsers(triggerUserId, eventType, data) {
+  const usersToNotify = await storage.getUsersForSlackNotification(triggerUserId, eventType);
+  const getFirstSkill = (candidate) => {
+    if (!candidate.skills) return "Candidate";
+    if (Array.isArray(candidate.skills)) {
+      return candidate.skills[0] || "Candidate";
+    }
+    if (typeof candidate.skills === "string") {
+      return candidate.skills;
+    }
+    return "Candidate";
+  };
+  let message = "";
+  switch (eventType) {
+    case "interview_scheduled":
+      if (data.candidate && data.job && data.interview) {
+        const interviewDate = data.interview.scheduledDate ? new Date(data.interview.scheduledDate).toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true
+        }) : "TBD";
+        message = `Interview scheduled: ${data.candidate.name} (${getFirstSkill(data.candidate)}) on ${interviewDate} for ${data.job.title} position`;
+      }
+      break;
+    case "offer_accepted":
+      if (data.candidate && data.job) {
+        message = `${data.candidate.name} (${getFirstSkill(data.candidate)}) has accepted the offer for ${data.job.title} position!`;
+      }
+      break;
+    case "offer_sent":
+      if (data.candidate && data.job && data.user) {
+        message = `Offer sent to ${data.candidate.name} (${getFirstSkill(data.candidate)}) for ${data.job.title} position by ${data.user.fullName}`;
+      }
+      break;
+    case "job_posted":
+      if (data.job && data.user) {
+        message = `Job posted: ${data.job.title} (${data.job.type || "Full-time"}) by ${data.user.fullName}`;
+      }
+      break;
+    case "new_application":
+      if (data.candidate && data.job) {
+        message = `New application: ${data.candidate.name} (${getFirstSkill(data.candidate)}) for ${data.job.title} position`;
+      }
+      break;
+  }
+  if (!message) {
+    return;
+  }
+  await Promise.all(
+    usersToNotify.map((user) => storage.sendSlackNotification(user.id, message))
+  );
+}
+
+// server/api/job.ts
+init_notifications();
 function setupJobRoutes(app2) {
   app2.post("/api/jobs", validateRequest(insertJobSchema), async (req, res) => {
     try {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
       }
       if (!req.body.submitterId) {
         req.body.submitterId = req.user?.id;
@@ -2238,10 +4186,12 @@ We are looking for a talented ${req.body.title} to join our team.`;
         ...req.body,
         description: generatedDescription,
         suggestedTitle,
-        hiPeopleLink
+        hiPeopleLink,
+        accountId
       };
       const job = await storage.createJob(jobData);
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Created job draft",
         entityType: "job",
@@ -2259,11 +4209,15 @@ We are looking for a talented ${req.body.title} to join our team.`;
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const status = req.query.status;
-      const jobs2 = await storage.getJobs(status);
+      const jobs3 = await storage.getJobs(accountId, status);
       const jobsWithCandidateCounts = await Promise.all(
-        jobs2.map(async (job) => {
-          const candidatesResult = await db.select({ count: count() }).from(candidates).where(eq2(candidates.jobId, job.id));
+        jobs3.map(async (job) => {
+          const candidatesResult = await db.select({ count: count() }).from(candidates).where(and3(eq3(candidates.jobId, job.id), eq3(candidates.accountId, accountId)));
           const candidateCount = Number(candidatesResult[0].count);
           return {
             ...job,
@@ -2282,22 +4236,18 @@ We are looking for a talented ${req.body.title} to join our team.`;
       if (isNaN(jobId)) {
         return res.status(400).json({ message: "Invalid job ID" });
       }
-      const job = await storage.getJob(jobId);
-      if (!job) {
-        return res.status(404).json({ message: "Job not found" });
-      }
       if (req.isAuthenticated()) {
+        const accountId = await storage.getUserAccountId(req.user.id);
+        if (!accountId) {
+          return res.status(400).json({ message: "User is not associated with any account" });
+        }
+        const job = await storage.getJob(jobId, accountId);
+        if (!job) {
+          return res.status(404).json({ message: "Job not found" });
+        }
         res.json(job);
       } else {
-        res.json({
-          id: job.id,
-          title: job.title,
-          description: job.description,
-          type: job.type,
-          department: job.department,
-          status: job.status,
-          formTemplateId: job.formTemplateId
-        });
+        return res.status(401).json({ message: "Authentication required" });
       }
     } catch (error) {
       handleApiError(error, res);
@@ -2308,16 +4258,21 @@ We are looking for a talented ${req.body.title} to join our team.`;
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const jobId = parseInt(req.params.id);
       if (isNaN(jobId)) {
         return res.status(400).json({ message: "Invalid job ID" });
       }
-      const job = await storage.getJob(jobId);
+      const job = await storage.getJob(jobId, accountId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
-      const updatedJob = await storage.updateJob(jobId, req.body);
+      const updatedJob = await storage.updateJob(jobId, accountId, req.body);
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Updated job",
         entityType: "job",
@@ -2335,57 +4290,53 @@ We are looking for a talented ${req.body.title} to join our team.`;
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const jobId = parseInt(req.params.id);
       if (isNaN(jobId)) {
         return res.status(400).json({ message: "Invalid job ID" });
       }
-      const job = await storage.getJob(jobId);
+      const job = await storage.getJob(jobId, accountId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
-      const updatedJob = await storage.updateJob(jobId, {
+      const updatedJob = await storage.updateJob(jobId, accountId, {
         status: "active",
         postedDate: /* @__PURE__ */ new Date()
       });
-      const requestedPlatforms = req.body.platforms || ["linkedin", "onlinejobs"];
-      const platformMap = {
-        "linkedin": "LinkedIn",
-        "onlinejobs": "onlinejobs.ph"
-      };
-      const platforms = [];
-      for (const platformId of requestedPlatforms) {
-        const platformName = platformMap[platformId] || platformId;
-        platforms.push(platformName);
-        await storage.createJobPlatform({
-          jobId,
-          platform: platformName,
-          platformJobId: `${platformId}-${Math.random().toString(36).substring(2, 12)}`,
-          postUrl: `https://${platformId === "onlinejobs" ? "onlinejobs.ph" : platformId}.com/jobs/${Math.random().toString(36).substring(2, 10)}`,
-          status: "posted"
-        });
-      }
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
-        action: "Approved and posted job",
+        action: "Approved and activated job",
         entityType: "job",
         entityId: job.id,
-        details: { jobTitle: job.title, platforms },
+        details: { jobTitle: job.title },
         timestamp: /* @__PURE__ */ new Date()
       });
-      await storage.createNotification({
-        type: "slack",
-        payload: {
-          channel: "hiring-updates",
-          message: `Job posted: ${job.title} by ${req.user?.fullName}`,
-          jobId: job.id
-        },
-        processAfter: /* @__PURE__ */ new Date(),
-        status: "pending"
-      });
-      res.json({
-        ...updatedJob,
-        platforms: await storage.getJobPlatforms(jobId)
-      });
+      if (req.user?.id) {
+        const user = await storage.getUser(req.user.id);
+        if (user) {
+          await notifySlackUsers(req.user.id, "job_posted", {
+            job: updatedJob,
+            user
+          });
+          try {
+            await createNotification(
+              req.user.id,
+              "job_posted",
+              "Job Posted",
+              `${updatedJob.title} has been posted and is now accepting applications`,
+              `/jobs`,
+              { jobId: updatedJob.id }
+            );
+          } catch (error) {
+            console.error("[Job] Failed to create job posted notification:", error);
+          }
+        }
+      }
+      res.json(updatedJob);
     } catch (error) {
       handleApiError(error, res);
     }
@@ -2395,18 +4346,23 @@ We are looking for a talented ${req.body.title} to join our team.`;
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const jobId = parseInt(req.params.id);
       if (isNaN(jobId)) {
         return res.status(400).json({ message: "Invalid job ID" });
       }
-      const job = await storage.getJob(jobId);
+      const job = await storage.getJob(jobId, accountId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
-      const updatedJob = await storage.updateJob(jobId, {
+      const updatedJob = await storage.updateJob(jobId, accountId, {
         status: "closed"
       });
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Closed job",
         entityType: "job",
@@ -2424,11 +4380,15 @@ We are looking for a talented ${req.body.title} to join our team.`;
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const jobId = parseInt(req.params.id);
       if (isNaN(jobId)) {
         return res.status(400).json({ message: "Invalid job ID" });
       }
-      const platforms = await storage.getJobPlatforms(jobId);
+      const platforms = await storage.getJobPlatforms(jobId, accountId);
       res.json(platforms);
     } catch (error) {
       handleApiError(error, res);
@@ -2439,9 +4399,60 @@ We are looking for a talented ${req.body.title} to join our team.`;
 // server/api/candidate.ts
 init_storage();
 init_schema();
-import { z as z3 } from "zod";
+init_utils();
 init_email_validator();
 init_ghl_integration();
+import { z as z5 } from "zod";
+init_notifications();
+
+// server/security/authorization.ts
+init_storage();
+init_schema();
+async function canAccessCandidate(userId, candidateId) {
+  try {
+    const user = await storage.getUser(userId);
+    if (!user) return false;
+    if ([UserRoles.ADMIN, UserRoles.CEO, UserRoles.COO, UserRoles.DIRECTOR].includes(user.role)) {
+      return true;
+    }
+    const candidate = await storage.getCandidate(candidateId);
+    if (!candidate) return false;
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+function canModifyCandidate(user, updateData) {
+  if (!user) return false;
+  const hasEvaluationFields = updateData.technicalProficiency !== void 0 || updateData.leadershipInitiative !== void 0 || updateData.problemSolving !== void 0 || updateData.communicationSkills !== void 0 || updateData.culturalFit !== void 0 || updateData.hiPeopleScore !== void 0 || updateData.hiPeoplePercentile !== void 0;
+  if (hasEvaluationFields) {
+    return [UserRoles.ADMIN, UserRoles.CEO, UserRoles.COO, UserRoles.DIRECTOR].includes(user.role);
+  }
+  return true;
+}
+
+// server/api/candidate.ts
+function getCompanyName() {
+  return process.env.COMPANY_NAME || "Company";
+}
+function getContractUrl(candidateId) {
+  const baseUrl = process.env.CONTRACT_BASE_URL || "https://talent.firmos.app";
+  const template = process.env.CONTRACT_URL_TEMPLATE || `${baseUrl}/web-manager-contract{candidateId}`;
+  return template.replace("{candidateId}", candidateId.toString());
+}
+function sanitizeAndReplaceTemplate(template, candidateName, jobTitle, senderName, companyName, additionalReplacements) {
+  const safeCandidateName = sanitizeTextInput(candidateName);
+  const safeJobTitle = sanitizeTextInput(jobTitle);
+  const safeSenderName = sanitizeTextInput(senderName);
+  const safeCompanyName = sanitizeTextInput(companyName);
+  let result = template.replace(/\{\{candidateName\}\}/g, safeCandidateName).replace(/\{\{jobTitle\}\}/g, safeJobTitle).replace(/\{\{senderName\}\}/g, safeSenderName).replace(/\{\{companyName\}\}/g, safeCompanyName);
+  if (additionalReplacements) {
+    for (const [key, value] of Object.entries(additionalReplacements)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+  }
+  return result;
+}
 function setupCandidateRoutes(app2) {
   app2.post(
     "/api/candidates",
@@ -2451,9 +4462,19 @@ function setupCandidateRoutes(app2) {
         if (!isAuthorized(req)) {
           return res.status(401).json({ message: "Authentication or API key required" });
         }
+        let accountId = null;
+        if (req.isAuthenticated() && req.user?.id) {
+          accountId = await storage.getUserAccountId(req.user.id);
+          if (!accountId) {
+            return res.status(400).json({ message: "User is not associated with any account" });
+          }
+        } else {
+          return res.status(401).json({ message: "Authentication required for candidate creation" });
+        }
         const existingCandidate = await storage.getCandidateByNameAndEmail(
           req.body.name,
-          req.body.email
+          req.body.email,
+          accountId
         );
         if (existingCandidate) {
           return res.status(409).json({
@@ -2462,11 +4483,79 @@ function setupCandidateRoutes(app2) {
             existingCandidateId: existingCandidate.id
           });
         }
-        const candidate = await storage.createCandidate(req.body);
+        const candidate = await storage.createCandidate({ ...req.body, accountId });
         const userId = req.user?.id;
+        if (userId && candidate.jobId) {
+          const job2 = await storage.getJob(candidate.jobId, accountId);
+          if (job2) {
+            await notifySlackUsers(userId, "new_application", {
+              candidate,
+              job: job2
+            });
+          }
+        }
+        if (userId && candidate.resumeUrl) {
+          try {
+            const user = await storage.getUser(userId);
+            if (user?.openRouterApiKey) {
+              Promise.resolve().then(() => (init_resume_parser(), resume_parser_exports)).then(async ({ parseResume: parseResume2 }) => {
+                try {
+                  const parsedData = await parseResume2(candidate.resumeUrl, user.openRouterApiKey);
+                  const updates = {
+                    parsedResumeData: parsedData
+                  };
+                  if (parsedData.phone && !candidate.phone) {
+                    updates.phone = parsedData.phone;
+                  }
+                  if (parsedData.location && !candidate.location) {
+                    updates.location = parsedData.location;
+                  }
+                  if (parsedData.skills && parsedData.skills.length > 0) {
+                    updates.skills = parsedData.skills;
+                  }
+                  if (parsedData.experienceYears) {
+                    updates.experienceYears = parsedData.experienceYears;
+                  }
+                  await storage.updateCandidate(candidate.id, accountId, updates);
+                  if (candidate.jobId) {
+                    try {
+                      const { calculateMatchScore: calculateMatchScore2 } = await Promise.resolve().then(() => (init_ai_matching(), ai_matching_exports));
+                      const job2 = await storage.getJob(candidate.jobId, accountId);
+                      if (job2) {
+                        const matchResult = await calculateMatchScore2(
+                          {
+                            name: candidate.name,
+                            skills: parsedData.skills || null,
+                            experienceYears: parsedData.experienceYears || null,
+                            parsedResumeData: parsedData
+                          },
+                          {
+                            title: job2.title,
+                            skills: job2.skills,
+                            type: job2.type,
+                            department: job2.department,
+                            description: job2.description
+                          },
+                          user.openRouterApiKey
+                        );
+                        await storage.updateCandidate(candidate.id, accountId, { matchScore: matchResult.score });
+                      }
+                    } catch (matchError) {
+                      console.error("Error auto-calculating match score:", matchError);
+                    }
+                  }
+                } catch (parseError) {
+                  console.error("Error auto-parsing resume:", parseError);
+                }
+              });
+            }
+          } catch (error) {
+            console.error("Error setting up auto-parse:", error);
+          }
+        }
         if (userId && candidate.jobId !== null && candidate.jobId !== void 0) {
           try {
-            const job2 = await storage.getJob(candidate.jobId);
+            const job2 = await storage.getJob(candidate.jobId, accountId);
             if (job2) {
               candidate.job = job2;
             }
@@ -2499,7 +4588,7 @@ function setupCandidateRoutes(app2) {
                   });
                   const ghlContactId = ghlResponse.contact?.id;
                   if (ghlContactId) {
-                    await storage.updateCandidate(candidate.id, { ghlContactId });
+                    await storage.updateCandidate(candidate.id, accountId, { ghlContactId });
                   }
                 } else if (integration.platformId === "airtable") {
                   const { updateCandidateInAirtable: updateCandidateInAirtable2 } = await Promise.resolve().then(() => (init_airtable_integration(), airtable_integration_exports));
@@ -2524,6 +4613,7 @@ function setupCandidateRoutes(app2) {
                 }
               } catch (syncError) {
                 await storage.createActivityLog({
+                  accountId,
                   userId: req.user?.id ?? null,
                   action: `${integration.platformName} sync failed`,
                   entityType: "candidate",
@@ -2541,6 +4631,7 @@ function setupCandidateRoutes(app2) {
           }
         }
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: "Added candidate",
           entityType: "candidate",
@@ -2548,7 +4639,7 @@ function setupCandidateRoutes(app2) {
           details: { candidateName: candidate.name, jobId: candidate.jobId },
           timestamp: /* @__PURE__ */ new Date()
         });
-        const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+        const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
         const processAfter = job?.expressReview ? /* @__PURE__ */ new Date() : new Date(Date.now() + 3 * 60 * 60 * 1e3);
         await storage.createNotification({
           type: "email",
@@ -2576,13 +4667,15 @@ function setupCandidateRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const jobId = req.query.jobId ? parseInt(req.query.jobId) : void 0;
       const status = req.query.status;
-      const hiPeoplePercentile = req.query.hiPeoplePercentile ? parseInt(req.query.hiPeoplePercentile) : void 0;
-      const candidates2 = await storage.getCandidates({
+      const candidates2 = await storage.getCandidates(accountId, {
         jobId,
-        status,
-        hiPeoplePercentile
+        status
       });
       res.json(candidates2);
     } catch (error) {
@@ -2594,11 +4687,19 @@ function setupCandidateRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const candidateId = parseInt(req.params.id);
       if (isNaN(candidateId)) {
         return res.status(400).json({ message: "Invalid candidate ID" });
       }
-      const candidate = await storage.getCandidate(candidateId);
+      const hasAccess = await canAccessCandidate(req.user.id, candidateId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied to this candidate" });
+      }
+      const candidate = await storage.getCandidate(candidateId, accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
@@ -2612,21 +4713,39 @@ function setupCandidateRoutes(app2) {
       if (!isAuthorized(req)) {
         return res.status(401).json({ message: "Authentication or API key required" });
       }
+      let accountId = null;
+      if (req.isAuthenticated() && req.user?.id) {
+        accountId = await storage.getUserAccountId(req.user.id);
+        if (!accountId) {
+          return res.status(400).json({ message: "User is not associated with any account" });
+        }
+      } else {
+        return res.status(401).json({ message: "Authentication required for candidate updates" });
+      }
       const candidateIdentifier = req.params.id;
       let candidate;
       if (!isNaN(Number(candidateIdentifier))) {
-        candidate = await storage.getCandidate(parseInt(candidateIdentifier));
+        candidate = await storage.getCandidate(parseInt(candidateIdentifier), accountId);
       } else {
-        candidate = await storage.getCandidateByGHLContactId(candidateIdentifier);
+        candidate = await storage.getCandidateByGHLContactId(candidateIdentifier, accountId);
       }
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
+      if (req.isAuthenticated()) {
+        const hasAccess = await canAccessCandidate(req.user.id, candidate.id);
+        if (!hasAccess) {
+          return res.status(403).json({ message: "Access denied to this candidate" });
+        }
+      }
       const hasEvaluationFields = req.body.technicalProficiency !== void 0 || req.body.leadershipInitiative !== void 0 || req.body.problemSolving !== void 0 || req.body.communicationSkills !== void 0 || req.body.culturalFit !== void 0 || req.body.hiPeopleScore !== void 0 || req.body.hiPeoplePercentile !== void 0;
-      if (hasEvaluationFields && !["ceo", "coo", "director", "admin"].includes(req.user?.role || "")) {
-        return res.status(403).json({
-          message: "Only CEO, COO, or Director can update candidate evaluation criteria"
-        });
+      if (hasEvaluationFields && req.user) {
+        const canModify = canModifyCandidate(req.user, req.body);
+        if (!canModify) {
+          return res.status(403).json({
+            message: "Only CEO, COO, Director, or Admin can update candidate evaluation criteria"
+          });
+        }
       }
       const updateData = { ...req.body };
       if (updateData.lastInterviewDate) {
@@ -2634,9 +4753,73 @@ function setupCandidateRoutes(app2) {
       }
       const updatedCandidate = await storage.updateCandidate(
         candidate.id,
+        accountId,
         updateData
       );
       const userId = req.user?.id;
+      if (userId && req.body.resumeUrl && req.body.resumeUrl !== candidate.resumeUrl) {
+        try {
+          const user = await storage.getUser(userId);
+          if (user?.openRouterApiKey) {
+            Promise.resolve().then(() => (init_resume_parser(), resume_parser_exports)).then(async ({ parseResume: parseResume2 }) => {
+              try {
+                const parsedData = await parseResume2(req.body.resumeUrl, user.openRouterApiKey);
+                const updates = {
+                  parsedResumeData: parsedData
+                };
+                if (parsedData.phone && !updatedCandidate.phone) {
+                  updates.phone = parsedData.phone;
+                }
+                if (parsedData.location && !updatedCandidate.location) {
+                  updates.location = parsedData.location;
+                }
+                if (parsedData.skills && parsedData.skills.length > 0) {
+                  const existingSkills = Array.isArray(updatedCandidate.skills) ? updatedCandidate.skills : [];
+                  const skillsSet = /* @__PURE__ */ new Set([...existingSkills, ...parsedData.skills]);
+                  updates.skills = Array.from(skillsSet);
+                }
+                if (parsedData.experienceYears && !updatedCandidate.experienceYears) {
+                  updates.experienceYears = parsedData.experienceYears;
+                }
+                await storage.updateCandidate(updatedCandidate.id, accountId, updates);
+                if (updatedCandidate.jobId) {
+                  try {
+                    const { calculateMatchScore: calculateMatchScore2 } = await Promise.resolve().then(() => (init_ai_matching(), ai_matching_exports));
+                    const job = await storage.getJob(updatedCandidate.jobId, accountId);
+                    if (job) {
+                      const finalCandidate = await storage.getCandidate(updatedCandidate.id, accountId);
+                      const matchResult = await calculateMatchScore2(
+                        {
+                          name: finalCandidate.name,
+                          skills: finalCandidate.skills,
+                          experienceYears: finalCandidate.experienceYears,
+                          parsedResumeData: parsedData,
+                          applicationData: finalCandidate.applicationData
+                        },
+                        {
+                          title: job.title,
+                          skills: job.skills,
+                          type: job.type,
+                          department: job.department,
+                          description: job.description
+                        },
+                        user.openRouterApiKey
+                      );
+                      await storage.updateCandidate(updatedCandidate.id, accountId, { matchScore: matchResult.score });
+                    }
+                  } catch (matchError) {
+                    console.error("Error auto-calculating match score:", matchError);
+                  }
+                }
+              } catch (parseError) {
+                console.error("Error auto-parsing resume:", parseError);
+              }
+            });
+          }
+        } catch (error) {
+          console.error("Error setting up auto-parse:", error);
+        }
+      }
       if (userId) {
         try {
           const crmIntegrations = await storage.getCRMIntegrations(userId);
@@ -2648,7 +4831,7 @@ function setupCandidateRoutes(app2) {
               if (integration.platformId === "airtable") {
                 const { updateCandidateInAirtable: updateCandidateInAirtable2 } = await Promise.resolve().then(() => (init_airtable_integration(), airtable_integration_exports));
                 if (updatedCandidate.jobId) {
-                  const job = await storage.getJob(updatedCandidate.jobId);
+                  const job = await storage.getJob(updatedCandidate.jobId, accountId);
                   if (job) {
                     updatedCandidate.job = job;
                   }
@@ -2657,7 +4840,7 @@ function setupCandidateRoutes(app2) {
               } else if (integration.platformId === "ghl" && updatedCandidate.ghlContactId) {
                 const { updateCandidateInGHL: updateCandidateInGHL2 } = await Promise.resolve().then(() => (init_ghl_integration(), ghl_integration_exports));
                 if (updatedCandidate.jobId) {
-                  const job = await storage.getJob(updatedCandidate.jobId);
+                  const job = await storage.getJob(updatedCandidate.jobId, accountId);
                   if (job) {
                     updatedCandidate.job = job;
                   }
@@ -2666,7 +4849,7 @@ function setupCandidateRoutes(app2) {
               } else if (integration.platformId === "google-sheets") {
                 const { createOrUpdateGoogleSheetsContact: createOrUpdateGoogleSheetsContact3, findRowByEmail: findRowByEmail3 } = await Promise.resolve().then(() => (init_google_sheets_integration(), google_sheets_integration_exports));
                 if (updatedCandidate.jobId) {
-                  const job = await storage.getJob(updatedCandidate.jobId);
+                  const job = await storage.getJob(updatedCandidate.jobId, accountId);
                   if (job) {
                     updatedCandidate.job = job;
                   }
@@ -2697,47 +4880,50 @@ function setupCandidateRoutes(app2) {
         }
       }
       if (req.body.status === "45_1st_interview_sent" && req.body.status !== candidate.status) {
-        const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+        const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
         if (job) {
-          await storage.createNotification({
+          const user = req.user ? await storage.getUser(req.user.id) : null;
+          const senderName = user?.fullName || "Team Member";
+          const companyName = getCompanyName();
+          const emailBody = sanitizeEmailContent(`
+            Hi ${sanitizeTextInput(candidate.name)},<br><br>
+            It's ${sanitizeTextInput(senderName)} from ${sanitizeTextInput(companyName)}. I came across your profile and would like to chat about your background and how you might fit in our <b>${sanitizeTextInput(job.title)}</b> position.<br><br>
+            Feel free to grab a time on my calendar when you're available:<br>
+            <a href="${user?.calendarLink || "#"}">Schedule your interview here</a><br><br>
+            Looking forward to connecting!<br><br>
+            Thanks,<br>
+            ${sanitizeTextInput(senderName)}<br>
+            ${sanitizeTextInput(companyName)}
+          `.trim());
+          await storage.createInAppNotification({
+            accountId,
+            userId: req.user?.id ?? null,
             type: "email",
-            payload: {
-              recipientEmail: candidate.email,
-              subject: `${candidate.name}, Let's Discuss Your Fit for Our ${job.title} Position`,
-              template: "custom",
-              context: {
-                body: `
-                  Hi ${candidate.name},<br><br>
-                  It's Aaron Ready from Ready CPA. I came across your profile and would like to chat about your background and how you might fit in our <b>${job.title}</b> position.<br><br>
-                  Feel free to grab a time on my calendar when you're available:<br>
-                  <a href="https://www.calendar.com/aaronready/client-meeting">Schedule your interview here</a><br><br>
-                  Looking forward to connecting!<br><br>
-                  Thanks,<br>
-                  Aaron Ready, CPA<br>
-                  Ready CPA
-                `.trim()
-              }
-            },
-            processAfter: /* @__PURE__ */ new Date(),
-            status: "pending"
+            title: "Interview Invite Sent",
+            message: `Interview invite sent to ${candidate.name}`,
+            link: `/candidates/${candidate.id}`,
+            metadata: { candidateId: candidate.id }
           });
         }
       }
       if (req.body.status === "95_offer_sent" && candidate.status !== "95_offer_sent" || req.body.finalDecisionStatus === "offer" && candidate.finalDecisionStatus !== "offer") {
-        const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
-        let offer = await storage.getOfferByCandidate(candidate.id);
+        const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+        let offer = await storage.getOfferByCandidate(candidate.id, accountId);
         if (!offer) {
           offer = await storage.createOffer({
+            accountId,
             candidateId: candidate.id,
             offerType: "Full-time",
             compensation: "Competitive",
             status: "sent",
             sentDate: /* @__PURE__ */ new Date(),
             approvedById: req.user?.id,
-            contractUrl: `https://talent.firmos.app/web-manager-contract453986`
+            contractUrl: getContractUrl(candidate.id)
+            // SECURITY: From environment variable
           });
         }
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: "Sent offer to candidate",
           entityType: "candidate",
@@ -2745,31 +4931,34 @@ function setupCandidateRoutes(app2) {
           details: { candidateName: candidate.name, jobTitle: job?.title },
           timestamp: /* @__PURE__ */ new Date()
         });
-        const emailSubject = `Excited to Offer You the ${job?.title} Position`;
-        const emailBody = `
-          <p>Hi ${candidate.name},</p>
-          <p>Great news \u2014 we'd love to bring you on board for the ${job?.title} position at Ready CPA. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
+        const user = req.user ? await storage.getUser(req.user.id) : null;
+        const senderName = user?.fullName || "Team Member";
+        const companyName = getCompanyName();
+        const emailSubject = sanitizeTextInput(`Excited to Offer You the ${job?.title || "Position"} Position`);
+        const emailBody = sanitizeEmailContent(`
+          <p>Hi ${sanitizeTextInput(candidate.name)},</p>
+          <p>Great news \u2014 we'd love to bring you on board for the ${sanitizeTextInput(job?.title || "position")} position at ${sanitizeTextInput(companyName)}. After reviewing your experience, we're confident you'll make a strong impact on our team.</p>
           <p>Here's the link to your engagement contract:
-          <a href="https://talent.firmos.app/web-manager-contract453986">[Contract Link]</a></p>
+          <a href="${getContractUrl(candidate.id)}">[Contract Link]</a></p>
           <p>To kick things off, please schedule your onboarding call here:
-          <a href="https://www.calendar.com/aaronready/client-meeting">[Onboarding Calendar Link]</a></p>
+          <a href="${user?.calendarLink || "#"}">[Onboarding Calendar Link]</a></p>
           <p>If anything's unclear or you'd like to chat, don't hesitate to reach out.</p>
           <p>Welcome aboard \u2014 we're excited to get started!</p>
           <p>Best regards,<br>
-          Aaron Ready, CPA<br>
-          Ready CPA</p>
-        `;
-        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
+          ${sanitizeTextInput(senderName)}<br>
+          ${sanitizeTextInput(companyName)}</p>
+        `);
+        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody, req.user?.id);
       }
       if (req.body.status && req.body.status !== candidate.status) {
         const interviewStatuses = ["45_1st_interview_sent", "60_1st_interview_scheduled", "75_2nd_interview_scheduled"];
         const wasInterviewStatus = interviewStatuses.includes(candidate.status);
         const isNoLongerInterviewStatus = !interviewStatuses.includes(req.body.status);
         if (wasInterviewStatus && isNoLongerInterviewStatus) {
-          const existingInterviews = await storage.getInterviews({ candidateId: candidate.id });
+          const existingInterviews = await storage.getInterviews(accountId, { candidateId: candidate.id });
           for (const interview of existingInterviews) {
             if (interview.status === "scheduled" || interview.status === "pending") {
-              await storage.updateInterview(interview.id, {
+              await storage.updateInterview(interview.id, accountId, {
                 status: "cancelled",
                 notes: interview.notes ? `${interview.notes}
 
@@ -2780,6 +4969,7 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
           }
         }
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: `Updated candidate status to ${req.body.status}`,
           entityType: "candidate",
@@ -2794,6 +4984,7 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
       }
       if (hasEvaluationFields) {
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: "Updated candidate evaluation",
           entityType: "candidate",
@@ -2815,6 +5006,23 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
           timestamp: /* @__PURE__ */ new Date()
         });
       }
+      if (req.body.status && req.body.status !== candidate.status) {
+        try {
+          const { triggerWorkflows: triggerWorkflows2 } = await Promise.resolve().then(() => (init_workflow_engine(), workflow_engine_exports));
+          const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+          await triggerWorkflows2("candidate_status_change", {
+            entityType: "candidate",
+            entityId: candidate.id,
+            candidate: updatedCandidate,
+            job,
+            user: req.user,
+            fromStatus: candidate.status,
+            toStatus: req.body.status
+          }, accountId);
+        } catch (error) {
+          console.error("[Candidate Update] Workflow trigger error:", error);
+        }
+      }
       res.json(updatedCandidate);
     } catch (error) {
       handleApiError(error, res);
@@ -2825,20 +5033,25 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const candidateId = parseInt(req.params.id);
       if (isNaN(candidateId)) {
         return res.status(400).json({ message: "Invalid candidate ID" });
       }
-      const candidate = await storage.getCandidate(candidateId);
+      const candidate = await storage.getCandidate(candidateId, accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
-      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
       if (isLikelyInvalidEmail(candidate.email)) {
         console.error(
           `\u274C Rejected likely non-existent email: ${candidate.email}`
         );
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: "Interview invite failed - invalid email",
           entityType: "candidate",
@@ -2855,10 +5068,11 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
           errorType: "non_existent_email"
         });
       }
-      const updatedCandidate = await storage.updateCandidate(candidateId, {
+      const updatedCandidate = await storage.updateCandidate(candidateId, accountId, {
         status: "45_1st_interview_sent"
       });
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Invited candidate to interview",
         entityType: "candidate",
@@ -2877,9 +5091,17 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
           details: "Please set your calendar scheduling link in Settings > User Management before sending interview invitations."
         });
       }
-      const calendarLink = user.calendarLink;
+      let calendarLink = user.calendarLink;
+      if (user.calendarProvider === "google" && calendarLink) {
+        const url = new URL(calendarLink);
+        url.searchParams.set("candidateId", candidateId.toString());
+        if (candidate.jobId) {
+          url.searchParams.set("jobId", candidate.jobId.toString());
+        }
+        calendarLink = url.toString();
+      }
       const senderName = user.fullName || "Team Member";
-      const companyName = "Ready CPA";
+      const companyName = getCompanyName();
       const defaultSubject = `{{candidateName}}, Let's Discuss Your Fit for Our {{jobTitle}} Position`;
       const defaultBody = `
       <p>Hi {{candidateName}},</p>
@@ -2899,13 +5121,32 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
       const interviewTemplate = userTemplates.interview || {};
       const subjectTemplate = interviewTemplate.subject || defaultSubject;
       const bodyTemplate = interviewTemplate.body || defaultBody;
-      const emailSubject = subjectTemplate.replace(/\{\{candidateName\}\}/g, candidate.name).replace(/\{\{jobTitle\}\}/g, job?.title || "the position").replace(/\{\{senderName\}\}/g, senderName).replace(/\{\{companyName\}\}/g, companyName);
-      const emailBody = bodyTemplate.replace(/\{\{candidateName\}\}/g, candidate.name).replace(/\{\{jobTitle\}\}/g, job?.title || "the position").replace(/\{\{senderName\}\}/g, senderName).replace(/\{\{companyName\}\}/g, companyName).replace(/\{\{calendarLink\}\}/g, calendarLink);
-      await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
-      const existingInterviews = await storage.getInterviews({ candidateId: candidate.id });
+      const safeCandidateName = sanitizeTextInput(candidate.name);
+      const safeJobTitle = sanitizeTextInput(job?.title || "the position");
+      const safeSenderName = sanitizeTextInput(senderName);
+      const safeCompanyName = sanitizeTextInput(companyName);
+      const emailSubject = subjectTemplate.replace(/\{\{candidateName\}\}/g, safeCandidateName).replace(/\{\{jobTitle\}\}/g, safeJobTitle).replace(/\{\{senderName\}\}/g, safeSenderName).replace(/\{\{companyName\}\}/g, safeCompanyName);
+      let emailBody = bodyTemplate.replace(/\{\{candidateName\}\}/g, safeCandidateName).replace(/\{\{jobTitle\}\}/g, safeJobTitle).replace(/\{\{senderName\}\}/g, safeSenderName).replace(/\{\{companyName\}\}/g, safeCompanyName).replace(/\{\{calendarLink\}\}/g, calendarLink);
+      emailBody = sanitizeEmailContent(emailBody);
+      await storage.sendDirectEmail(candidate.email, emailSubject, emailBody, req.user?.id);
+      try {
+        await createNotification(
+          req.user.id,
+          "interview_scheduled",
+          // Using interview_scheduled type for invite sent
+          "Interview Invite Sent",
+          `Interview invite sent to ${candidate.name} for ${job?.title || "a position"}`,
+          `/candidates`,
+          { candidateId: candidate.id, jobId: job?.id }
+        );
+      } catch (error) {
+        console.error("[Candidate] Failed to create interview invite sent notification:", error);
+      }
+      const existingInterviews = await storage.getInterviews(accountId, { candidateId: candidate.id });
       const existingScheduledInterview = existingInterviews.find((i) => i.status === "scheduled" || i.status === "pending");
       if (!existingScheduledInterview) {
         await storage.createInterview({
+          accountId,
           candidateId: candidate.id,
           interviewerId: req.user?.id ?? null,
           type: "video",
@@ -2917,7 +5158,7 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
           notes: "Interview invitation sent - awaiting candidate to book via calendar link"
         });
       } else {
-        await storage.updateInterview(existingScheduledInterview.id, {
+        await storage.updateInterview(existingScheduledInterview.id, accountId, {
           status: "scheduled",
           notes: "Interview invitation sent - awaiting candidate to book via calendar link",
           updatedAt: /* @__PURE__ */ new Date()
@@ -2933,20 +5174,25 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const candidateId = parseInt(req.params.id);
       if (isNaN(candidateId)) {
         return res.status(400).json({ message: "Invalid candidate ID" });
       }
-      const candidate = await storage.getCandidate(candidateId);
+      const candidate = await storage.getCandidate(candidateId, accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
-      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
       if (isLikelyInvalidEmail(candidate.email)) {
         console.error(
           `\u274C Rejected likely non-existent email: ${candidate.email}`
         );
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: "Talent pool add failed - invalid email",
           entityType: "candidate",
@@ -2963,12 +5209,13 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
           errorType: "non_existent_email"
         });
       }
-      const updatedCandidate = await storage.updateCandidate(candidateId, {
+      const updatedCandidate = await storage.updateCandidate(candidateId, accountId, {
         status: "90_talent_pool",
         finalDecisionStatus: "talent_pool"
         // Also keep final decision status in sync
       });
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Added candidate to talent pool",
         entityType: "candidate",
@@ -2978,7 +5225,7 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
       });
       const user = req.user ? await storage.getUser(req.user.id) : null;
       const senderName = user?.fullName || "Team Member";
-      const companyName = "Ready CPA";
+      const companyName = getCompanyName();
       const defaultSubject = `Thank you for your application to {{jobTitle}}`;
       const defaultBody = `
       <p>Hi {{candidateName}},</p>
@@ -2999,10 +5246,23 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
       const talentPoolTemplate = userTemplates.talentPool || userTemplates.talent_pool || {};
       const subjectTemplate = talentPoolTemplate.subject || defaultSubject;
       const bodyTemplate = talentPoolTemplate.body || defaultBody;
-      const emailSubject = subjectTemplate.replace(/\{\{candidateName\}\}/g, candidate.name).replace(/\{\{jobTitle\}\}/g, job?.title || "the position").replace(/\{\{senderName\}\}/g, senderName).replace(/\{\{companyName\}\}/g, companyName);
-      const emailBody = bodyTemplate.replace(/\{\{candidateName\}\}/g, candidate.name).replace(/\{\{jobTitle\}\}/g, job?.title || "the position").replace(/\{\{senderName\}\}/g, senderName).replace(/\{\{companyName\}\}/g, companyName);
+      const emailSubject = sanitizeAndReplaceTemplate(
+        subjectTemplate,
+        candidate.name,
+        job?.title || "the position",
+        senderName,
+        companyName
+      );
+      let emailBody = sanitizeAndReplaceTemplate(
+        bodyTemplate,
+        candidate.name,
+        job?.title || "the position",
+        senderName,
+        companyName
+      );
+      emailBody = sanitizeEmailContent(emailBody);
       try {
-        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
+        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody, req.user?.id);
       } catch (emailError) {
       }
       res.json(updatedCandidate);
@@ -3015,21 +5275,26 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const candidateId = parseInt(req.params.id);
       if (isNaN(candidateId)) {
         return res.status(400).json({ message: "Invalid candidate ID" });
       }
-      const candidate = await storage.getCandidate(candidateId);
+      const candidate = await storage.getCandidate(candidateId, accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
-      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
       const nodemailer = await import("nodemailer");
       if (isLikelyInvalidEmail(candidate.email)) {
         console.error(
           `\u274C Rejected likely non-existent email: ${candidate.email}`
         );
         await storage.createActivityLog({
+          accountId,
           userId: req.user?.id ?? null,
           action: "Rejection failed - invalid email",
           entityType: "candidate",
@@ -3046,11 +5311,12 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
           errorType: "non_existent_email"
         });
       }
-      const updatedCandidate = await storage.updateCandidate(candidateId, {
+      const updatedCandidate = await storage.updateCandidate(candidateId, accountId, {
         status: "200_rejected",
         finalDecisionStatus: "rejected"
       });
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Rejected candidate",
         entityType: "candidate",
@@ -3060,7 +5326,7 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
       });
       const user = req.user ? await storage.getUser(req.user.id) : null;
       const senderName = user?.fullName || "Team Member";
-      const companyName = "Ready CPA";
+      const companyName = getCompanyName();
       const defaultSubject = `Update on Your {{jobTitle}} Application`;
       const defaultBody = `
       <p>Hi {{candidateName}},</p>
@@ -3081,10 +5347,23 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
       const rejectionTemplate = userTemplates.rejection || userTemplates.reject || {};
       const subjectTemplate = rejectionTemplate.subject || defaultSubject;
       const bodyTemplate = rejectionTemplate.body || defaultBody;
-      const emailSubject = subjectTemplate.replace(/\{\{candidateName\}\}/g, candidate.name).replace(/\{\{jobTitle\}\}/g, job?.title || "the position").replace(/\{\{senderName\}\}/g, senderName).replace(/\{\{companyName\}\}/g, companyName);
-      const emailBody = bodyTemplate.replace(/\{\{candidateName\}\}/g, candidate.name).replace(/\{\{jobTitle\}\}/g, job?.title || "the position").replace(/\{\{senderName\}\}/g, senderName).replace(/\{\{companyName\}\}/g, companyName);
+      const emailSubject = sanitizeAndReplaceTemplate(
+        subjectTemplate,
+        candidate.name,
+        job?.title || "the position",
+        senderName,
+        companyName
+      );
+      let emailBody = sanitizeAndReplaceTemplate(
+        bodyTemplate,
+        candidate.name,
+        job?.title || "the position",
+        senderName,
+        companyName
+      );
+      emailBody = sanitizeEmailContent(emailBody);
       try {
-        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody);
+        await storage.sendDirectEmail(candidate.email, emailSubject, emailBody, req.user?.id);
       } catch (emailError) {
       }
       res.json(updatedCandidate);
@@ -3095,11 +5374,11 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
   app2.post(
     "/api/candidates/:id/send-offer",
     validateRequest(
-      z3.object({
-        offerType: z3.string(),
-        compensation: z3.string(),
-        startDate: z3.string().optional(),
-        notes: z3.string().optional()
+      z5.object({
+        offerType: z5.string(),
+        compensation: z5.string(),
+        startDate: z5.string().optional(),
+        notes: z5.string().optional()
       })
     ),
     async (req, res) => {
@@ -3107,21 +5386,23 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
         if (!req.isAuthenticated()) {
           return res.status(401).json({ message: "Authentication required" });
         }
+        const accountId = await storage.getUserAccountId(req.user.id);
+        if (!accountId) {
+          return res.status(400).json({ message: "User is not associated with any account" });
+        }
         const candidateId = parseInt(req.params.id);
         if (isNaN(candidateId)) {
           return res.status(400).json({ message: "Invalid candidate ID" });
         }
-        const candidate = await storage.getCandidate(candidateId);
+        const candidate = await storage.getCandidate(candidateId, accountId);
         if (!candidate) {
           return res.status(404).json({ message: "Candidate not found" });
         }
-        const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+        const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
         try {
           if (isLikelyInvalidEmail(candidate.email)) {
-            console.log(
-              `\u274C Rejected likely non-existent email: ${candidate.email}`
-            );
             await storage.createActivityLog({
+              accountId,
               userId: req.user?.id ?? null,
               action: "Offer send failed - invalid email",
               entityType: "candidate",
@@ -3139,13 +5420,14 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
               errorType: "non_existent_email"
             });
           }
-          const updatedCandidate = await storage.updateCandidate(candidateId, {
+          const updatedCandidate = await storage.updateCandidate(candidateId, accountId, {
             status: "95_offer_sent",
             finalDecisionStatus: "offer_sent"
             // Also update final decision status
           });
           const startDate = req.body.startDate ? new Date(req.body.startDate) : void 0;
           const offer = await storage.createOffer({
+            accountId,
             candidateId,
             offerType: req.body.offerType,
             compensation: req.body.compensation,
@@ -3156,7 +5438,20 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
             approvedById: req.user?.id,
             contractUrl: `https://firmos.ai/contracts/${candidateId}-${Date.now()}.pdf`
           });
+          if (req.user?.id) {
+            const user2 = await storage.getUser(req.user.id);
+            const job2 = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+            if (user2 && job2) {
+              await notifySlackUsers(req.user.id, "offer_sent", {
+                candidate: updatedCandidate,
+                job: job2,
+                offer,
+                user: user2
+              });
+            }
+          }
           await storage.createActivityLog({
+            accountId,
             userId: req.user?.id ?? null,
             action: "Sent offer to candidate",
             entityType: "candidate",
@@ -3182,10 +5477,6 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
             baseUrl = `${protocol}://${host}`;
           }
           const acceptanceUrl = `${baseUrl}/accept-offer/${offer.acceptanceToken}`;
-          if (process.env.NODE_ENV !== "production") {
-            console.log(`\u{1F4E7} Offer acceptance URL: ${acceptanceUrl}`);
-            console.log(`   Token: ${offer.acceptanceToken}`);
-          }
           const defaultSubject = `Excited to Offer You the {{jobTitle}} Position`;
           const defaultBody = `
           <p>Hi {{candidateName}},</p>
@@ -3208,12 +5499,27 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
           const offerTemplate = userTemplates.offer || {};
           const subjectTemplate = offerTemplate.subject || defaultSubject;
           const bodyTemplate = offerTemplate.body || defaultBody;
-          const emailSubject = subjectTemplate.replace(/\{\{candidateName\}\}/g, candidate.name).replace(/\{\{jobTitle\}\}/g, job?.title || "the position").replace(/\{\{senderName\}\}/g, senderName).replace(/\{\{companyName\}\}/g, companyName);
-          const emailBody = bodyTemplate.replace(/\{\{candidateName\}\}/g, candidate.name).replace(/\{\{jobTitle\}\}/g, job?.title || "the position").replace(/\{\{senderName\}\}/g, senderName).replace(/\{\{companyName\}\}/g, companyName).replace(/\{\{contractLink\}\}/g, offer.contractUrl || "#").replace(/\{\{acceptanceUrl\}\}/g, acceptanceUrl);
+          const emailSubject = sanitizeAndReplaceTemplate(
+            subjectTemplate,
+            candidate.name,
+            job?.title || "the position",
+            senderName,
+            companyName
+          );
+          let emailBody = sanitizeAndReplaceTemplate(
+            bodyTemplate,
+            candidate.name,
+            job?.title || "the position",
+            senderName,
+            companyName,
+            { contractLink: offer.contractUrl || "#", acceptanceUrl }
+          );
+          emailBody = sanitizeEmailContent(emailBody);
           await storage.sendDirectEmail(
             candidate.email,
             emailSubject,
-            emailBody
+            emailBody,
+            req.user?.id
           );
           res.json({
             candidate: updatedCandidate,
@@ -3241,25 +5547,30 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const candidateId = parseInt(req.params.id);
       if (isNaN(candidateId)) {
         return res.status(400).json({ message: "Invalid candidate ID" });
       }
-      const candidate = await storage.getCandidate(candidateId);
+      const candidate = await storage.getCandidate(candidateId, accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
-      const updatedCandidate = await storage.updateCandidate(candidateId, {
+      const updatedCandidate = await storage.updateCandidate(candidateId, accountId, {
         status: "100_offer_accepted"
       });
-      const offer = await storage.getOfferByCandidate(candidateId);
+      const offer = await storage.getOfferByCandidate(candidateId, accountId);
       if (offer) {
-        await storage.updateOffer(offer.id, {
+        await storage.updateOffer(offer.id, accountId, {
           status: "accepted"
         });
       }
-      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Candidate accepted offer",
         entityType: "candidate",
@@ -3267,17 +5578,29 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
         details: { candidateName: candidate.name, jobTitle: job?.title },
         timestamp: /* @__PURE__ */ new Date()
       });
-      await storage.createNotification({
-        type: "slack",
-        payload: {
-          channel: "onboarding",
-          message: `${candidate.name} has accepted the offer for ${job?.title} position!`,
-          candidateId: candidate.id,
-          jobId: candidate.jobId
-        },
-        processAfter: /* @__PURE__ */ new Date(),
-        status: "pending"
-      });
+      if (offer && offer.approvedById) {
+        const user = await storage.getUser(offer.approvedById);
+        if (user && job) {
+          await notifySlackUsers(offer.approvedById, "offer_accepted", {
+            candidate,
+            job,
+            offer,
+            user
+          });
+          try {
+            await createNotification(
+              offer.approvedById,
+              "offer_accepted",
+              "Offer Accepted",
+              `${candidate.name} accepted the offer for ${job.title}`,
+              `/candidates`,
+              { candidateId: candidate.id, jobId: job.id, offerId: offer.id }
+            );
+          } catch (error) {
+            console.error("[Candidate] Failed to create offer accepted notification:", error);
+          }
+        }
+      }
       await storage.createNotification({
         type: "email",
         payload: {
@@ -3318,11 +5641,11 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
       if (offer.status !== "sent") {
         return res.status(400).json({ message: "This offer is not available for acceptance" });
       }
-      const candidate = await storage.getCandidate(offer.candidateId);
+      const candidate = await storage.getCandidate(offer.candidateId, offer.accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
-      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId, offer.accountId) : null;
       res.json({
         offer: {
           id: offer.id,
@@ -3365,21 +5688,21 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
       if (offer.status === "declined") {
         return res.status(400).json({ message: "This offer has already been declined" });
       }
-      const candidate = await storage.getCandidate(offer.candidateId);
+      const candidate = await storage.getCandidate(offer.candidateId, offer.accountId);
       if (!candidate) {
         return res.status(404).json({ message: "Candidate not found" });
       }
-      const job = candidate.jobId ? await storage.getJob(candidate.jobId) : null;
+      const job = candidate.jobId ? await storage.getJob(candidate.jobId, offer.accountId) : null;
       if (action === "accept") {
-        await storage.updateOffer(offer.id, {
+        await storage.updateOffer(offer.id, offer.accountId, {
           status: "accepted"
         });
-        await storage.updateCandidate(offer.candidateId, {
+        await storage.updateCandidate(offer.candidateId, offer.accountId, {
           status: "100_offer_accepted"
         });
         const approvingUser = offer.approvedById ? await storage.getUser(offer.approvedById) : null;
         const senderName = approvingUser?.fullName || "Team Member";
-        const companyName = "Ready CPA";
+        const companyName = getCompanyName();
         const onboardingLink = approvingUser?.calendarLink || "#";
         const defaultOnboardingSubject = `Welcome to {{companyName}}!`;
         const defaultOnboardingBody = `
@@ -3406,7 +5729,7 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
         const onboardingSubject = onboardingSubjectTemplate.replace(/\{\{candidateName\}\}/g, candidate.name).replace(/\{\{jobTitle\}\}/g, job?.title || "the position").replace(/\{\{senderName\}\}/g, senderName).replace(/\{\{companyName\}\}/g, companyName);
         const onboardingBody = onboardingBodyTemplate.replace(/\{\{candidateName\}\}/g, candidate.name).replace(/\{\{jobTitle\}\}/g, job?.title || "the position").replace(/\{\{senderName\}\}/g, senderName).replace(/\{\{companyName\}\}/g, companyName).replace(/\{\{onboardingLink\}\}/g, onboardingLink);
         try {
-          await storage.sendDirectEmail(candidate.email, onboardingSubject, onboardingBody);
+          await storage.sendDirectEmail(candidate.email, onboardingSubject, onboardingBody, req.user?.id);
         } catch (emailError) {
           console.error("Error sending onboarding email:", emailError);
         }
@@ -3426,6 +5749,7 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
           console.error("Error creating Slack notification:", slackError);
         }
         await storage.createActivityLog({
+          accountId: offer.accountId,
           userId: offer.approvedById ?? null,
           action: "Candidate accepted offer",
           entityType: "candidate",
@@ -3438,14 +5762,15 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
           message: "Offer accepted successfully. Onboarding email has been sent."
         });
       } else {
-        await storage.updateOffer(offer.id, {
+        await storage.updateOffer(offer.id, offer.accountId, {
           status: "declined"
         });
-        await storage.updateCandidate(offer.candidateId, {
+        await storage.updateCandidate(offer.candidateId, offer.accountId, {
           status: "200_rejected",
           finalDecisionStatus: "rejected"
         });
         await storage.createActivityLog({
+          accountId: offer.accountId,
           userId: offer.approvedById ?? null,
           action: "Candidate declined offer",
           entityType: "candidate",
@@ -3466,24 +5791,682 @@ Cancelled: Candidate status changed to ${req.body.status}` : `Cancelled: Candida
 
 // server/api/interview.ts
 init_storage();
-import { z as z4 } from "zod";
+init_utils();
+init_notifications();
+import { z as z6 } from "zod";
+
+// server/api/google-calendar.ts
+init_storage();
+init_utils();
+init_db();
+init_schema();
+import { google as google3 } from "googleapis";
+import { eq as eq4 } from "drizzle-orm";
+function setupGoogleCalendarRoutes(app2) {
+  app2.get("/api/google-calendar/auth", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const protocol = req.get("x-forwarded-proto") || req.protocol || (req.secure ? "https" : "http");
+      const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5000";
+      let redirectUri = `${protocol}://${host}/api/google-calendar/callback`;
+      const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
+      if (envRedirectUri) {
+        try {
+          const envUrl = new URL(envRedirectUri);
+          const currentUrl = new URL(redirectUri);
+          if (envUrl.hostname === currentUrl.hostname || !host.includes("ngrok") && !host.includes("localhost")) {
+            redirectUri = `${envUrl.protocol}//${envUrl.host}/api/google-calendar/callback`;
+          }
+        } catch (e) {
+        }
+      }
+      redirectUri = redirectUri.replace(/\/$/, "");
+      const oauth2Client = new google3.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        redirectUri
+      );
+      console.log("[Google Calendar Auth] Using redirect URI:", redirectUri);
+      const authUrl = oauth2Client.generateAuthUrl({
+        access_type: "offline",
+        // Get refresh token
+        scope: [
+          "https://www.googleapis.com/auth/calendar.events",
+          // Create/update/delete calendar events
+          "https://www.googleapis.com/auth/calendar.readonly"
+          // Read calendar to check availability
+        ],
+        prompt: "consent",
+        // Force consent screen to get refresh token
+        state: JSON.stringify({ userId: req.user.id })
+        // Pass user ID in state
+      });
+      res.json({ authUrl });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/google-calendar/callback", async (req, res) => {
+    let redirectUri = "";
+    try {
+      const { code, state } = req.query;
+      if (!code) {
+        return res.redirect(`/integrations?error=oauth_cancelled`);
+      }
+      let userId;
+      try {
+        const stateData = JSON.parse(state);
+        userId = stateData.userId;
+      } catch {
+        return res.redirect(`/integrations?error=invalid_state`);
+      }
+      const protocol = req.get("x-forwarded-proto") || req.protocol || (req.secure ? "https" : "http");
+      const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5000";
+      redirectUri = `${protocol}://${host}/api/google-calendar/callback`;
+      const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
+      if (envRedirectUri) {
+        try {
+          const envUrl = new URL(envRedirectUri);
+          const currentUrl = new URL(redirectUri);
+          if (envUrl.hostname === currentUrl.hostname || !host.includes("ngrok") && !host.includes("localhost")) {
+            redirectUri = `${envUrl.protocol}//${envUrl.host}/api/google-calendar/callback`;
+          }
+        } catch (e) {
+        }
+      }
+      redirectUri = redirectUri.replace(/\/$/, "");
+      const oauth2Client = new google3.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        redirectUri
+      );
+      console.log("[Google Calendar Callback] Using redirect URI:", redirectUri);
+      const { tokens: tokens2 } = await oauth2Client.getToken(code);
+      if (!tokens2.access_token) {
+        console.error("[Google Calendar Callback] No access token received");
+        return res.redirect(`/integrations?error=no_access_token`);
+      }
+      const existing = await storage.getPlatformIntegration("google-calendar", userId);
+      const credentials = {
+        accessToken: tokens2.access_token,
+        refreshToken: tokens2.refresh_token || null
+      };
+      if (existing) {
+        const existingId = existing.id;
+        if (existingId) {
+          await db.delete(platformIntegrations).where(eq4(platformIntegrations.id, existingId));
+        }
+        await storage.createPlatformIntegration({
+          userId,
+          platformId: "google-calendar",
+          platformName: "Google Calendar",
+          platformType: "communication",
+          status: "connected",
+          credentials,
+          syncDirection: "one-way",
+          isEnabled: true
+        });
+      } else {
+        await storage.createPlatformIntegration({
+          userId,
+          platformId: "google-calendar",
+          platformName: "Google Calendar",
+          platformType: "communication",
+          status: "connected",
+          credentials,
+          syncDirection: "one-way",
+          isEnabled: true
+        });
+      }
+      res.redirect(`/integrations?google_calendar_connected=true`);
+    } catch (error) {
+      console.error("[Google Calendar Callback] Error details:", {
+        message: error.message,
+        redirectUri,
+        code: req.query.code ? "present" : "missing",
+        state: req.query.state ? "present" : "missing"
+      });
+      if (error.message && error.message.includes("redirect_uri_mismatch")) {
+        console.error("[Google Calendar Callback] Redirect URI mismatch detected!");
+        console.error("[Google Calendar Callback] Expected redirect URI:", redirectUri);
+        console.error("[Google Calendar Callback] Make sure this exact URI is registered in Google Cloud Console");
+      }
+      res.redirect(`/integrations?error=${encodeURIComponent(error.message)}`);
+    }
+  });
+  app2.get("/api/google-calendar/status", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = req.user.id;
+      const integration = await storage.getPlatformIntegration("google-calendar", userId);
+      const credentials = integration?.credentials;
+      const syncWithCalendly = credentials?.syncWithCalendly || false;
+      res.json({
+        connected: integration?.status === "connected" || false,
+        syncWithCalendly
+      });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.post("/api/google-calendar/sync-settings", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = req.user.id;
+      const { syncWithCalendly } = req.body;
+      const integration = await storage.getPlatformIntegration("google-calendar", userId);
+      if (!integration) {
+        return res.status(404).json({ message: "Google Calendar integration not found" });
+      }
+      const currentCredentials = integration.credentials || {};
+      const updatedCredentials = {
+        ...currentCredentials,
+        syncWithCalendly: syncWithCalendly === true
+      };
+      await storage.updatePlatformIntegration("google-calendar", {
+        credentials: updatedCredentials
+      });
+      res.json({
+        message: "Sync settings updated successfully",
+        syncWithCalendly: syncWithCalendly === true
+      });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/google-calendar/availability", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = req.user.id;
+      const integration = await storage.getPlatformIntegration("google-calendar", userId);
+      if (!integration) {
+        return res.status(404).json({ message: "Google Calendar integration not found" });
+      }
+      const credentials = integration.credentials;
+      const availability = credentials?.availability || {
+        daysOfWeek: [1, 2, 3, 4, 5],
+        // Monday to Friday
+        startTime: "09:00",
+        endTime: "17:00",
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        slotDuration: 30
+        // minutes
+      };
+      res.json(availability);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.post("/api/google-calendar/availability", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = req.user.id;
+      const { daysOfWeek, startTime, endTime, timeZone, slotDuration } = req.body;
+      const integration = await storage.getPlatformIntegration("google-calendar", userId);
+      if (!integration) {
+        return res.status(404).json({ message: "Google Calendar integration not found" });
+      }
+      const currentCredentials = integration.credentials || {};
+      const updatedCredentials = {
+        ...currentCredentials || {},
+        availability: {
+          daysOfWeek: daysOfWeek || [1, 2, 3, 4, 5],
+          startTime: startTime || "09:00",
+          endTime: endTime || "17:00",
+          timeZone: timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+          slotDuration: slotDuration || 30
+        }
+      };
+      await storage.updatePlatformIntegration("google-calendar", {
+        credentials: updatedCredentials
+      });
+      res.json({ message: "Availability settings updated successfully" });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.options("/api/google-calendar/available-slots", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(200);
+  });
+  app2.get("/api/google-calendar/available-slots", async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    try {
+      const { userId, startDate, endDate } = req.query;
+      if (!userId) {
+        return res.status(400).json({ message: "userId is required" });
+      }
+      const integration = await storage.getPlatformIntegration("google-calendar", parseInt(userId));
+      if (!integration || integration.status !== "connected") {
+        return res.status(404).json({ message: "Google Calendar integration not found or not connected" });
+      }
+      const credentials = integration.credentials;
+      const availability = credentials?.availability || {
+        daysOfWeek: [1, 2, 3, 4, 5],
+        startTime: "09:00",
+        endTime: "17:00",
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        slotDuration: 30
+      };
+      const oauth2Client = await getGoogleCalendarClient(parseInt(userId));
+      const calendar = google3.calendar({ version: "v3", auth: oauth2Client });
+      const start = startDate ? new Date(startDate) : /* @__PURE__ */ new Date();
+      const end = endDate ? new Date(endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
+      const busyResponse = await calendar.freebusy.query({
+        requestBody: {
+          timeMin: start.toISOString(),
+          timeMax: end.toISOString(),
+          items: [{ id: "primary" }]
+        }
+      });
+      const busyTimes = (busyResponse.data.calendars?.primary?.busy || []).map((busy) => ({
+        start: busy.start ?? void 0,
+        end: busy.end ?? void 0
+      }));
+      const availableSlots = generateAvailableSlots(
+        start,
+        end,
+        availability,
+        busyTimes
+      );
+      res.json({ availableSlots });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.options("/api/google-calendar/book", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(200);
+  });
+  app2.post("/api/google-calendar/book", async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    try {
+      const { userId, candidateName, candidateEmail, scheduledDate, jobId, candidateId } = req.body;
+      if (!userId || !candidateName || !candidateEmail || !scheduledDate) {
+        return res.status(400).json({ message: "userId, candidateName, candidateEmail, and scheduledDate are required" });
+      }
+      const integration = await storage.getPlatformIntegration("google-calendar", userId);
+      if (!integration || integration.status !== "connected") {
+        return res.status(404).json({ message: "Google Calendar integration not found or not connected" });
+      }
+      const accountId = await storage.getUserAccountId(userId);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const scheduledDateTime = new Date(scheduledDate);
+      const slotEndTime = new Date(scheduledDateTime.getTime() + 60 * 60 * 1e3);
+      const oauth2Client = await getGoogleCalendarClient(userId);
+      const calendar = google3.calendar({ version: "v3", auth: oauth2Client });
+      const busyCheck = await calendar.freebusy.query({
+        requestBody: {
+          timeMin: scheduledDateTime.toISOString(),
+          timeMax: slotEndTime.toISOString(),
+          items: [{ id: "primary" }]
+        }
+      });
+      const isSlotBusy = busyCheck.data.calendars?.primary?.busy && busyCheck.data.calendars.primary.busy.length > 0;
+      if (isSlotBusy) {
+        return res.status(409).json({
+          message: "This time slot is no longer available. Please select another time."
+        });
+      }
+      const timeWindow = 5 * 60 * 1e3;
+      const existingInterviews = await storage.getInterviews(accountId, { interviewerId: userId });
+      const conflictingInterview = existingInterviews.find((interview2) => {
+        if (!interview2.scheduledDate) return false;
+        const interviewTime = new Date(interview2.scheduledDate).getTime();
+        const scheduledTime = scheduledDateTime.getTime();
+        return Math.abs(interviewTime - scheduledTime) < timeWindow;
+      });
+      if (conflictingInterview) {
+        return res.status(409).json({
+          message: "An interview is already scheduled at this time. Please select another time."
+        });
+      }
+      const user = await storage.getUser(userId);
+      const job = jobId ? await storage.getJob(jobId, accountId) : null;
+      const eventTitle = `Interview: ${candidateName}${job ? ` - ${job.title}` : ""}`;
+      const eventDescription = `Interview scheduled via HireOS
+
+Candidate: ${candidateName}
+Email: ${candidateEmail}${job ? `
+Position: ${job.title}` : ""}
+
+View in HireOS: ${process.env.FRONTEND_URL || "https://hireos.com"}/candidates${candidateId ? `/${candidateId}` : ""}`;
+      const event = {
+        summary: eventTitle,
+        description: eventDescription,
+        start: {
+          dateTime: scheduledDateTime.toISOString(),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        },
+        end: {
+          dateTime: slotEndTime.toISOString(),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        },
+        // Organizer is automatically set to the authenticated user (userId)
+        // Both the interviewer (user) and candidate are added as attendees
+        attendees: [
+          { email: candidateEmail, displayName: candidateName },
+          ...user?.email ? [{ email: user.email, displayName: user.fullName }] : []
+        ],
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: "email", minutes: 24 * 60 },
+            { method: "popup", minutes: 60 }
+          ]
+        }
+      };
+      const calendarEvent = await calendar.events.insert({
+        calendarId: "primary",
+        requestBody: event,
+        sendUpdates: "all"
+      });
+      let interview;
+      if (candidateId) {
+        const candidate = await storage.getCandidate(candidateId, accountId);
+        if (candidate) {
+          const existingInterviews2 = await storage.getInterviews(accountId, { candidateId: candidate.id });
+          const existingInterview = existingInterviews2.find(
+            (inv) => inv.status === "scheduled" || inv.status === "pending"
+          );
+          if (existingInterview) {
+            interview = await storage.updateInterview(existingInterview.id, accountId, {
+              scheduledDate: scheduledDateTime,
+              interviewerId: userId,
+              status: "scheduled",
+              notes: existingInterview.notes ? `${existingInterview.notes}
+
+Rescheduled via Google Calendar booking page on ${(/* @__PURE__ */ new Date()).toISOString()}` : `Rescheduled via Google Calendar booking page on ${(/* @__PURE__ */ new Date()).toISOString()}`
+            });
+          } else {
+            interview = await storage.createInterview({
+              accountId,
+              candidateId: candidate.id,
+              scheduledDate: scheduledDateTime,
+              interviewerId: userId,
+              type: "video",
+              status: "scheduled",
+              notes: `Booked via Google Calendar booking page on ${(/* @__PURE__ */ new Date()).toISOString()}`
+            });
+          }
+          if (candidate.status !== "60_1st_interview_scheduled") {
+            await storage.updateCandidate(candidate.id, accountId, {
+              status: "60_1st_interview_scheduled"
+            });
+          }
+        }
+      } else {
+        const newCandidate = await storage.createCandidate({
+          accountId,
+          name: candidateName,
+          email: candidateEmail,
+          status: "60_1st_interview_scheduled",
+          jobId: jobId || null
+        });
+        interview = await storage.createInterview({
+          accountId,
+          candidateId: newCandidate.id,
+          scheduledDate: scheduledDateTime,
+          interviewerId: userId,
+          type: "video",
+          status: "scheduled",
+          notes: `Booked via Google Calendar booking page on ${(/* @__PURE__ */ new Date()).toISOString()}`
+        });
+      }
+      if (interview && user) {
+        try {
+          const { createNotification: createNotification2 } = await Promise.resolve().then(() => (init_notifications(), notifications_exports));
+          await createNotification2(
+            userId,
+            "interview_scheduled",
+            "Interview Scheduled",
+            `Interview scheduled: ${candidateName}${job ? ` (${job.title})` : ""} on ${scheduledDateTime.toLocaleDateString()} at ${scheduledDateTime.toLocaleTimeString()}`,
+            `/candidates`,
+            { candidateId: interview.candidateId, jobId: job?.id, interviewId: interview.id }
+          );
+        } catch (error) {
+          console.error("[Google Calendar Book] Failed to create notification:", error);
+        }
+      }
+      res.json({
+        message: "Interview booked successfully",
+        interview,
+        calendarEventId: calendarEvent.data.id
+      });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.post("/api/google-calendar/disconnect", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = req.user.id;
+      const integration = await storage.getPlatformIntegration("google-calendar", userId);
+      if (!integration) {
+        return res.status(404).json({ message: "Google Calendar integration not found" });
+      }
+      if (integration.id) {
+        const { db: dbInstance } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { platformIntegrations: platformIntegrationsTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq9 } = await import("drizzle-orm");
+        await dbInstance.delete(platformIntegrationsTable).where(eq9(platformIntegrationsTable.id, integration.id));
+      } else {
+        const { db: dbInstance } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { platformIntegrations: platformIntegrationsTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq9, and: and7 } = await import("drizzle-orm");
+        await dbInstance.delete(platformIntegrationsTable).where(
+          and7(
+            eq9(platformIntegrationsTable.platformId, "google-calendar"),
+            eq9(platformIntegrationsTable.userId, userId)
+          )
+        );
+      }
+      res.json({ message: "Google Calendar disconnected successfully" });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+}
+async function getGoogleCalendarClient(userId) {
+  try {
+    const integration = await storage.getPlatformIntegration("google-calendar", userId);
+    if (!integration || !integration.credentials) {
+      throw new Error("Google Calendar integration not found. Please connect your Google Calendar account first.");
+    }
+    const credentials = integration.credentials;
+    if (!credentials.accessToken) {
+      throw new Error("Google Calendar access token not found. Please reconnect your Google Calendar account.");
+    }
+    const oauth2Client = new google3.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET
+    );
+    oauth2Client.setCredentials({
+      access_token: credentials.accessToken,
+      refresh_token: credentials.refreshToken
+    });
+    if (credentials.refreshToken) {
+      try {
+        const { credentials: newCredentials } = await oauth2Client.refreshAccessToken();
+        if (newCredentials.access_token) {
+          await storage.updatePlatformIntegration("google-calendar", {
+            credentials: {
+              ...credentials,
+              accessToken: newCredentials.access_token,
+              refreshToken: newCredentials.refresh_token || credentials.refreshToken
+            }
+          });
+          oauth2Client.setCredentials(newCredentials);
+        }
+      } catch (refreshError) {
+        console.warn("Failed to refresh Google Calendar token, using existing token:", refreshError);
+      }
+    }
+    return oauth2Client;
+  } catch (error) {
+    console.error("Error getting Google Calendar client:", error);
+    throw new Error(`Failed to get Google Calendar client: ${error.message || "Unknown error"}`);
+  }
+}
+async function createGoogleCalendarEvent(userId, interview) {
+  try {
+    const oauth2Client = await getGoogleCalendarClient(userId);
+    const calendar = google3.calendar({ version: "v3", auth: oauth2Client });
+    const user = await storage.getUser(userId);
+    const organizerEmail = user?.email || "";
+    const organizerName = user?.fullName || "HireOS User";
+    const candidateName = interview.candidate?.name || "Candidate";
+    const jobTitle = interview.job?.title || "Position";
+    const eventTitle = `Interview: ${candidateName} - ${jobTitle}`;
+    let description = `Interview scheduled via HireOS
+
+`;
+    description += `Candidate: ${candidateName}
+`;
+    description += `Position: ${jobTitle}
+`;
+    description += `Type: ${interview.type}
+`;
+    if (interview.videoUrl) {
+      description += `Video Link: ${interview.videoUrl}
+`;
+    }
+    description += `
+View in HireOS: ${process.env.FRONTEND_URL || "https://hireos.com"}/candidates/${interview.candidateId}`;
+    const attendees = [];
+    if (interview.candidate?.email) {
+      attendees.push({
+        email: interview.candidate.email,
+        displayName: interview.candidate.name
+      });
+    }
+    if (interview.interviewer?.email && interview.interviewer.email !== organizerEmail) {
+      attendees.push({
+        email: interview.interviewer.email,
+        displayName: interview.interviewer.fullName
+      });
+    }
+    const event = {
+      summary: eventTitle,
+      description,
+      start: {
+        dateTime: interview.scheduledDate.toISOString(),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      },
+      end: {
+        dateTime: new Date(interview.scheduledDate.getTime() + 60 * 60 * 1e3).toISOString(),
+        // 1 hour default
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      },
+      attendees,
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: "email", minutes: 24 * 60 },
+          // 1 day before
+          { method: "popup", minutes: 60 }
+          // 1 hour before
+        ]
+      },
+      ...interview.videoUrl && {
+        location: interview.videoUrl
+      }
+    };
+    const response = await calendar.events.insert({
+      calendarId: "primary",
+      requestBody: event,
+      sendUpdates: "all"
+      // Send email notifications to attendees
+    });
+    return response.data.id || null;
+  } catch (error) {
+    console.error("Error creating Google Calendar event:", error);
+    return null;
+  }
+}
+function generateAvailableSlots(startDate, endDate, availability, busyTimes) {
+  const slots = [];
+  const currentDate = new Date(startDate);
+  const slotDurationMs = availability.slotDuration * 60 * 1e3;
+  const [startHour, startMinute] = availability.startTime.split(":").map(Number);
+  const [endHour, endMinute] = availability.endTime.split(":").map(Number);
+  while (currentDate <= endDate) {
+    const dayOfWeek = currentDate.getDay();
+    const dayOfWeekMondayBased = dayOfWeek === 0 ? 7 : dayOfWeek;
+    if (availability.daysOfWeek.includes(dayOfWeekMondayBased)) {
+      const dayStart = new Date(currentDate);
+      dayStart.setHours(startHour, startMinute, 0, 0);
+      const dayEnd = new Date(currentDate);
+      dayEnd.setHours(endHour, endMinute, 0, 0);
+      let slotStart = new Date(dayStart);
+      while (slotStart < dayEnd) {
+        const slotEnd = new Date(slotStart.getTime() + slotDurationMs);
+        const isBusy = busyTimes.some((busy) => {
+          if (!busy.start || !busy.end) return false;
+          const busyStart = new Date(busy.start);
+          const busyEnd = new Date(busy.end);
+          return slotStart < busyEnd && slotEnd > busyStart;
+        });
+        if (!isBusy && slotStart > /* @__PURE__ */ new Date()) {
+          slots.push({
+            start: slotStart.toISOString(),
+            end: slotEnd.toISOString()
+          });
+        }
+        slotStart = new Date(slotStart.getTime() + slotDurationMs);
+      }
+    }
+    currentDate.setDate(currentDate.getDate() + 1);
+    currentDate.setHours(0, 0, 0, 0);
+  }
+  return slots;
+}
+
+// server/api/interview.ts
 function setupInterviewRoutes(app2) {
   app2.post("/api/interviews", validateRequest(
-    z4.object({
-      candidateId: z4.number(),
-      scheduledDate: z4.string().optional(),
-      interviewerId: z4.number().optional(),
-      type: z4.string(),
-      videoUrl: z4.string().optional(),
-      notes: z4.string().optional()
+    z6.object({
+      candidateId: z6.number(),
+      scheduledDate: z6.string().optional(),
+      interviewerId: z6.number().optional(),
+      type: z6.string(),
+      videoUrl: z6.string().optional(),
+      notes: z6.string().optional()
     })
   ), async (req, res) => {
     try {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const scheduledDate = req.body.scheduledDate ? new Date(req.body.scheduledDate) : void 0;
       const interview = await storage.createInterview({
+        accountId,
         candidateId: req.body.candidateId,
         scheduledDate,
         interviewerId: req.body.interviewerId || req.user?.id,
@@ -3492,13 +6475,68 @@ function setupInterviewRoutes(app2) {
         notes: req.body.notes,
         status: "scheduled"
       });
-      const candidate = await storage.getCandidate(req.body.candidateId);
+      const candidate = await storage.getCandidate(req.body.candidateId, accountId);
       if (candidate && candidate.status !== "interview_scheduled") {
-        await storage.updateCandidate(req.body.candidateId, {
+        await storage.updateCandidate(req.body.candidateId, accountId, {
           status: "interview_scheduled"
         });
       }
+      if (req.user?.id && candidate && scheduledDate) {
+        try {
+          const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+          const jobTitle = job?.title || "position";
+          await createNotification(
+            req.user.id,
+            "interview_scheduled",
+            "Interview Scheduled",
+            `Interview scheduled: ${candidate.name} (${jobTitle}) on ${scheduledDate.toLocaleDateString()} at ${scheduledDate.toLocaleTimeString()}`,
+            `/candidates`,
+            { candidateId: candidate.id, jobId: job?.id, interviewId: interview.id }
+          );
+        } catch (error) {
+          console.error("[Interview] Failed to create notification:", error);
+        }
+      }
+      try {
+        const { triggerWorkflows: triggerWorkflows2 } = await Promise.resolve().then(() => (init_workflow_engine(), workflow_engine_exports));
+        const job = candidate?.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+        await triggerWorkflows2("interview_scheduled", {
+          entityType: "interview",
+          entityId: interview.id,
+          interview,
+          candidate,
+          job,
+          user: req.user
+        }, accountId);
+      } catch (error) {
+        console.error("[Interview Create] Workflow trigger error:", error);
+      }
+      if (req.user?.id && scheduledDate && candidate) {
+        try {
+          const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+          const interviewer = interview.interviewerId ? await storage.getUser(interview.interviewerId) : null;
+          await createGoogleCalendarEvent(req.user.id, {
+            id: interview.id,
+            candidateId: candidate.id,
+            scheduledDate,
+            type: interview.type,
+            videoUrl: interview.videoUrl || void 0,
+            candidate: {
+              name: candidate.name,
+              email: candidate.email
+            },
+            job: job ? { title: job.title } : void 0,
+            interviewer: interviewer ? {
+              fullName: interviewer.fullName,
+              email: interviewer.email
+            } : void 0
+          });
+        } catch (error) {
+          console.error("[Interview] Failed to create Google Calendar event:", error);
+        }
+      }
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Scheduled interview",
         entityType: "interview",
@@ -3520,10 +6558,14 @@ function setupInterviewRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const candidateId = req.query.candidateId ? parseInt(req.query.candidateId) : void 0;
       const interviewerId = req.query.interviewerId ? parseInt(req.query.interviewerId) : void 0;
       const status = req.query.status;
-      const interviews3 = await storage.getInterviews({
+      const interviews3 = await storage.getInterviews(accountId, {
         candidateId,
         interviewerId,
         status
@@ -3538,11 +6580,15 @@ function setupInterviewRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const interviewId = parseInt(req.params.id);
       if (isNaN(interviewId)) {
         return res.status(400).json({ message: "Invalid interview ID" });
       }
-      const interview = await storage.getInterview(interviewId);
+      const interview = await storage.getInterview(interviewId, accountId);
       if (!interview) {
         return res.status(404).json({ message: "Interview not found" });
       }
@@ -3556,11 +6602,15 @@ function setupInterviewRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const interviewId = parseInt(req.params.id);
       if (isNaN(interviewId)) {
         return res.status(400).json({ message: "Invalid interview ID" });
       }
-      const interview = await storage.getInterview(interviewId);
+      const interview = await storage.getInterview(interviewId, accountId);
       if (!interview) {
         return res.status(404).json({ message: "Interview not found" });
       }
@@ -3570,8 +6620,18 @@ function setupInterviewRoutes(app2) {
       if (req.body.conductedDate) {
         req.body.conductedDate = new Date(req.body.conductedDate);
       }
-      const updatedInterview = await storage.updateInterview(interviewId, req.body);
+      const updatedInterview = await storage.updateInterview(interviewId, accountId, req.body);
+      if (req.user?.id && req.body.scheduledDate && updatedInterview) {
+        try {
+          const candidate = await storage.getCandidate(updatedInterview.candidateId, accountId);
+          const job = candidate?.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+          const interviewer = updatedInterview.interviewerId ? await storage.getUser(updatedInterview.interviewerId) : null;
+        } catch (error) {
+          console.error("[Interview] Failed to update Google Calendar event:", error);
+        }
+      }
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Updated interview",
         entityType: "interview",
@@ -3589,19 +6649,39 @@ function setupInterviewRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const interviewId = parseInt(req.params.id);
       if (isNaN(interviewId)) {
         return res.status(400).json({ message: "Invalid interview ID" });
       }
-      const interview = await storage.getInterview(interviewId);
+      const interview = await storage.getInterview(interviewId, accountId);
       if (!interview) {
         return res.status(404).json({ message: "Interview not found" });
       }
-      const updatedInterview = await storage.updateInterview(interviewId, {
+      const updatedInterview = await storage.updateInterview(interviewId, accountId, {
         status: "completed",
         conductedDate: /* @__PURE__ */ new Date()
       });
+      try {
+        const { triggerWorkflows: triggerWorkflows2 } = await Promise.resolve().then(() => (init_workflow_engine(), workflow_engine_exports));
+        const candidate = await storage.getCandidate(interview.candidateId, accountId);
+        const job = candidate?.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+        await triggerWorkflows2("interview_completed", {
+          entityType: "interview",
+          entityId: interview.id,
+          interview: updatedInterview,
+          candidate,
+          job,
+          user: req.user
+        }, accountId);
+      } catch (error) {
+        console.error("[Interview Complete] Workflow trigger error:", error);
+      }
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Completed interview",
         entityType: "interview",
@@ -3615,53 +6695,74 @@ function setupInterviewRoutes(app2) {
     }
   });
   app2.post("/api/interviews/:id/evaluate", validateRequest(
-    z4.object({
-      technicalScore: z4.number().min(1).max(5).optional(),
-      communicationScore: z4.number().min(1).max(5).optional(),
-      problemSolvingScore: z4.number().min(1).max(5).optional(),
-      culturalFitScore: z4.number().min(1).max(5).optional(),
-      overallRating: z4.string(),
-      technicalComments: z4.string().optional(),
-      communicationComments: z4.string().optional(),
-      problemSolvingComments: z4.string().optional(),
-      culturalFitComments: z4.string().optional(),
-      overallComments: z4.string().optional()
+    z6.object({
+      technicalScore: z6.number().min(1).max(5).optional(),
+      communicationScore: z6.number().min(1).max(5).optional(),
+      problemSolvingScore: z6.number().min(1).max(5).optional(),
+      culturalFitScore: z6.number().min(1).max(5).optional(),
+      overallRating: z6.string(),
+      technicalComments: z6.string().optional(),
+      communicationComments: z6.string().optional(),
+      problemSolvingComments: z6.string().optional(),
+      culturalFitComments: z6.string().optional(),
+      overallComments: z6.string().optional()
     })
   ), async (req, res) => {
     try {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const interviewId = parseInt(req.params.id);
       if (isNaN(interviewId)) {
         return res.status(400).json({ message: "Invalid interview ID" });
       }
-      const interview = await storage.getInterview(interviewId);
+      const interview = await storage.getInterview(interviewId, accountId);
       if (!interview) {
         return res.status(404).json({ message: "Interview not found" });
       }
-      const existingEvaluation = await storage.getEvaluationByInterview(interviewId);
+      const existingEvaluation = await storage.getEvaluationByInterview(interviewId, accountId);
       let evaluation;
       if (existingEvaluation) {
-        evaluation = await storage.updateEvaluation(existingEvaluation.id, {
+        evaluation = await storage.updateEvaluation(existingEvaluation.id, accountId, {
           ...req.body,
           evaluatorId: req.user?.id,
           updatedAt: /* @__PURE__ */ new Date()
         });
       } else {
         evaluation = await storage.createEvaluation({
+          accountId,
           interviewId,
           ...req.body,
           evaluatorId: req.user?.id
         });
       }
       if (interview.status !== "completed") {
-        await storage.updateInterview(interviewId, {
+        const updatedInterview = await storage.updateInterview(interviewId, accountId, {
           status: "completed",
           conductedDate: interview.conductedDate || /* @__PURE__ */ new Date()
         });
+        try {
+          const { triggerWorkflows: triggerWorkflows2 } = await Promise.resolve().then(() => (init_workflow_engine(), workflow_engine_exports));
+          const candidate = await storage.getCandidate(interview.candidateId, accountId);
+          const job = candidate?.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+          await triggerWorkflows2("interview_completed", {
+            entityType: "interview",
+            entityId: interview.id,
+            interview: updatedInterview,
+            candidate,
+            job,
+            user: req.user
+          }, accountId);
+        } catch (error) {
+          console.error("[Interview Evaluation] Workflow trigger error:", error);
+        }
       }
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Submitted interview evaluation",
         entityType: "evaluation",
@@ -3683,11 +6784,15 @@ function setupInterviewRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const interviewId = parseInt(req.params.id);
       if (isNaN(interviewId)) {
         return res.status(400).json({ message: "Invalid interview ID" });
       }
-      const evaluation = await storage.getEvaluationByInterview(interviewId);
+      const evaluation = await storage.getEvaluationByInterview(interviewId, accountId);
       if (!evaluation) {
         return res.status(404).json({ message: "Evaluation not found" });
       }
@@ -3701,16 +6806,21 @@ function setupInterviewRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const interviewId = parseInt(req.params.id);
       if (isNaN(interviewId)) {
         return res.status(400).json({ message: "Invalid interview ID" });
       }
-      const interview = await storage.getInterview(interviewId);
+      const interview = await storage.getInterview(interviewId, accountId);
       if (!interview) {
         return res.status(404).json({ message: "Interview not found" });
       }
-      await storage.deleteInterview(interviewId);
+      await storage.deleteInterview(interviewId, accountId);
       await storage.createActivityLog({
+        accountId,
         userId: req.user?.id,
         action: "Deleted interview",
         entityType: "interview",
@@ -3727,9 +6837,10 @@ function setupInterviewRoutes(app2) {
 
 // server/api/analytics.ts
 init_storage();
+init_utils();
 init_db();
 init_schema();
-import { eq as eq3, inArray, and as and2, gte } from "drizzle-orm";
+import { eq as eq5, inArray, and as and5, gte, desc as desc2 } from "drizzle-orm";
 import { count as count2 } from "drizzle-orm";
 function setupAnalyticsRoutes(app2) {
   app2.get("/api/analytics/dashboard", async (req, res) => {
@@ -3737,21 +6848,33 @@ function setupAnalyticsRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
-      const activeJobsCountResult = await db.select({ count: count2() }).from(jobs).where(eq3(jobs.status, "active"));
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const activeJobsCountResult = await db.select({ count: count2() }).from(jobs).where(and5(eq5(jobs.status, "active"), eq5(jobs.accountId, accountId)));
       const activeJobs = Number(activeJobsCountResult[0].count);
-      const totalCandidatesResult = await db.select({ count: count2() }).from(candidates);
+      const totalCandidatesResult = await db.select({ count: count2() }).from(candidates).where(eq5(candidates.accountId, accountId));
       const totalCandidates = Number(totalCandidatesResult[0].count);
-      const scheduledInterviewsResult = await db.select({ count: count2() }).from(candidates).where(inArray(candidates.status, ["60_1st_interview_scheduled", "75_2nd_interview_scheduled"]));
+      const scheduledInterviewsResult = await db.select({ count: count2() }).from(candidates).where(and5(
+        eq5(candidates.accountId, accountId),
+        inArray(candidates.status, ["60_1st_interview_scheduled", "75_2nd_interview_scheduled"])
+      ));
       const scheduledInterviews = Number(scheduledInterviewsResult[0].count);
-      const offersSentResult = await db.select({ count: count2() }).from(candidates).where(eq3(candidates.status, "95_offer_sent"));
+      const offersSentResult = await db.select({ count: count2() }).from(candidates).where(and5(
+        eq5(candidates.accountId, accountId),
+        eq5(candidates.status, "95_offer_sent")
+      ));
       const offersSent = Number(offersSentResult[0].count);
+      const recentActivityLogs = await db.select().from(activityLogs).where(eq5(activityLogs.accountId, accountId)).orderBy(desc2(activityLogs.timestamp)).limit(10);
       res.json({
         stats: {
           activeJobs,
           totalCandidates,
           scheduledInterviews,
           offersSent
-        }
+        },
+        recentActivity: recentActivityLogs
       });
     } catch (error) {
       handleApiError(error, res);
@@ -3762,10 +6885,14 @@ function setupAnalyticsRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const jobId = req.query.jobId ? parseInt(req.query.jobId) : void 0;
       const dateRange = req.query.dateRange || "30";
       const buildConditions = (...conditions) => {
-        const allConditions = [];
+        const allConditions = [eq5(candidates.accountId, accountId)];
         if (dateRange !== "all") {
           const days = parseInt(dateRange);
           const startDate = /* @__PURE__ */ new Date();
@@ -3773,14 +6900,14 @@ function setupAnalyticsRoutes(app2) {
           allConditions.push(gte(candidates.createdAt, startDate));
         }
         if (jobId) {
-          allConditions.push(eq3(candidates.jobId, jobId));
+          allConditions.push(eq5(candidates.jobId, jobId));
         }
         allConditions.push(...conditions);
-        return allConditions.length > 0 ? and2(...allConditions) : void 0;
+        return allConditions.length > 0 ? and5(...allConditions) : void 0;
       };
       const applicationsResult = await db.select({ count: count2() }).from(candidates).where(buildConditions());
       const applications = Number(applicationsResult[0]?.count || 0);
-      const assessmentsResult = await db.select({ count: count2() }).from(candidates).where(buildConditions(eq3(candidates.status, "30_assessment_completed")));
+      const assessmentsResult = await db.select({ count: count2() }).from(candidates).where(buildConditions(eq5(candidates.status, "30_assessment_completed")));
       const assessments = Number(assessmentsResult[0]?.count || 0);
       const qualifiedStatuses = [
         "30_assessment_completed",
@@ -3799,9 +6926,9 @@ function setupAnalyticsRoutes(app2) {
       ];
       const interviewsResult = await db.select({ count: count2() }).from(candidates).where(buildConditions(inArray(candidates.status, interviewStatuses)));
       const interviews3 = Number(interviewsResult[0]?.count || 0);
-      const offersResult = await db.select({ count: count2() }).from(candidates).where(buildConditions(eq3(candidates.status, "95_offer_sent")));
+      const offersResult = await db.select({ count: count2() }).from(candidates).where(buildConditions(eq5(candidates.status, "95_offer_sent")));
       const offers2 = Number(offersResult[0]?.count || 0);
-      const hiresResult = await db.select({ count: count2() }).from(candidates).where(buildConditions(eq3(candidates.status, "100_offer_accepted")));
+      const hiresResult = await db.select({ count: count2() }).from(candidates).where(buildConditions(eq5(candidates.status, "100_offer_accepted")));
       const hires = Number(hiresResult[0]?.count || 0);
       const conversionRate = applications > 0 ? Number((hires / applications * 100).toFixed(1)) : 0;
       const funnelData = {
@@ -3823,26 +6950,46 @@ function setupAnalyticsRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
-      const allJobs = await storage.getJobs();
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const allJobs = await storage.getJobs(accountId);
       const jobPerformance = [];
       for (const job of allJobs) {
-        const allCandidatesResult = await db.select({ count: count2() }).from(candidates).where(eq3(candidates.jobId, job.id));
+        const allCandidatesResult = await db.select({ count: count2() }).from(candidates).where(and5(
+          eq5(candidates.accountId, accountId),
+          eq5(candidates.jobId, job.id)
+        ));
         const applications = Number(allCandidatesResult[0].count);
-        const assessmentsResult = await db.select({ count: count2() }).from(candidates).where(and2(eq3(candidates.jobId, job.id), eq3(candidates.status, "30_assessment_completed")));
+        const assessmentsResult = await db.select({ count: count2() }).from(candidates).where(and5(
+          eq5(candidates.accountId, accountId),
+          eq5(candidates.jobId, job.id),
+          eq5(candidates.status, "30_assessment_completed")
+        ));
         const assessments = Number(assessmentsResult[0].count);
         const interviewStatuses = [
           "45_1st_interview_sent",
           "60_1st_interview_scheduled",
           "75_2nd_interview_scheduled"
         ];
-        const interviewsResult = await db.select({ count: count2() }).from(candidates).where(and2(
-          eq3(candidates.jobId, job.id),
+        const interviewsResult = await db.select({ count: count2() }).from(candidates).where(and5(
+          eq5(candidates.accountId, accountId),
+          eq5(candidates.jobId, job.id),
           inArray(candidates.status, interviewStatuses)
         ));
         const interviews3 = Number(interviewsResult[0].count);
-        const offersResult = await db.select({ count: count2() }).from(candidates).where(and2(eq3(candidates.jobId, job.id), eq3(candidates.status, "95_offer_sent")));
+        const offersResult = await db.select({ count: count2() }).from(candidates).where(and5(
+          eq5(candidates.accountId, accountId),
+          eq5(candidates.jobId, job.id),
+          eq5(candidates.status, "95_offer_sent")
+        ));
         const offers2 = Number(offersResult[0].count);
-        const hiresResult = await db.select({ count: count2() }).from(candidates).where(and2(eq3(candidates.jobId, job.id), eq3(candidates.status, "100_offer_accepted")));
+        const hiresResult = await db.select({ count: count2() }).from(candidates).where(and5(
+          eq5(candidates.accountId, accountId),
+          eq5(candidates.jobId, job.id),
+          eq5(candidates.status, "100_offer_accepted")
+        ));
         const hires = Number(hiresResult[0].count);
         const conversionRate = applications > 0 ? Number((hires / applications * 100).toFixed(1)) : 0;
         jobPerformance.push({
@@ -3872,7 +7019,11 @@ function setupAnalyticsRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
-      const hiredCandidates = await storage.getCandidates({ status: "hired" });
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const hiredCandidates = await storage.getCandidates(accountId, { status: "100_offer_accepted" });
       const candidatesWithData = hiredCandidates.length;
       const sampleData = {
         averageTimeToHire: 22.5,
@@ -3923,25 +7074,24 @@ function setupAnalyticsRoutes(app2) {
 
 // server/api/hipeople.ts
 init_storage();
-import axios4 from "axios";
+init_utils();
+import axios6 from "axios";
 var HIPEOPLE_SCRAPER_URL = "https://firmos-hipeople-scraper-899783477192.europe-west1.run.app/scrape_hipeople";
 async function scrapeHipeople(assessmentUrl, testData) {
   try {
     const candidateName = testData?.applicant_name || "Sample Candidate";
     const candidateEmail = testData?.applicant_email || "sample@example.com";
-    console.log(`\u{1F7E1} Sending request to HiPeople scraper for ${candidateName} (${candidateEmail})`);
-    const response = await axios4.post(HIPEOPLE_SCRAPER_URL, null, {
+    const response = await axios6.post(HIPEOPLE_SCRAPER_URL, null, {
       params: {
         applicant_name: candidateName,
         applicant_email: candidateEmail
       },
       timeout: 3e4
     });
-    console.log("\u2705 HiPeople scraper response:", JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error) {
     console.error("\u274C HiPeople scraping error:", error);
-    if (axios4.isAxiosError(error)) {
+    if (axios6.isAxiosError(error)) {
       if (error.response) {
         throw new Error(`HiPeople scraper error: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
       } else if (error.request) {
@@ -3979,7 +7129,6 @@ function setupHiPeopleRoutes(app2) {
           applicant_email: candidate.email
         }));
         const hiPeopleResults = await scrapeHipeople(job.hiPeopleLink, candidateTestData[0]);
-        console.log("\u{1F4E5} Results from HiPeople scraper:", hiPeopleResults);
         if (!hiPeopleResults.length) {
           return res.status(404).json({ message: "No assessment results found" });
         }
@@ -4110,12 +7259,14 @@ function setupHiPeopleRoutes(app2) {
 // server/api/users.ts
 init_storage();
 init_schema();
-import { z as z5 } from "zod";
-var updateUserSchema = z5.object({
-  username: z5.string().min(3, "Username must be at least 3 characters").optional(),
-  fullName: z5.string().min(2, "Full name is required").optional(),
-  email: z5.string().email("Invalid email address").optional(),
-  role: z5.enum([
+init_utils();
+import { z as z7 } from "zod";
+var passwordSchema2 = z7.string().min(12, "Password must be at least 12 characters").regex(/[A-Z]/, "Password must contain at least one uppercase letter").regex(/[a-z]/, "Password must contain at least one lowercase letter").regex(/[0-9]/, "Password must contain at least one number").regex(/[^A-Za-z0-9]/, "Password must contain at least one special character");
+var updateUserSchema = z7.object({
+  username: z7.string().min(3, "Username must be at least 3 characters").optional(),
+  fullName: z7.string().min(2, "Full name is required").optional(),
+  email: z7.string().email("Invalid email address").optional(),
+  role: z7.enum([
     UserRoles.HIRING_MANAGER,
     UserRoles.PROJECT_MANAGER,
     UserRoles.COO,
@@ -4123,10 +7274,17 @@ var updateUserSchema = z5.object({
     UserRoles.DIRECTOR,
     UserRoles.ADMIN
   ]).optional(),
-  password: z5.string().min(6, "Password must be at least 6 characters").optional(),
-  calendarLink: z5.string().url("Invalid calendar URL").optional().or(z5.literal("")),
-  calendarProvider: z5.enum(["calendly", "cal.com", "google", "custom"]).optional(),
-  emailTemplates: z5.record(z5.any()).optional()
+  password: passwordSchema2.optional(),
+  calendarLink: z7.string().url("Invalid calendar URL").optional().or(z7.literal("")),
+  calendarProvider: z7.enum(["calendly", "cal.com", "google", "custom"]).optional(),
+  calendlyToken: z7.string().optional(),
+  calendlyWebhookId: z7.string().optional(),
+  openRouterApiKey: z7.string().optional(),
+  slackWebhookUrl: z7.string().url("Invalid Slack webhook URL").optional().or(z7.literal("")),
+  slackNotificationScope: z7.enum(["all_users", "specific_roles"]).optional(),
+  slackNotificationRoles: z7.array(z7.string()).optional(),
+  slackNotificationEvents: z7.array(z7.string()).optional(),
+  emailTemplates: z7.record(z7.any()).optional()
   // JSONB field for all email templates
 });
 function setupUserRoutes(app2) {
@@ -4135,7 +7293,11 @@ function setupUserRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
-      const users2 = await storage.getAllUsers();
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const users2 = await storage.getAllUsers(accountId);
       const sanitizedUsers = users2.map((user) => {
         const { password, ...userWithoutPassword } = user;
         return userWithoutPassword;
@@ -4173,23 +7335,38 @@ function setupUserRoutes(app2) {
       if (existingUser) {
         return res.status(400).json({ message: "Username already exists" });
       }
+      try {
+        passwordSchema2.parse(req.body.password);
+      } catch (error) {
+        if (error instanceof z7.ZodError) {
+          return res.status(400).json({
+            message: "Password does not meet security requirements",
+            errors: error.errors.map((err) => err.message)
+          });
+        }
+      }
       const hashedPassword = await hashPassword(req.body.password);
       const user = await storage.createUser({
         ...req.body,
         password: hashedPassword
       });
       const { password, ...userWithoutPassword } = user;
-      await storage.createActivityLog({
-        userId: req.user?.id,
-        action: "Created user",
-        entityType: "user",
-        entityId: user.id,
-        details: {
-          username: user.username,
-          role: user.role
-        },
-        timestamp: /* @__PURE__ */ new Date()
-      });
+      const accountId = await storage.getUserAccountId(req.user.id);
+      SecureLogger.info("User created", { userId: user.id, username: user.username, role: user.role });
+      if (accountId) {
+        await storage.createActivityLog({
+          accountId,
+          userId: req.user?.id,
+          action: "Created user",
+          entityType: "user",
+          entityId: user.id,
+          details: {
+            username: user.username,
+            role: user.role
+          },
+          timestamp: /* @__PURE__ */ new Date()
+        });
+      }
       res.status(201).json(userWithoutPassword);
     } catch (error) {
       handleApiError(error, res);
@@ -4210,20 +7387,34 @@ function setupUserRoutes(app2) {
       }
       let updateData = { ...req.body };
       if (updateData.password) {
+        try {
+          passwordSchema2.parse(updateData.password);
+        } catch (error) {
+          if (error instanceof z7.ZodError) {
+            return res.status(400).json({
+              message: "Password does not meet security requirements",
+              errors: error.errors.map((err) => err.message)
+            });
+          }
+        }
         updateData.password = await hashPassword(updateData.password);
       }
       const updatedUser = await storage.updateUser(userId, updateData);
-      await storage.createActivityLog({
-        userId: req.user?.id,
-        action: "Updated user",
-        entityType: "user",
-        entityId: userId,
-        details: {
-          username: user.username,
-          fieldsUpdated: Object.keys(req.body)
-        },
-        timestamp: /* @__PURE__ */ new Date()
-      });
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (accountId) {
+        await storage.createActivityLog({
+          accountId,
+          userId: req.user?.id,
+          action: "Updated user",
+          entityType: "user",
+          entityId: userId,
+          details: {
+            username: user.username,
+            fieldsUpdated: Object.keys(req.body)
+          },
+          timestamp: /* @__PURE__ */ new Date()
+        });
+      }
       const { password, ...userWithoutPassword } = updatedUser;
       res.json(userWithoutPassword);
     } catch (error) {
@@ -4247,18 +7438,58 @@ function setupUserRoutes(app2) {
         return res.status(404).json({ message: "User not found" });
       }
       await storage.deleteUser(userId);
-      await storage.createActivityLog({
-        userId: req.user?.id,
-        action: "Deleted user",
-        entityType: "user",
-        entityId: userId,
-        details: {
-          username: user.username,
-          role: user.role
-        },
-        timestamp: /* @__PURE__ */ new Date()
-      });
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (accountId) {
+        await storage.createActivityLog({
+          accountId,
+          userId: req.user?.id,
+          action: "Deleted user",
+          entityType: "user",
+          entityId: userId,
+          details: {
+            username: user.username,
+            role: user.role
+          },
+          timestamp: /* @__PURE__ */ new Date()
+        });
+      }
       res.status(204).send();
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.options("/api/users/:id/public", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(200);
+  });
+  app2.get("/api/users/:id/public", async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    try {
+      const userId = parseInt(req.params.id);
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const integration = await storage.getPlatformIntegration("google-calendar", userId);
+      if (!integration) {
+        return res.status(404).json({ message: "Google Calendar not connected for this user" });
+      }
+      const status = integration.status?.toLowerCase();
+      if (status !== "connected") {
+        return res.status(404).json({ message: "Google Calendar not connected for this user" });
+      }
+      res.json({
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email
+      });
     } catch (error) {
       handleApiError(error, res);
     }
@@ -4292,211 +7523,9 @@ function setupUserRoutes(app2) {
   });
 }
 
-// server/api/test-integration.ts
-init_schema();
-function setupTestIntegrationRoutes(app2) {
-  app2.post("/api/test/openai", async (req, res) => {
-    try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Authentication required" });
-      }
-      if (req.user?.role !== UserRoles.ADMIN && req.user?.role !== UserRoles.COO) {
-        return res.status(403).json({ message: "Not authorized" });
-      }
-      const { title, type, skills, teamContext, department } = req.body;
-      if (!title) {
-        return res.status(400).json({ message: "Job title is required" });
-      }
-      console.log(`Generating job description for ${title}`);
-      const result = await generateJobDescription({
-        title,
-        type,
-        skills,
-        teamContext,
-        department
-      });
-      res.json({
-        success: true,
-        description: result.description,
-        suggestedTitle: result.suggestedTitle
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error testing OpenAI integration:", errorMessage);
-      res.status(500).json({
-        success: false,
-        message: "Failed to generate job description",
-        error: errorMessage
-      });
-    }
-  });
-  app2.post("/api/test/hipeople", async (req, res) => {
-    try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Authentication required" });
-      }
-      if (req.user?.role !== UserRoles.ADMIN && req.user?.role !== UserRoles.COO) {
-        return res.status(403).json({ message: "Not authorized" });
-      }
-      const { url } = req.body;
-      if (!url) {
-        return res.status(400).json({ message: "HiPeople assessment URL is required" });
-      }
-      console.log(`Scraping HiPeople assessment from ${url}`);
-      const results = await scrapeHipeople(url);
-      res.json({
-        success: true,
-        count: results.length,
-        results
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error testing HiPeople integration:", errorMessage);
-      res.status(500).json({
-        success: false,
-        message: "Failed to scrape HiPeople assessment",
-        error: errorMessage
-      });
-    }
-  });
-}
-
-// server/api/test-simple.ts
-import axios5 from "axios";
-function setupSimpleTestRoutes(app2) {
-  app2.post("/api/test/simple-openrouter", async (req, res) => {
-    try {
-      const { title, type, skills, teamContext, department } = req.body;
-      if (!title) {
-        return res.status(400).json({ message: "Job title is required" });
-      }
-      console.log(`Generating job description for ${title} (non-authenticated test with OpenRouter)`);
-      let prompt = `Please write a professional job description for a ${title} position`;
-      if (type) {
-        prompt += ` (${type})`;
-      }
-      if (department) {
-        prompt += ` in the ${department} department`;
-      }
-      prompt += ".\n\n";
-      prompt += "The job description should include the following sections:\n";
-      prompt += "1. About the Company (keep this generic and professional)\n";
-      prompt += "2. Job Overview\n";
-      prompt += "3. Responsibilities\n";
-      prompt += "4. Qualifications\n";
-      prompt += "5. Benefits (keep these standard and professional)\n\n";
-      if (skills) {
-        prompt += `Required skills include: ${skills}.
-
-`;
-      }
-      if (teamContext) {
-        prompt += `Team context: ${teamContext}.
-
-`;
-      }
-      prompt += "Format the job description using markdown syntax. Keep the tone professional and approachable.\n\n";
-      prompt += "Additionally, if you think the job title could be improved or modernized, suggest a better title in a separate suggestion at the end of your response using the format: SUGGESTED_TITLE: [your title suggestion].";
-      const url = "https://openrouter.ai/api/v1/chat/completions";
-      const headers = {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "HTTP-Referer": "https://replit.com",
-        "X-Title": "HireOS Job Description Generator"
-      };
-      const data = {
-        model: "google/gemini-2.0-flash-001",
-        // Using Gemini model for cost effectiveness
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert HR professional who specializes in writing compelling job descriptions."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 1200
-      };
-      const response = await axios5.post(url, data, { headers });
-      const content = response.data.choices[0].message.content || "";
-      let suggestedTitle;
-      const suggestedTitleMatch = content.match(/SUGGESTED_TITLE:\s*(.+?)($|\n)/);
-      let description = content;
-      if (suggestedTitleMatch && suggestedTitleMatch[1]) {
-        suggestedTitle = suggestedTitleMatch[1].trim();
-        description = content.replace(/SUGGESTED_TITLE:\s*(.+?)($|\n)/, "").trim();
-      }
-      res.json({
-        success: true,
-        description,
-        suggestedTitle
-      });
-    } catch (error) {
-      const axiosError = error;
-      const errorResponse = axiosError.response?.data;
-      const errorMessage = errorResponse ? `${errorResponse.error?.message || JSON.stringify(errorResponse)}` : error instanceof Error ? error.message : String(error);
-      console.error("Error testing OpenRouter integration:", errorMessage);
-      res.status(500).json({
-        success: false,
-        message: "Failed to generate job description",
-        error: errorMessage
-      });
-    }
-  });
-  app2.post("/api/test/simple-hipeople", async (req, res) => {
-    try {
-      console.log("Using mock data for HiPeople testing...");
-      const mockResults = [
-        {
-          candidate_id: "test-123",
-          name: "Test Candidate",
-          email: "test@example.com",
-          score: 85,
-          percentile: 75,
-          completed_at: (/* @__PURE__ */ new Date()).toISOString(),
-          feedback: [
-            {
-              category: "Technical Skills",
-              score: 4.5,
-              feedback: "Strong technical foundation with good problem-solving abilities."
-            },
-            {
-              category: "Communication",
-              score: 4,
-              feedback: "Communicates ideas clearly and effectively."
-            },
-            {
-              category: "Teamwork",
-              score: 4.2,
-              feedback: "Works well in collaborative environments."
-            }
-          ]
-        }
-      ];
-      res.json({
-        success: true,
-        count: mockResults.length,
-        results: mockResults,
-        note: "This is mock data for testing purposes only."
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error in HiPeople test endpoint:", errorMessage);
-      res.status(500).json({
-        success: false,
-        message: "Error in test endpoint",
-        error: errorMessage
-      });
-    }
-  });
-}
-
 // server/ghl-sync.ts
 init_storage();
-import axios6 from "axios";
+import axios7 from "axios";
 var GHL_BASE_URL2 = "https://rest.gohighlevel.com/v1";
 async function getGHLCredentials2(userId) {
   if (!userId) {
@@ -4539,7 +7568,7 @@ async function fetchGHLContacts(limit = 500, userId) {
     while (hasMore && pageCount < maxPages && allContacts.length < limit) {
       const url = `${GHL_BASE_URL2}/contacts/${startAfter ? `?startAfter=${startAfter}` : ""}`;
       console.log(`Fetching GHL contacts page ${pageCount + 1}/${maxPages}...`);
-      const response = await axios6.get(url, {
+      const response = await axios7.get(url, {
         headers: {
           Authorization: `Bearer ${credentials.apiKey}`,
           "Content-Type": "application/json"
@@ -4804,7 +7833,8 @@ async function syncAirtableContacts(dryRun = false, userId, selectedContactIds, 
   try {
     const airtableContacts = await fetchAirtableContacts(300, userId);
     result.totalCRMContacts = airtableContacts.length;
-    const candidates2 = await storage.getCandidates({});
+    const accountId = userId ? await storage.getUserAccountId(userId) : null;
+    const candidates2 = accountId ? await storage.getCandidates(accountId, {}) : [];
     result.totalCandidates = candidates2.length;
     const credentials = await getAirtableCredentials(userId);
     const mappings = credentials?.fieldMappings;
@@ -4829,11 +7859,13 @@ async function syncAirtableContacts(dryRun = false, userId, selectedContactIds, 
             (candidate) => candidate.email.toLowerCase() === contactEmail.toLowerCase()
           );
         }
-        if (!matchingCandidate && contactName) {
+        if (!matchingCandidate && contactName && contactEmail) {
           const normalizedAirtableName = normalizeName2(contactName);
-          matchingCandidate = candidates2.find(
-            (candidate) => normalizeName2(candidate.name) === normalizedAirtableName
-          );
+          matchingCandidate = candidates2.find((candidate) => {
+            const nameMatches = normalizeName2(candidate.name) === normalizedAirtableName;
+            const emailSafe = !candidate.email || candidate.email.toLowerCase() === contactEmail.toLowerCase();
+            return nameMatches && emailSafe;
+          });
         }
         if (!matchingCandidate) {
           if (skipNewCandidates) {
@@ -4883,7 +7915,7 @@ async function syncAirtableContacts(dryRun = false, userId, selectedContactIds, 
             }
           }
           try {
-            const existingCandidates = await storage.getCandidates({});
+            const existingCandidates = accountId ? await storage.getCandidates(accountId, {}) : [];
             const duplicateCandidate = existingCandidates.find(
               (c) => c.email && c.email.toLowerCase() === contactEmail.toLowerCase()
             );
@@ -4904,9 +7936,21 @@ async function syncAirtableContacts(dryRun = false, userId, selectedContactIds, 
             const airtableExp = getAirtableFieldValue(airtableContact, "experienceYears", mappings);
             const airtableSkills = getAirtableFieldValue(airtableContact, "skills", mappings);
             const skillsArray = airtableSkills ? typeof airtableSkills === "string" ? airtableSkills.split(",").map((s) => s.trim()).filter((s) => s) : Array.isArray(airtableSkills) ? airtableSkills : [] : [];
-            const jobs2 = await storage.getJobs("active");
-            const defaultJobId = jobs2.length > 0 ? jobs2[0].id : null;
+            const jobs3 = accountId ? await storage.getJobs(accountId, "active") : [];
+            const defaultJobId = jobs3.length > 0 ? jobs3[0].id : null;
+            if (!accountId) {
+              result.skipped++;
+              result.details.push({
+                contactId: airtableContact.id,
+                crmName: contactName || contactEmail,
+                candidateName: "N/A",
+                action: "skipped",
+                reason: "Account ID not found - cannot create candidate"
+              });
+              continue;
+            }
             const newCandidate = await storage.createCandidate({
+              accountId,
               name: contactName || contactEmail,
               email: contactEmail,
               phone: airtablePhone || null,
@@ -4963,9 +8007,6 @@ async function syncAirtableContacts(dryRun = false, userId, selectedContactIds, 
         if (contactName && normalizeName2(contactName) !== normalizeName2(matchingCandidate.name)) {
           updateData.name = contactName.trim();
         }
-        if (contactEmail && contactEmail.toLowerCase() !== matchingCandidate.email.toLowerCase()) {
-          updateData.email = contactEmail.trim();
-        }
         if (airtablePhoneValue && airtablePhoneValue !== matchingCandidate.phone) {
           updateData.phone = airtablePhoneValue;
         }
@@ -4987,7 +8028,10 @@ async function syncAirtableContacts(dryRun = false, userId, selectedContactIds, 
         }
         if (!dryRun && Object.keys(updateData).length > 0) {
           try {
-            await storage.updateCandidate(matchingCandidate.id, updateData);
+            if (!accountId) {
+              throw new Error("Account ID not found");
+            }
+            await storage.updateCandidate(matchingCandidate.id, accountId, updateData);
           } catch (updateError) {
             result.errors.push(`Failed to update candidate ${matchingCandidate.name}: ${updateError.message}`);
             result.details.push({
@@ -5055,7 +8099,8 @@ async function createAirtableCandidatesWithJobs(userId, assignments) {
     const contactMap = new Map(airtableContacts.map((c) => [c.id, c]));
     const credentials = await getAirtableCredentials(userId);
     const mappings = credentials?.fieldMappings;
-    const existingCandidates = await storage.getCandidates({});
+    const accountId = userId ? await storage.getUserAccountId(userId) : null;
+    const existingCandidates = accountId ? await storage.getCandidates(accountId, {}) : [];
     for (const assignment of assignments) {
       const airtableContact = contactMap.get(assignment.contactId);
       if (!airtableContact) {
@@ -5103,7 +8148,19 @@ async function createAirtableCandidatesWithJobs(userId, assignments) {
         const airtableExp = getAirtableFieldValue(airtableContact, "experienceYears", mappings);
         const airtableSkills = getAirtableFieldValue(airtableContact, "skills", mappings);
         const skillsArray = airtableSkills ? typeof airtableSkills === "string" ? airtableSkills.split(",").map((s) => s.trim()).filter((s) => s) : Array.isArray(airtableSkills) ? airtableSkills : [] : [];
+        if (!accountId) {
+          result.skipped++;
+          result.details.push({
+            contactId: assignment.contactId,
+            crmName: contactName || contactEmail,
+            candidateName: "N/A",
+            action: "skipped",
+            reason: "Account ID not found - cannot create candidate"
+          });
+          continue;
+        }
         const newCandidate = await storage.createCandidate({
+          accountId,
           name: contactName || contactEmail,
           email: contactEmail,
           phone: airtablePhone || null,
@@ -5122,7 +8179,6 @@ async function createAirtableCandidatesWithJobs(userId, assignments) {
           action: "created",
           reason: `Created with job ID: ${assignment.jobId || "none"}`
         });
-        console.log(`\u2705 Created candidate "${newCandidate.name}" with job ID ${assignment.jobId || "none"}`);
       } catch (error) {
         result.errors.push(`Failed to create candidate ${assignment.contactId}: ${error.message}`);
         result.details.push({
@@ -5199,11 +8255,13 @@ async function syncGoogleSheetsContacts(dryRun = false, userId, selectedContactI
             (candidate) => candidate.email && candidate.email.toLowerCase() === contactEmail.toLowerCase()
           );
         }
-        if (!matchingCandidate && contactName) {
+        if (!matchingCandidate && contactName && contactEmail) {
           const normalizedSheetsName = normalizeName3(contactName);
-          matchingCandidate = candidates2.find(
-            (candidate) => normalizeName3(candidate.name) === normalizedSheetsName
-          );
+          matchingCandidate = candidates2.find((candidate) => {
+            const nameMatches = normalizeName3(candidate.name) === normalizedSheetsName;
+            const emailSafe = !candidate.email || candidate.email.toLowerCase() === contactEmail.toLowerCase();
+            return nameMatches && emailSafe;
+          });
         }
         if (!matchingCandidate) {
           if (skipNewCandidates) {
@@ -5274,8 +8332,8 @@ async function syncGoogleSheetsContacts(dryRun = false, userId, selectedContactI
             const sheetsExp = getGoogleSheetsFieldValue(sheetsContact.data, headers, "experienceYears", mappings);
             const sheetsSkills = getGoogleSheetsFieldValue(sheetsContact.data, headers, "skills", mappings);
             const skillsArray = sheetsSkills ? typeof sheetsSkills === "string" ? sheetsSkills.split(",").map((s) => s.trim()).filter((s) => s) : Array.isArray(sheetsSkills) ? sheetsSkills : [] : [];
-            const jobs2 = await storage.getJobs("active");
-            const defaultJobId = jobs2.length > 0 ? jobs2[0].id : null;
+            const jobs3 = await storage.getJobs("active");
+            const defaultJobId = jobs3.length > 0 ? jobs3[0].id : null;
             const newCandidate = await storage.createCandidate({
               name: contactName || contactEmail,
               email: contactEmail,
@@ -5341,6 +8399,7 @@ async function syncGoogleSheetsContacts(dryRun = false, userId, selectedContactI
           const skillsArray = sheetsSkillsValue ? typeof sheetsSkillsValue === "string" ? sheetsSkillsValue.split(",").map((s) => s.trim()).filter((s) => s) : Array.isArray(sheetsSkillsValue) ? sheetsSkillsValue : [] : null;
           await storage.updateCandidate(matchingCandidate.id, {
             name: sheetsNameValue || matchingCandidate.name,
+            // email: NOT UPDATED - preserve email changes made in HireOS
             phone: sheetsPhoneValue || matchingCandidate.phone,
             location: sheetsLocationValue || matchingCandidate.location,
             expectedSalary: sheetsSalaryValue ? String(parseFloat(sheetsSalaryValue)) : matchingCandidate.expectedSalary,
@@ -5617,10 +8676,10 @@ function setupCRMSyncRoutes(app2) {
 // server/ghl/ghlAuth.ts
 init_db();
 init_schema();
-import { eq as eq4 } from "drizzle-orm";
+import { eq as eq6 } from "drizzle-orm";
 var refreshing = null;
 async function getTokenRow() {
-  const rows = await db.select().from(ghlTokens).where(eq4(ghlTokens.userType, "Location")).limit(1);
+  const rows = await db.select().from(ghlTokens).where(eq6(ghlTokens.userType, "Location")).limit(1);
   return rows[0] ?? null;
 }
 async function refreshAccessToken() {
@@ -5661,7 +8720,7 @@ async function refreshAccessToken() {
     refreshToken: data.refresh_token,
     updatedAt: /* @__PURE__ */ new Date(),
     expiresAt: newExpiry
-  }).where(eq4(ghlTokens.userType, "Location"));
+  }).where(eq6(ghlTokens.userType, "Location"));
   return data.access_token;
 }
 async function getAccessToken() {
@@ -5803,26 +8862,27 @@ function setupGHLAutomationRoutes(app2) {
 
 // server/api/platform-integrations.ts
 init_storage();
-import { z as z6 } from "zod";
-var createIntegrationSchema = z6.object({
-  platformId: z6.string().min(1),
-  platformName: z6.string().min(1),
-  platformType: z6.enum(["builtin", "custom"]).default("builtin"),
-  credentials: z6.record(z6.any()).optional(),
-  apiEndpoint: z6.string().url().optional(),
-  apiMethod: z6.string().optional()
+init_utils();
+import { z as z8 } from "zod";
+var createIntegrationSchema = z8.object({
+  platformId: z8.string().min(1),
+  platformName: z8.string().min(1),
+  platformType: z8.enum(["builtin", "custom"]).default("builtin"),
+  credentials: z8.record(z8.any()).optional(),
+  apiEndpoint: z8.string().url().optional(),
+  apiMethod: z8.string().optional()
 });
-var updateIntegrationSchema = z6.object({
-  platformName: z6.string().min(1).optional(),
-  status: z6.enum(["connected", "disconnected", "error"]).optional(),
-  credentials: z6.record(z6.any()).nullable().optional(),
+var updateIntegrationSchema = z8.object({
+  platformName: z8.string().min(1).optional(),
+  status: z8.enum(["connected", "disconnected", "error"]).optional(),
+  credentials: z8.record(z8.any()).nullable().optional(),
   // Allow null for disconnecting
-  apiEndpoint: z6.string().url().optional(),
-  apiMethod: z6.string().optional(),
-  oauthToken: z6.string().nullable().optional(),
-  oauthRefreshToken: z6.string().nullable().optional(),
-  oauthExpiresAt: z6.string().datetime().optional(),
-  isEnabled: z6.boolean().optional()
+  apiEndpoint: z8.string().url().optional(),
+  apiMethod: z8.string().optional(),
+  oauthToken: z8.string().nullable().optional(),
+  oauthRefreshToken: z8.string().nullable().optional(),
+  oauthExpiresAt: z8.string().datetime().optional(),
+  isEnabled: z8.boolean().optional()
 });
 function setupPlatformIntegrationRoutes(app2) {
   app2.get("/api/platform-integrations", async (req, res) => {
@@ -5926,21 +8986,22 @@ function setupPlatformIntegrationRoutes(app2) {
 
 // server/api/crm-integrations.ts
 init_storage();
-import { z as z7 } from "zod";
-import { google as google2 } from "googleapis";
-var createCRMIntegrationSchema = z7.object({
-  platformId: z7.string().min(1),
+init_utils();
+import { z as z9 } from "zod";
+import { google as google4 } from "googleapis";
+var createCRMIntegrationSchema = z9.object({
+  platformId: z9.string().min(1),
   // "ghl", "hubspot", "pipedrive", etc.
-  platformName: z7.string().min(1),
-  credentials: z7.record(z7.any()),
+  platformName: z9.string().min(1),
+  credentials: z9.record(z9.any()),
   // { apiKey, locationId, etc. }
-  syncDirection: z7.enum(["one-way", "two-way"]).default("one-way")
+  syncDirection: z9.enum(["one-way", "two-way"]).default("one-way")
 });
-var updateCRMIntegrationSchema = z7.object({
-  credentials: z7.record(z7.any()).nullable().optional(),
-  syncDirection: z7.enum(["one-way", "two-way"]).optional(),
-  status: z7.enum(["connected", "disconnected", "error"]).optional(),
-  isEnabled: z7.boolean().optional()
+var updateCRMIntegrationSchema = z9.object({
+  credentials: z9.record(z9.any()).nullable().optional(),
+  syncDirection: z9.enum(["one-way", "two-way"]).optional(),
+  status: z9.enum(["connected", "disconnected", "error"]).optional(),
+  isEnabled: z9.boolean().optional()
 });
 function setupCRMIntegrationRoutes(app2) {
   app2.get("/api/crm-integrations", async (req, res) => {
@@ -6070,10 +9131,10 @@ function setupCRMIntegrationRoutes(app2) {
         return res.status(400).json({ message: "Airtable credentials incomplete" });
       }
       const tableName = credentials.tableName || "Candidates";
-      const axios8 = (await import("axios")).default;
+      const axios10 = (await import("axios")).default;
       const AIRTABLE_API_BASE2 = "https://api.airtable.com/v0";
       try {
-        const response = await axios8.get(
+        const response = await axios10.get(
           `${AIRTABLE_API_BASE2}/meta/bases/${credentials.baseId}/tables`,
           {
             headers: {
@@ -6097,7 +9158,7 @@ function setupCRMIntegrationRoutes(app2) {
         });
       } catch (apiError) {
         try {
-          const sampleResponse = await axios8.get(
+          const sampleResponse = await axios10.get(
             `${AIRTABLE_API_BASE2}/${credentials.baseId}/${tableName}`,
             {
               headers: {
@@ -6130,29 +9191,22 @@ function setupCRMIntegrationRoutes(app2) {
       if (!req.isAuthenticated() || !req.user) {
         return res.status(401).json({ message: "Authentication required" });
       }
-      // Determine redirect URI - use request host to match current ngrok tunnel
-      const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
-      const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5000';
+      const protocol = req.get("x-forwarded-proto") || req.protocol || (req.secure ? "https" : "http");
+      const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5000";
       let redirectUri = `${protocol}://${host}/api/crm-integrations/google-sheets/callback`;
-      
-      // If env variable is set and matches current host, extract base URL and use correct path
       const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
       if (envRedirectUri) {
         try {
           const envUrl = new URL(envRedirectUri);
           const currentUrl = new URL(redirectUri);
-          if (envUrl.hostname === currentUrl.hostname || 
-              (!host.includes('ngrok') && !host.includes('localhost'))) {
-            // Extract base URL (protocol + hostname) from env variable and append correct path
+          if (envUrl.hostname === currentUrl.hostname || !host.includes("ngrok") && !host.includes("localhost")) {
             redirectUri = `${envUrl.protocol}//${envUrl.host}/api/crm-integrations/google-sheets/callback`;
           }
         } catch (e) {
-          // Invalid env URL, use dynamically detected one
         }
       }
-      
       redirectUri = redirectUri.replace(/\/$/, "");
-      const oauth2Client = new google2.auth.OAuth2(
+      const oauth2Client = new google4.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
         process.env.GOOGLE_CLIENT_SECRET,
         redirectUri
@@ -6169,7 +9223,7 @@ function setupCRMIntegrationRoutes(app2) {
         state: JSON.stringify({ userId: req.user.id })
         // Pass user ID in state
       });
-      res.json({ authUrl, redirectUri });
+      res.json({ authUrl });
     } catch (error) {
       handleApiError(error, res);
     }
@@ -6187,41 +9241,34 @@ function setupCRMIntegrationRoutes(app2) {
       } catch {
         return res.redirect(`/integrations?error=invalid_state`);
       }
-      // Use the same redirect URI logic as the auth endpoint
-      const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
-      const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5000';
+      const protocol = req.get("x-forwarded-proto") || req.protocol || (req.secure ? "https" : "http");
+      const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5000";
       let redirectUri = `${protocol}://${host}/api/crm-integrations/google-sheets/callback`;
-      
-      // If env variable is set and matches current host, extract base URL and use correct path
       const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
       if (envRedirectUri) {
         try {
           const envUrl = new URL(envRedirectUri);
           const currentUrl = new URL(redirectUri);
-          if (envUrl.hostname === currentUrl.hostname || 
-              (!host.includes('ngrok') && !host.includes('localhost'))) {
-            // Extract base URL (protocol + hostname) from env variable and append correct path
+          if (envUrl.hostname === currentUrl.hostname || !host.includes("ngrok") && !host.includes("localhost")) {
             redirectUri = `${envUrl.protocol}//${envUrl.host}/api/crm-integrations/google-sheets/callback`;
           }
         } catch (e) {
-          // Invalid env URL, use dynamically detected one
         }
       }
-      
       redirectUri = redirectUri.replace(/\/$/, "");
-      const oauth2Client = new google2.auth.OAuth2(
+      const oauth2Client = new google4.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
         process.env.GOOGLE_CLIENT_SECRET,
         redirectUri
       );
-      const { tokens } = await oauth2Client.getToken(code);
-      if (!tokens.access_token) {
+      const { tokens: tokens2 } = await oauth2Client.getToken(code);
+      if (!tokens2.access_token) {
         return res.redirect(`/integrations?error=no_access_token`);
       }
       const existing = await storage.getPlatformIntegration("google-sheets", userId);
       const credentials = {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token || null,
+        accessToken: tokens2.access_token,
+        refreshToken: tokens2.refresh_token || null,
         spreadsheetId: "",
         // User will set this in settings
         sheetName: "Sheet1"
@@ -6275,32 +9322,63 @@ function setupCRMIntegrationRoutes(app2) {
 
 // server/api/form-templates.ts
 init_storage();
-import { z as z8 } from "zod";
-var fieldSchema = z8.object({
-  id: z8.string(),
-  type: z8.enum(["text", "email", "phone", "textarea", "number", "select", "file", "checkbox"]),
-  label: z8.string(),
-  placeholder: z8.string().optional(),
-  required: z8.boolean().default(false),
-  options: z8.array(z8.string()).optional(),
-  // For select/checkbox fields
-  validation: z8.object({
-    min: z8.number().optional(),
-    max: z8.number().optional(),
-    pattern: z8.string().optional()
+init_utils();
+import { z as z10 } from "zod";
+var fieldSchema = z10.object({
+  id: z10.string(),
+  type: z10.enum([
+    "text",
+    "email",
+    "phone",
+    "textarea",
+    "number",
+    "select",
+    "multiselect",
+    "radio",
+    "checkbox",
+    "file",
+    "date",
+    "time",
+    "datetime",
+    "rating",
+    "scale",
+    "url",
+    "section",
+    "pagebreak"
+  ]),
+  label: z10.string(),
+  description: z10.string().optional(),
+  placeholder: z10.string().optional(),
+  required: z10.boolean().default(false),
+  options: z10.array(z10.string()).optional(),
+  // For select, multiselect, radio, checkbox fields
+  validation: z10.object({
+    min: z10.number().optional(),
+    max: z10.number().optional(),
+    minLength: z10.number().optional(),
+    maxLength: z10.number().optional(),
+    pattern: z10.string().optional()
+  }).optional(),
+  settings: z10.object({
+    allowMultiple: z10.boolean().optional(),
+    accept: z10.string().optional(),
+    min: z10.number().optional(),
+    max: z10.number().optional(),
+    step: z10.number().optional(),
+    rows: z10.number().optional()
   }).optional()
 });
-var createFormTemplateSchema = z8.object({
-  name: z8.string().min(1),
-  description: z8.string().optional(),
-  fields: z8.array(fieldSchema).min(1),
-  isDefault: z8.boolean().optional().default(false)
+var createFormTemplateSchema = z10.object({
+  name: z10.string().min(1),
+  description: z10.string().optional(),
+  fields: z10.array(fieldSchema).min(1),
+  isDefault: z10.boolean().optional().default(false)
 });
-var updateFormTemplateSchema = z8.object({
-  name: z8.string().min(1).optional(),
-  description: z8.string().optional(),
-  fields: z8.array(fieldSchema).optional(),
-  isDefault: z8.boolean().optional()
+var updateFormTemplateSchema = z10.object({
+  name: z10.string().min(1).optional(),
+  description: z10.string().optional(),
+  fields: z10.array(fieldSchema).optional(),
+  isDefault: z10.boolean().optional()
 });
 function setupFormTemplateRoutes(app2) {
   app2.get("/api/form-templates", async (req, res) => {
@@ -6308,7 +9386,11 @@ function setupFormTemplateRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
-      const templates = await storage.getFormTemplates();
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const templates = await storage.getFormTemplates(accountId);
       res.json(templates);
     } catch (error) {
       handleApiError(error, res);
@@ -6316,22 +9398,25 @@ function setupFormTemplateRoutes(app2) {
   });
   app2.get("/api/form-templates/default", async (req, res) => {
     try {
-      const template = await storage.getDefaultFormTemplate();
-      if (!template) {
-        return res.status(404).json({ message: "No default form template found" });
-      }
-      res.json(template);
+      return res.status(401).json({ message: "Authentication required for default template" });
     } catch (error) {
       handleApiError(error, res);
     }
   });
   app2.get("/api/form-templates/:id", async (req, res) => {
     try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid template ID" });
       }
-      const template = await storage.getFormTemplate(id);
+      const template = await storage.getFormTemplate(id, accountId);
       if (!template) {
         return res.status(404).json({ message: "Form template not found" });
       }
@@ -6345,6 +9430,10 @@ function setupFormTemplateRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const validationResult = createFormTemplateSchema.safeParse(req.body);
       if (!validationResult.success) {
         return res.status(400).json({
@@ -6354,14 +9443,14 @@ function setupFormTemplateRoutes(app2) {
       }
       const data = validationResult.data;
       if (data.isDefault) {
-        const existingDefaults = await storage.getFormTemplates();
+        const existingDefaults = await storage.getFormTemplates(accountId);
         for (const template2 of existingDefaults) {
           if (template2.isDefault && template2.id) {
-            await storage.updateFormTemplate(template2.id, { isDefault: false });
+            await storage.updateFormTemplate(template2.id, accountId, { isDefault: false });
           }
         }
       }
-      const template = await storage.createFormTemplate(data);
+      const template = await storage.createFormTemplate({ ...data, accountId });
       res.status(201).json(template);
     } catch (error) {
       handleApiError(error, res);
@@ -6371,6 +9460,10 @@ function setupFormTemplateRoutes(app2) {
     try {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
       }
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -6385,14 +9478,14 @@ function setupFormTemplateRoutes(app2) {
       }
       const data = validationResult.data;
       if (data.isDefault) {
-        const existingDefaults = await storage.getFormTemplates();
+        const existingDefaults = await storage.getFormTemplates(accountId);
         for (const template2 of existingDefaults) {
           if (template2.isDefault && template2.id && template2.id !== id) {
-            await storage.updateFormTemplate(template2.id, { isDefault: false });
+            await storage.updateFormTemplate(template2.id, accountId, { isDefault: false });
           }
         }
       }
-      const template = await storage.updateFormTemplate(id, data);
+      const template = await storage.updateFormTemplate(id, accountId, data);
       if (!template) {
         return res.status(404).json({ message: "Form template not found" });
       }
@@ -6406,11 +9499,15 @@ function setupFormTemplateRoutes(app2) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid template ID" });
       }
-      await storage.deleteFormTemplate(id);
+      await storage.deleteFormTemplate(id, accountId);
       res.status(204).send();
     } catch (error) {
       handleApiError(error, res);
@@ -6420,17 +9517,18 @@ function setupFormTemplateRoutes(app2) {
 
 // server/api/applications.ts
 init_storage();
-import { z as z9 } from "zod";
-var applicationSchema = z9.object({
-  jobId: z9.number().int().positive(),
-  name: z9.string().min(2),
-  email: z9.string().email(),
-  phone: z9.string().optional(),
-  location: z9.string().optional(),
-  resumeUrl: z9.string().url().nullable().optional(),
-  applicationData: z9.record(z9.any()).optional(),
+init_utils();
+import { z as z11 } from "zod";
+var applicationSchema = z11.object({
+  jobId: z11.number().int().positive(),
+  name: z11.string().min(2),
+  email: z11.string().email(),
+  phone: z11.string().optional(),
+  location: z11.string().optional(),
+  resumeUrl: z11.string().url().nullable().optional(),
+  applicationData: z11.record(z11.any()).optional(),
   // Custom form field answers
-  source: z9.string().optional().default("website")
+  source: z11.string().optional().default("website")
 });
 function setupApplicationRoutes(app2) {
   app2.post("/api/applications", async (req, res) => {
@@ -6512,12 +9610,84 @@ function setupApplicationRoutes(app2) {
 }
 
 // server/api/storage.ts
+init_utils();
 import dns from "dns";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
+
+// server/security/file-upload.ts
+import { fileTypeFromBuffer } from "file-type";
+var ALLOWED_MIME_TYPES = [
+  "application/pdf"
+];
+var ALLOWED_EXTENSIONS = [".pdf"];
+var MAX_FILE_SIZE = 5 * 1024 * 1024;
+async function validateMimeType(buffer, filename) {
+  const ext = filename.toLowerCase().substring(filename.lastIndexOf("."));
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return false;
+  }
+  const fileTypeResult = await fileTypeFromBuffer(buffer);
+  if (!fileTypeResult) {
+    return ext === ".pdf";
+  }
+  return ALLOWED_MIME_TYPES.includes(fileTypeResult.mime);
+}
+function validateFileSize(size) {
+  return size > 0 && size <= MAX_FILE_SIZE;
+}
+function checkForMaliciousContent(buffer) {
+  const preview = buffer.slice(0, 1024).toString("utf-8", 0, 1024);
+  if (preview.includes("<script") || preview.includes("</script>")) {
+    return { safe: false, reason: "File contains script tags" };
+  }
+  if (preview.toLowerCase().includes("javascript:")) {
+    return { safe: false, reason: "File contains javascript: protocol" };
+  }
+  if (preview.includes("data:text/html") || preview.includes("data:application/javascript")) {
+    return { safe: false, reason: "File contains executable data URLs" };
+  }
+  if (buffer.length > 4) {
+    const header = buffer.slice(0, 4).toString("ascii");
+    if (!header.startsWith("%PDF") && buffer.length < 1e3) {
+      return { safe: false, reason: "File does not appear to be a valid PDF" };
+    }
+  }
+  return { safe: true };
+}
+async function validateFile(file, req) {
+  if (!file || !file.buffer) {
+    return { valid: false, error: "No file provided" };
+  }
+  if (!validateFileSize(file.size)) {
+    return {
+      valid: false,
+      error: `File size must be between 1 byte and ${MAX_FILE_SIZE / 1024 / 1024}MB`
+    };
+  }
+  const isValidMime = await validateMimeType(file.buffer, file.originalname);
+  if (!isValidMime) {
+    return {
+      valid: false,
+      error: "Only PDF files are allowed"
+    };
+  }
+  const contentCheck = checkForMaliciousContent(file.buffer);
+  if (!contentCheck.safe) {
+    return {
+      valid: false,
+      error: contentCheck.reason || "File contains potentially malicious content"
+    };
+  }
+  return { valid: true };
+}
+
+// server/api/storage.ts
 dns.setDefaultResultOrder("ipv4first");
-if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+if (process.env.NODE_ENV !== "production" && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+} else if (process.env.NODE_ENV === "production") {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "1";
 }
 function getSupabaseUrl() {
   if (process.env.SUPABASE_URL) {
@@ -6560,6 +9730,18 @@ function setupStorageRoutes(app2) {
       }
       if (!req.file) {
         return res.status(400).json({ message: "No file provided" });
+      }
+      const validation = await validateFile(req.file, req);
+      if (!validation.valid) {
+        SecureLogger.warn("File upload rejected", {
+          reason: validation.error,
+          filename: req.file.originalname,
+          size: req.file.size,
+          ip: req.ip
+        });
+        return res.status(400).json({
+          message: validation.error || "File validation failed"
+        });
       }
       const { candidateId } = req.body;
       const file = req.file;
@@ -6607,15 +9789,26 @@ function setupStorageRoutes(app2) {
 
 // server/api/calendar-webhooks.ts
 init_storage();
+init_utils();
 init_email_validator();
+init_notifications();
 async function updateInterviewFromBooking(candidateEmail, scheduledDate, provider, userId) {
   try {
-    const allCandidates = await storage.getCandidates({});
-    const candidate = allCandidates.find((c) => c.email.toLowerCase() === candidateEmail.toLowerCase());
+    if (!userId) {
+      console.error(`[Calendar Webhook] userId is required for multi-tenant data isolation`);
+      return false;
+    }
+    const accountId = await storage.getUserAccountId(userId);
+    if (!accountId) {
+      console.error(`[Calendar Webhook] User ${userId} is not associated with any account`);
+      return false;
+    }
+    const candidates2 = await storage.getCandidates(accountId, {});
+    const candidate = candidates2.find((c) => c.email.toLowerCase() === candidateEmail.toLowerCase());
     if (!candidate) {
       return false;
     }
-    const interviews3 = await storage.getInterviews({ candidateId: candidate.id });
+    const interviews3 = await storage.getInterviews(accountId, { candidateId: candidate.id });
     let scheduledInterview = interviews3.find(
       (i) => i.status === "scheduled" || i.status === "pending"
     );
@@ -6628,9 +9821,18 @@ async function updateInterviewFromBooking(candidateEmail, scheduledDate, provide
       }
     }
     if (!scheduledInterview) {
-      return false;
+      const newInterview = await storage.createInterview({
+        accountId,
+        candidateId: candidate.id,
+        type: "video",
+        status: "scheduled",
+        scheduledDate,
+        interviewerId: userId || null,
+        notes: `Automatically created from ${provider} booking on ${(/* @__PURE__ */ new Date()).toISOString()}`
+      });
+      scheduledInterview = newInterview;
     }
-    await storage.updateInterview(scheduledInterview.id, {
+    await storage.updateInterview(scheduledInterview.id, accountId, {
       scheduledDate,
       status: "scheduled",
       notes: scheduledInterview.notes ? `${scheduledInterview.notes}
@@ -6639,9 +9841,59 @@ Automatically updated from ${provider} booking on ${(/* @__PURE__ */ new Date())
       updatedAt: /* @__PURE__ */ new Date()
     });
     if (candidate.status !== "60_1st_interview_scheduled") {
-      await storage.updateCandidate(candidate.id, {
+      await storage.updateCandidate(candidate.id, accountId, {
         status: "60_1st_interview_scheduled"
       });
+    }
+    const job = candidate.jobId ? await storage.getJob(candidate.jobId, accountId) : null;
+    const updatedInterview = await storage.getInterview(scheduledInterview.id, accountId);
+    if (updatedInterview && candidate && job && userId) {
+      await notifySlackUsers(userId, "interview_scheduled", {
+        candidate,
+        job,
+        interview: updatedInterview
+      });
+      try {
+        const jobTitle = job?.title || "position";
+        await createNotification(
+          userId,
+          "interview_scheduled",
+          "Interview Scheduled",
+          `Interview scheduled: ${candidate.name} (${jobTitle}) on ${scheduledDate.toLocaleDateString()} at ${scheduledDate.toLocaleTimeString()}`,
+          `/candidates`,
+          { candidateId: candidate.id, jobId: job?.id, interviewId: scheduledInterview.id }
+        );
+      } catch (error) {
+        console.error("[Calendar Webhook] Failed to create notification:", error);
+      }
+      if (provider === "calendly" && userId) {
+        try {
+          const googleCalendarIntegration = await storage.getPlatformIntegration("google-calendar", userId);
+          const credentials = googleCalendarIntegration?.credentials;
+          const syncWithCalendly = credentials?.syncWithCalendly || false;
+          if (googleCalendarIntegration?.status === "connected" && syncWithCalendly && updatedInterview) {
+            const interviewer = updatedInterview.interviewerId ? await storage.getUser(updatedInterview.interviewerId) : null;
+            await createGoogleCalendarEvent(userId, {
+              id: updatedInterview.id,
+              candidateId: candidate.id,
+              scheduledDate,
+              type: updatedInterview.type || "video",
+              videoUrl: updatedInterview.videoUrl || void 0,
+              candidate: {
+                name: candidate.name,
+                email: candidate.email
+              },
+              job: job ? { title: job.title } : void 0,
+              interviewer: interviewer ? {
+                fullName: interviewer.fullName,
+                email: interviewer.email
+              } : void 0
+            });
+          }
+        } catch (error) {
+          console.error("[Calendar Webhook] Failed to create Google Calendar event:", error);
+        }
+      }
     }
     return true;
   } catch (error) {
@@ -6653,33 +9905,107 @@ async function handleCalendlyWebhook(req, res) {
   try {
     const payload = req.body;
     const userId = req.query.userId ? parseInt(req.query.userId) : void 0;
+    console.log("[Calendly Webhook] Received webhook, userId:", userId);
+    console.log("[Calendly Webhook] Payload event:", payload.event);
     const eventType = payload.event;
+    if (eventType === "invitee.canceled") {
+      console.log("[Calendly Webhook] Processing cancellation event");
+      const inviteeData2 = payload.payload;
+      const candidateEmail2 = inviteeData2?.email || inviteeData2?.invitee?.email;
+      if (candidateEmail2 && userId) {
+        const accountId = await storage.getUserAccountId(userId);
+        if (!accountId) {
+          console.error(`[Calendly Webhook] User ${userId} is not associated with any account`);
+          return res.status(400).json({ message: "User is not associated with any account" });
+        }
+        const candidates2 = await storage.getCandidates(accountId, {});
+        const candidate = candidates2.find((c) => c.email.toLowerCase() === candidateEmail2.toLowerCase());
+        if (candidate) {
+          const interviews3 = await storage.getInterviews(accountId, { candidateId: candidate.id });
+          const scheduledInterview = interviews3.find((i) => i.status === "scheduled" || i.status === "pending");
+          if (scheduledInterview) {
+            await storage.updateInterview(scheduledInterview.id, accountId, {
+              status: "cancelled",
+              updatedAt: /* @__PURE__ */ new Date()
+            });
+            console.log(`[Calendly Webhook] Cancelled interview ${scheduledInterview.id} for ${candidate.name}`);
+            if (candidate.status === "60_1st_interview_scheduled") {
+              await storage.updateCandidate(candidate.id, accountId, {
+                status: "45_1st_interview_sent"
+                // Revert to interview sent status
+              });
+            }
+            return res.status(200).json({ message: "Interview cancelled successfully" });
+          } else {
+            console.log(`[Calendly Webhook] No scheduled interview found for ${candidate.name}`);
+            return res.status(200).json({ message: "No scheduled interview found to cancel" });
+          }
+        } else {
+          console.log(`[Calendly Webhook] Candidate not found for email: ${candidateEmail2}`);
+          return res.status(200).json({ message: "Candidate not found" });
+        }
+      } else {
+        console.error("[Calendly Webhook] Missing email in cancellation payload");
+        return res.status(400).json({ message: "Missing email in cancellation payload" });
+      }
+    }
+    if (eventType === "invitee.updated") {
+      console.log("[Calendly Webhook] Processing reschedule event");
+      const inviteeData2 = payload.payload;
+      const candidateEmail2 = inviteeData2?.email || inviteeData2?.invitee?.email;
+      if (!candidateEmail2) {
+        console.error("[Calendly Webhook] Missing email in reschedule payload");
+        return res.status(400).json({ message: "Missing email in reschedule payload" });
+      }
+      const scheduledEvent2 = inviteeData2.scheduled_event || payload.scheduled_event;
+      if (!scheduledEvent2 || !scheduledEvent2.start_time) {
+        console.error("[Calendly Webhook] Missing scheduled_event.start_time in reschedule");
+        return res.status(400).json({ message: "Missing scheduled_event.start_time in reschedule" });
+      }
+      const newScheduledDate = new Date(scheduledEvent2.start_time);
+      console.log(`[Calendly Webhook] Rescheduling to: ${newScheduledDate.toISOString()}`);
+      const updated2 = await updateInterviewFromBooking(candidateEmail2, newScheduledDate, "calendly", userId);
+      if (updated2) {
+        console.log("[Calendly Webhook] Interview rescheduled successfully");
+        res.status(200).json({ message: "Interview rescheduled successfully" });
+      } else {
+        console.log("[Calendly Webhook] Failed to reschedule - candidate not found or other error");
+        res.status(200).json({ message: "No matching candidate found. Please ensure the candidate exists in HireOS with this email address." });
+      }
+      return;
+    }
     if (eventType !== "invitee.created") {
+      console.log(`[Calendly Webhook] Ignoring event type: ${eventType}`);
       return res.status(200).json({ message: "Event ignored" });
     }
     const inviteeData = payload.payload;
     if (!inviteeData) {
+      console.error("[Calendly Webhook] Missing payload data");
       return res.status(400).json({ message: "Missing payload data" });
     }
-    const candidateEmail = inviteeData.email;
+    const candidateEmail = inviteeData.email || inviteeData.invitee?.email;
     if (!candidateEmail) {
+      console.error("[Calendly Webhook] Missing email in payload");
       return res.status(400).json({ message: "Missing email in payload" });
     }
-    const scheduledEvent = inviteeData.scheduled_event;
+    const scheduledEvent = inviteeData.scheduled_event || payload.scheduled_event;
     if (!scheduledEvent || !scheduledEvent.start_time) {
+      console.error("[Calendly Webhook] Missing scheduled_event.start_time");
       return res.status(400).json({ message: "Missing scheduled_event.start_time" });
     }
-    if (inviteeData.rescheduled || inviteeData.status !== "active") {
-      return res.status(200).json({ message: "Event was rescheduled or canceled" });
+    if (inviteeData.status !== "active") {
+      console.log(`[Calendly Webhook] Skipping inactive event with status: ${inviteeData.status}`);
+      return res.status(200).json({ message: "Event was canceled or inactive" });
     }
     const scheduledDate = new Date(scheduledEvent.start_time);
     const updated = await updateInterviewFromBooking(candidateEmail, scheduledDate, "calendly", userId);
     if (updated) {
       res.status(200).json({ message: "Interview updated successfully" });
     } else {
-      res.status(200).json({ message: "No matching candidate or interview found" });
+      res.status(200).json({ message: "No matching candidate found. Please ensure the candidate exists in HireOS with this email address." });
     }
   } catch (error) {
+    console.error("[Calendly Webhook] Error:", error);
     handleApiError(error, res);
   }
 }
@@ -6761,17 +10087,1252 @@ function setupCalendarWebhookRoutes(app2) {
   app2.post("/api/webhooks/calendar/google", handleGoogleCalendarWebhook);
 }
 
+// server/api/calendly-connect.ts
+init_storage();
+init_utils();
+import axios8 from "axios";
+import { z as z12 } from "zod";
+var connectCalendlySchema = z12.object({
+  token: z12.string().min(1, "Calendly token is required")
+});
+function setupCalendlyConnectRoutes(app2) {
+  app2.post(
+    "/api/calendly/connect",
+    validateRequest(connectCalendlySchema),
+    async (req, res) => {
+      try {
+        if (!req.isAuthenticated()) {
+          return res.status(401).json({ message: "Authentication required" });
+        }
+        const userId = req.user?.id;
+        if (!userId) {
+          return res.status(401).json({ message: "User not authenticated" });
+        }
+        const { token } = req.body;
+        let userInfo;
+        try {
+          const userResponse = await axios8.get("https://api.calendly.com/users/me", {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          });
+          userInfo = userResponse.data.resource;
+        } catch (error) {
+          console.error("[Calendly Connect] Token verification failed:", error.response?.data || error.message);
+          return res.status(400).json({
+            message: "Invalid Calendly token. Please check your Personal Access Token.",
+            error: error.response?.data || error.message
+          });
+        }
+        const orgUri = userInfo.current_organization;
+        const userUri = userInfo.uri;
+        const host = req.get("host");
+        if (!host) {
+          console.error("[Calendly Connect] Cannot determine server host");
+          return res.status(500).json({
+            message: "Cannot determine server host. Please ensure your server is properly configured."
+          });
+        }
+        const webhookUrl = `${req.protocol}://${host}/api/webhooks/calendar?provider=calendly&userId=${userId}`;
+        let webhookId = null;
+        try {
+          let allWebhooks = [];
+          let pageToken = null;
+          do {
+            const params = {
+              organization: orgUri,
+              user: userUri,
+              scope: "user"
+            };
+            if (pageToken) {
+              params.page_token = pageToken;
+            }
+            const existingWebhooksResponse = await axios8.get(
+              "https://api.calendly.com/webhook_subscriptions",
+              {
+                params,
+                headers: {
+                  Authorization: `Bearer ${token}`
+                }
+              }
+            );
+            const webhooks = existingWebhooksResponse.data?.collection || [];
+            allWebhooks = allWebhooks.concat(webhooks);
+            pageToken = existingWebhooksResponse.data?.pagination?.next_page_token || null;
+          } while (pageToken);
+          const normalizeUrl = (url) => url.trim().toLowerCase().replace(/\/$/, "");
+          const normalizedWebhookUrl = normalizeUrl(webhookUrl);
+          const existingWebhook = allWebhooks.find((w) => {
+            const hookUrl = w.callback_url || w.url;
+            if (!hookUrl) return false;
+            return normalizeUrl(hookUrl) === normalizedWebhookUrl;
+          });
+          if (existingWebhook) {
+            webhookId = existingWebhook.uuid || (existingWebhook.uri ? existingWebhook.uri.split("/").pop() : null);
+          }
+        } catch (error) {
+        }
+        if (!webhookId) {
+          const webhookPayload = {
+            url: webhookUrl,
+            events: ["invitee.created", "invitee.canceled"],
+            organization: orgUri,
+            user: userUri,
+            scope: "user"
+          };
+          try {
+            const webhookResponse = await axios8.post(
+              "https://api.calendly.com/webhook_subscriptions",
+              webhookPayload,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json"
+                }
+              }
+            );
+            const resource = webhookResponse.data.resource;
+            webhookId = resource?.uuid || (resource?.uri ? resource.uri.split("/").pop() : null);
+          } catch (error) {
+            if (error.response?.status === 409) {
+              let found = false;
+              let attempts = 0;
+              const maxAttempts = 3;
+              while (!found && attempts < maxAttempts) {
+                try {
+                  attempts++;
+                  let allWebhooks = [];
+                  let pageToken = null;
+                  do {
+                    const params = {
+                      organization: orgUri,
+                      user: userUri,
+                      scope: "user"
+                    };
+                    if (pageToken) {
+                      params.page_token = pageToken;
+                    }
+                    const existingWebhooksResponse = await axios8.get(
+                      "https://api.calendly.com/webhook_subscriptions",
+                      {
+                        params,
+                        headers: {
+                          Authorization: `Bearer ${token}`
+                        }
+                      }
+                    );
+                    const webhooks = existingWebhooksResponse.data?.collection || [];
+                    allWebhooks = allWebhooks.concat(webhooks);
+                    pageToken = existingWebhooksResponse.data?.pagination?.next_page_token || null;
+                  } while (pageToken);
+                  const normalizeUrl = (url) => url.trim().toLowerCase().replace(/\/$/, "");
+                  const normalizedWebhookUrl = normalizeUrl(webhookUrl);
+                  let existingWebhook = allWebhooks.find((w) => {
+                    const hookUrl = w.callback_url || w.url;
+                    if (!hookUrl) return false;
+                    return normalizeUrl(hookUrl) === normalizedWebhookUrl;
+                  });
+                  if (!existingWebhook) {
+                    const urlPath = new URL(webhookUrl).pathname;
+                    existingWebhook = allWebhooks.find((w) => {
+                      const hookUrl = w.callback_url || w.url;
+                      if (!hookUrl) return false;
+                      try {
+                        return new URL(hookUrl).pathname === urlPath;
+                      } catch {
+                        return false;
+                      }
+                    });
+                  }
+                  if (!existingWebhook) {
+                    const baseUrl = webhookUrl.split("?")[0];
+                    existingWebhook = allWebhooks.find((w) => {
+                      const hookUrl = w.callback_url || w.url;
+                      if (!hookUrl) return false;
+                      return hookUrl.split("?")[0] === baseUrl;
+                    });
+                  }
+                  if (existingWebhook) {
+                    webhookId = existingWebhook.uuid || (existingWebhook.uri ? existingWebhook.uri.split("/").pop() : null);
+                    found = true;
+                  } else {
+                    if (attempts < maxAttempts) {
+                      await new Promise((resolve) => setTimeout(resolve, 1e3 * attempts));
+                    }
+                  }
+                } catch (retryError) {
+                  if (attempts < maxAttempts) {
+                    await new Promise((resolve) => setTimeout(resolve, 1e3 * attempts));
+                  }
+                }
+              }
+              if (!found) {
+                return res.status(500).json({
+                  message: "Webhook exists but could not be found. Please delete the existing webhook in Calendly first, then reconnect.",
+                  error: "Could not locate webhook ID after multiple attempts",
+                  webhookUrl
+                });
+              }
+            } else {
+              const errorDetails = error.response?.data?.details || [];
+              console.error("[Calendly Connect] Webhook creation failed:", {
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+                details: JSON.stringify(errorDetails, null, 2),
+                message: error.message,
+                webhookUrl,
+                payload: webhookPayload
+              });
+              return res.status(500).json({
+                message: "Failed to create webhook. Please try again.",
+                error: error.response?.data || error.message,
+                details: errorDetails
+              });
+            }
+          }
+        }
+        await storage.updateUser(userId, {
+          calendlyToken: token,
+          // Store token (in production, encrypt this!)
+          calendlyWebhookId: webhookId,
+          calendarProvider: "calendly"
+        });
+        const accountId = await storage.getUserAccountId(userId);
+        if (!accountId) {
+          return res.status(400).json({ message: "User is not associated with any account" });
+        }
+        await storage.createActivityLog({
+          accountId,
+          userId,
+          action: "Connected Calendly",
+          entityType: "user",
+          entityId: userId,
+          details: {
+            calendlyUserUri: userUri,
+            webhookId
+          },
+          timestamp: /* @__PURE__ */ new Date()
+        });
+        res.json({
+          message: "Calendly connected successfully",
+          webhookId,
+          webhookUrl,
+          calendlyUser: {
+            name: userInfo.name,
+            email: userInfo.email,
+            uri: userUri
+          }
+        });
+      } catch (error) {
+        console.error("[Calendly Connect] Error:", error);
+        handleApiError(error, res);
+      }
+    }
+  );
+  app2.post("/api/calendly/disconnect", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      if (user.calendlyToken && user.calendlyWebhookId) {
+        try {
+          await axios8.delete(
+            `https://api.calendly.com/webhook_subscriptions/${user.calendlyWebhookId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${user.calendlyToken}`
+              }
+            }
+          );
+        } catch (error) {
+        }
+      }
+      await storage.updateUser(userId, {
+        calendlyToken: null,
+        calendlyWebhookId: null,
+        calendarProvider: null
+      });
+      const accountId = await storage.getUserAccountId(userId);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      await storage.createActivityLog({
+        accountId,
+        userId,
+        action: "Disconnected Calendly",
+        entityType: "user",
+        entityId: userId,
+        details: {},
+        timestamp: /* @__PURE__ */ new Date()
+      });
+      res.json({ message: "Calendly disconnected successfully" });
+    } catch (error) {
+      console.error("[Calendly Disconnect] Error:", error);
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/calendly/status", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const isConnected = !!user.calendlyToken;
+      const webhookUrl = isConnected ? `${req.protocol}://${req.get("host")}/api/webhooks/calendar?provider=calendly&userId=${userId}` : null;
+      res.json({
+        connected: isConnected,
+        webhookId: user.calendlyWebhookId || null,
+        webhookUrl,
+        calendarProvider: user.calendarProvider || null
+      });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+}
+
+// server/api/ai-routes.ts
+init_storage();
+init_utils();
+init_resume_parser();
+init_ai_matching();
+init_db();
+init_schema();
+import { eq as eq7 } from "drizzle-orm";
+function setupAIRoutes(app2) {
+  app2.post("/api/ai/parse-resume", async (req, res) => {
+    try {
+      if (!isAuthorized(req)) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const { resumeUrl, candidateId } = req.body;
+      if (!resumeUrl) {
+        return res.status(400).json({ message: "resumeUrl is required" });
+      }
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      if (!user.openRouterApiKey) {
+        return res.status(400).json({
+          message: "OpenRouter API key not configured. Please add your API key in Settings."
+        });
+      }
+      const parsedData = await parseResume(resumeUrl, user.openRouterApiKey);
+      if (candidateId) {
+        const candidate = await storage.getCandidate(candidateId);
+        if (!candidate) {
+          return res.status(404).json({ message: "Candidate not found" });
+        }
+        const updates = {
+          parsedResumeData: parsedData
+        };
+        if (parsedData.phone && !candidate.phone) {
+          updates.phone = parsedData.phone;
+        }
+        if (parsedData.location && !candidate.location) {
+          updates.location = parsedData.location;
+        }
+        if (parsedData.skills && parsedData.skills.length > 0) {
+          const existingSkills = Array.isArray(candidate.skills) ? candidate.skills : [];
+          const skillsSet = /* @__PURE__ */ new Set([...existingSkills, ...parsedData.skills]);
+          updates.skills = Array.from(skillsSet);
+        }
+        if (parsedData.experienceYears && !candidate.experienceYears) {
+          updates.experienceYears = parsedData.experienceYears;
+        }
+        await storage.updateCandidate(candidateId, updates);
+        if (candidate.jobId) {
+          try {
+            const job = await storage.getJob(candidate.jobId);
+            if (job) {
+              const updatedCandidate = await storage.getCandidate(candidateId);
+              const matchResult = await calculateMatchScore(
+                {
+                  name: updatedCandidate.name,
+                  skills: updatedCandidate.skills,
+                  experienceYears: updatedCandidate.experienceYears,
+                  parsedResumeData: parsedData,
+                  applicationData: updatedCandidate.applicationData
+                },
+                {
+                  title: job.title,
+                  skills: job.skills,
+                  type: job.type,
+                  department: job.department,
+                  description: job.description
+                },
+                user.openRouterApiKey
+              );
+              await storage.updateCandidate(candidateId, { matchScore: matchResult.score });
+            }
+          } catch (matchError) {
+            console.error("Error auto-calculating match score:", matchError);
+          }
+        }
+      }
+      res.json({
+        success: true,
+        data: parsedData,
+        message: candidateId ? "Resume parsed and candidate updated" : "Resume parsed successfully"
+      });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.post("/api/ai/match", async (req, res) => {
+    try {
+      if (!isAuthorized(req)) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const { candidateId, jobId } = req.body;
+      if (!candidateId || !jobId) {
+        return res.status(400).json({ message: "candidateId and jobId are required" });
+      }
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      if (!user.openRouterApiKey) {
+        return res.status(400).json({
+          message: "OpenRouter API key not configured. Please add your API key in Settings."
+        });
+      }
+      const candidate = await storage.getCandidate(candidateId);
+      if (!candidate) {
+        return res.status(404).json({ message: "Candidate not found" });
+      }
+      const job = await storage.getJob(jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      const candidateData = {
+        name: candidate.name,
+        skills: candidate.skills,
+        experienceYears: candidate.experienceYears,
+        parsedResumeData: candidate.parsedResumeData,
+        applicationData: candidate.applicationData
+      };
+      const jobRequirements = {
+        title: job.title,
+        skills: job.skills,
+        type: job.type,
+        department: job.department,
+        description: job.description
+      };
+      const matchResult = await calculateMatchScore(
+        candidateData,
+        jobRequirements,
+        user.openRouterApiKey
+      );
+      await storage.updateCandidate(candidateId, {
+        matchScore: matchResult.score
+      });
+      res.json({
+        success: true,
+        data: matchResult
+      });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.post("/api/ai/match-job/:jobId", async (req, res) => {
+    try {
+      if (!isAuthorized(req)) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const jobId = parseInt(req.params.jobId);
+      if (isNaN(jobId)) {
+        return res.status(400).json({ message: "Invalid job ID" });
+      }
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      if (!user.openRouterApiKey) {
+        return res.status(400).json({
+          message: "OpenRouter API key not configured. Please add your API key in Settings."
+        });
+      }
+      const apiKey = user.openRouterApiKey;
+      const job = await storage.getJob(jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      const candidatesList = await db.select().from(candidates).where(eq7(candidates.jobId, jobId));
+      const jobRequirements = {
+        title: job.title,
+        skills: job.skills,
+        type: job.type,
+        department: job.department,
+        description: job.description
+      };
+      const results = await Promise.allSettled(
+        candidatesList.map(async (candidate) => {
+          const candidateData = {
+            name: candidate.name,
+            skills: candidate.skills,
+            experienceYears: candidate.experienceYears,
+            parsedResumeData: candidate.parsedResumeData,
+            applicationData: candidate.applicationData
+          };
+          const matchResult = await calculateMatchScore(
+            candidateData,
+            jobRequirements,
+            apiKey
+          );
+          await storage.updateCandidate(candidate.id, {
+            matchScore: matchResult.score
+          });
+          return {
+            candidateId: candidate.id,
+            candidateName: candidate.name,
+            matchResult
+          };
+        })
+      );
+      const successful = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+      const failed = results.filter((r) => r.status === "rejected").map((r) => r.reason);
+      res.json({
+        success: true,
+        processed: successful.length,
+        failed: failed.length,
+        results: successful,
+        errors: failed.length > 0 ? failed.map((e) => e.message || String(e)) : void 0
+      });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+}
+
+// server/routes.ts
+init_gmail_integration();
+
+// server/api/comments.ts
+init_storage();
+init_utils();
+import { z as z13 } from "zod";
+var createCommentSchema = z13.object({
+  entityType: z13.enum(["candidate", "job"]),
+  entityId: z13.number().int().positive(),
+  content: z13.string().min(1).max(5e3),
+  mentions: z13.array(z13.number().int().positive()).optional()
+});
+function setupCommentRoutes(app2) {
+  app2.get("/api/comments", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const { entityType, entityId } = req.query;
+      if (!entityType || !entityId) {
+        return res.status(400).json({ message: "entityType and entityId are required" });
+      }
+      if (entityType !== "candidate" && entityType !== "job") {
+        return res.status(400).json({ message: "entityType must be 'candidate' or 'job'" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const comments2 = await storage.getComments(
+        entityType,
+        parseInt(entityId),
+        accountId
+      );
+      res.json(comments2);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.post("/api/comments", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const validationResult = createCommentSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          message: "Validation error",
+          errors: validationResult.error.errors
+        });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const userId = req.user.id;
+      const data = validationResult.data;
+      let mentions = data.mentions || [];
+      if (!mentions.length && data.content.includes("@")) {
+        const mentionRegex = /@(\w+)/g;
+        const matches = data.content.match(mentionRegex);
+        if (matches) {
+          const allUsers = await storage.getUsersForMentionAutocomplete(accountId);
+          const mentionedUsernames = matches.map((m) => m.substring(1).toLowerCase());
+          mentions = allUsers.filter(
+            (u) => mentionedUsernames.some(
+              (username) => u.username?.toLowerCase() === username || u.fullName?.toLowerCase().includes(username) || u.email?.toLowerCase().includes(username)
+            )
+          ).map((u) => u.id);
+        }
+      }
+      const comment = await storage.createComment({
+        accountId,
+        userId,
+        entityType: data.entityType,
+        entityId: data.entityId,
+        content: data.content,
+        mentions: mentions.length > 0 ? mentions : null
+      });
+      const comments2 = await storage.getComments(data.entityType, data.entityId, accountId);
+      const newComment = comments2.find((c) => c.id === comment.id);
+      res.status(201).json(newComment || comment);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.delete("/api/comments/:id", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const { id } = req.params;
+      const userId = req.user.id;
+      await storage.deleteComment(parseInt(id), accountId, userId);
+      res.status(204).send();
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/users/mention-autocomplete", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const { q } = req.query;
+      const users2 = await storage.getUsersForMentionAutocomplete(accountId, q);
+      res.json(users2);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+}
+
+// server/routes.ts
+init_notifications();
+
+// server/api/workflows.ts
+init_storage();
+init_utils();
+init_db();
+init_schema();
+init_workflow_engine();
+import { z as z14 } from "zod";
+import { eq as eq8, and as and6 } from "drizzle-orm";
+var createWorkflowSchema = z14.object({
+  name: z14.string().min(1, "Workflow name is required"),
+  description: z14.string().optional(),
+  isActive: z14.boolean().default(true),
+  triggerType: z14.enum([
+    "candidate_status_change",
+    "interview_scheduled",
+    "interview_completed",
+    "manual",
+    "scheduled"
+  ]),
+  triggerConfig: z14.record(z14.any()).optional(),
+  steps: z14.array(
+    z14.object({
+      type: z14.string(),
+      config: z14.record(z14.any()),
+      conditions: z14.array(z14.any()).optional()
+    })
+  ).min(1, "Workflow must have at least one step")
+});
+var updateWorkflowSchema = createWorkflowSchema.partial();
+function setupWorkflowRoutes(app2) {
+  app2.get("/api/workflows/email-templates", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const user = await storage.getUser(req.user.id);
+      const userTemplates = user?.emailTemplates || {};
+      const defaultTemplates = {
+        welcome: {
+          subject: "Welcome to {{companyName}}",
+          body: "<p>Hi {{candidate.name}},</p><p>Welcome! We're excited to have you on board.</p><p>Best regards,<br>{{user.fullName}}</p>"
+        },
+        interview_confirmation: {
+          subject: "Interview Scheduled - {{job.title}}",
+          body: "<p>Hi {{candidate.name}},</p><p>Your interview for {{job.title}} has been scheduled for {{interview.scheduledDate}}.</p><p>Looking forward to meeting you!</p><p>Best regards,<br>{{user.fullName}}</p>"
+        },
+        rejection: {
+          subject: "Update on Your Application - {{job.title}}",
+          body: "<p>Hi {{candidate.name}},</p><p>Thank you for your interest in {{job.title}}. Unfortunately, we've decided to move forward with other candidates.</p><p>We wish you the best in your job search.</p><p>Best regards,<br>{{user.fullName}}</p>"
+        },
+        offer: {
+          subject: "Job Offer - {{job.title}}",
+          body: "<p>Hi {{candidate.name}},</p><p>We're excited to offer you the {{job.title}} position!</p><p>Please review the details and let us know if you have any questions.</p><p>Best regards,<br>{{user.fullName}}</p>"
+        }
+      };
+      const allTemplates = { ...defaultTemplates, ...userTemplates };
+      const templateList = Object.keys(allTemplates).map((key) => {
+        const template = allTemplates[key];
+        return {
+          id: key,
+          name: key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
+          subject: template.subject || "",
+          body: template.body || ""
+        };
+      });
+      res.json(templateList);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/workflows/actions", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      try {
+        const actions = WorkflowActionLibrary.getAvailableActions();
+        res.json(actions);
+      } catch (error) {
+        console.error("[Workflows API] Error getting available actions:", error);
+        res.status(500).json({ message: error.message || "Failed to get available actions" });
+      }
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/workflows/templates", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const templates = [
+        {
+          id: "new_application",
+          name: "New Application Received",
+          description: "Automatically handle new candidate applications",
+          triggerType: "candidate_status_change",
+          triggerConfig: {
+            fromStatus: null,
+            toStatus: "new"
+          },
+          steps: [
+            {
+              type: "send_email",
+              config: {
+                template: "welcome",
+                to: "{{candidate.email}}",
+                subject: "Thank you for your application"
+              }
+            },
+            {
+              type: "notify_slack",
+              config: {
+                channel: "#hiring",
+                message: "New application: {{candidate.name}} for {{job.title}}"
+              }
+            }
+          ]
+        },
+        {
+          id: "interview_scheduled",
+          name: "Interview Scheduled",
+          description: "Notify team and candidate when interview is scheduled",
+          triggerType: "interview_scheduled",
+          triggerConfig: {},
+          steps: [
+            {
+              type: "send_email",
+              config: {
+                template: "interview_confirmation",
+                to: "{{candidate.email}}",
+                subject: "Interview Scheduled - {{job.title}}"
+              }
+            },
+            {
+              type: "notify_slack",
+              config: {
+                channel: "#hiring",
+                message: "Interview scheduled: {{candidate.name}} on {{interview.scheduledDate}}"
+              }
+            }
+          ]
+        },
+        {
+          id: "assessment_completed",
+          name: "Assessment Completed",
+          description: "Auto-advance or reject based on assessment score",
+          triggerType: "candidate_status_change",
+          triggerConfig: {
+            fromStatus: "assessment_sent",
+            toStatus: "assessment_completed"
+          },
+          steps: [
+            {
+              type: "condition",
+              config: {
+                condition: "{{candidate.hiPeopleScore}} >= 80"
+              },
+              thenSteps: [
+                {
+                  type: "update_status",
+                  config: {
+                    status: "interview_scheduled"
+                  }
+                }
+              ],
+              elseSteps: [
+                {
+                  type: "send_email",
+                  config: {
+                    template: "rejection",
+                    to: "{{candidate.email}}"
+                  }
+                },
+                {
+                  type: "update_status",
+                  config: {
+                    status: "rejected"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ];
+      res.json(templates);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/workflows", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const workflowsList = await storage.getWorkflows(accountId);
+      res.json(workflowsList);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/workflows/:id", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const workflowId = parseInt(req.params.id);
+      if (isNaN(workflowId)) {
+        return res.status(400).json({ message: "Invalid workflow ID" });
+      }
+      const workflow = await storage.getWorkflow(workflowId, accountId);
+      if (!workflow) {
+        return res.status(404).json({ message: "Workflow not found" });
+      }
+      res.json(workflow);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.post("/api/workflows", validateRequest(createWorkflowSchema), async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const workflow = await storage.createWorkflow({
+        accountId,
+        name: req.body.name,
+        description: req.body.description,
+        isActive: req.body.isActive ?? true,
+        triggerType: req.body.triggerType,
+        triggerConfig: req.body.triggerConfig || {},
+        steps: req.body.steps,
+        createdById: req.user.id
+      });
+      res.status(201).json(workflow);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.patch("/api/workflows/:id", validateRequest(updateWorkflowSchema), async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const workflowId = parseInt(req.params.id);
+      if (isNaN(workflowId)) {
+        return res.status(400).json({ message: "Invalid workflow ID" });
+      }
+      const workflow = await storage.updateWorkflow(workflowId, accountId, req.body);
+      res.json(workflow);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.delete("/api/workflows/:id", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const workflowId = parseInt(req.params.id);
+      if (isNaN(workflowId)) {
+        return res.status(400).json({ message: "Invalid workflow ID" });
+      }
+      await storage.deleteWorkflow(workflowId, accountId);
+      res.json({ message: "Workflow deleted successfully" });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.post("/api/workflows/:id/trigger", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const workflowId = parseInt(req.params.id);
+      if (isNaN(workflowId)) {
+        return res.status(400).json({ message: "Invalid workflow ID" });
+      }
+      const workflow = await storage.getWorkflow(workflowId, accountId);
+      if (!workflow) {
+        return res.status(404).json({ message: "Workflow not found" });
+      }
+      if (!workflow.isActive) {
+        return res.status(400).json({ message: "Workflow is not active" });
+      }
+      const executionData = req.body.executionData || {};
+      executeWorkflow(workflow, accountId, executionData).catch((error) => {
+        console.error(`[Workflow ${workflowId}] Execution error:`, error);
+      });
+      res.json({ message: "Workflow triggered successfully" });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/workflows/:id/executions", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const workflowId = parseInt(req.params.id);
+      if (isNaN(workflowId)) {
+        return res.status(400).json({ message: "Invalid workflow ID" });
+      }
+      const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+      const executions = await storage.getWorkflowExecutions(workflowId, accountId, limit);
+      res.json(executions);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/workflow-executions/:id", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const executionId = parseInt(req.params.id);
+      if (isNaN(executionId)) {
+        return res.status(400).json({ message: "Invalid execution ID" });
+      }
+      const [execution] = await db.select().from(workflowExecutions).where(and6(eq8(workflowExecutions.id, executionId), eq8(workflowExecutions.accountId, accountId)));
+      if (!execution) {
+        return res.status(404).json({ message: "Execution not found" });
+      }
+      const steps = await storage.getWorkflowExecutionSteps(executionId);
+      res.json({ ...execution, steps });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.post("/api/workflows/:id/test", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const workflowId = parseInt(req.params.id);
+      if (isNaN(workflowId)) {
+        return res.status(400).json({ message: "Invalid workflow ID" });
+      }
+      const workflow = await storage.getWorkflow(workflowId, accountId);
+      if (!workflow) {
+        return res.status(404).json({ message: "Workflow not found" });
+      }
+      const testData = req.body.testData || {};
+      const isTestMode = req.body.isTestMode !== false;
+      let executionData = {
+        entityType: workflow.triggerType === "manual" ? "manual" : testData.entityType || "test",
+        entityId: testData.entityId || null,
+        user: req.user
+      };
+      if (workflow.triggerType === "candidate_status_change") {
+        if (testData.candidateId) {
+          const candidate = await storage.getCandidate(testData.candidateId, accountId);
+          if (candidate) {
+            executionData.candidate = candidate;
+          } else {
+            executionData.candidate = {
+              id: testData.candidateId,
+              name: testData.candidateName || "Test Candidate",
+              email: testData.candidateEmail || "test@example.com",
+              status: testData.fromStatus || "new"
+            };
+          }
+        } else {
+          executionData.candidate = testData.candidate || {
+            id: testData.candidateId || 1,
+            name: testData.candidateName || "Test Candidate",
+            email: testData.candidateEmail || "test@example.com",
+            status: testData.fromStatus || "new"
+          };
+        }
+        if (!executionData.candidate.email) {
+          executionData.candidate.email = testData.candidateEmail || "test@example.com";
+        }
+        executionData.job = testData.job || (testData.jobId ? await storage.getJob(testData.jobId, accountId) : null);
+        executionData.fromStatus = testData.fromStatus || "new";
+        executionData.toStatus = testData.toStatus || "interview_scheduled";
+      } else if (workflow.triggerType === "interview_scheduled") {
+        executionData.interview = testData.interview || {
+          id: testData.interviewId || 1,
+          scheduledDate: testData.scheduledDate || /* @__PURE__ */ new Date(),
+          candidateId: testData.candidateId || 1
+        };
+        executionData.candidate = testData.candidate || (testData.candidateId ? await storage.getCandidate(testData.candidateId, accountId) : {
+          id: testData.candidateId || 1,
+          name: testData.candidateName || "Test Candidate",
+          email: testData.candidateEmail || "test@example.com"
+        });
+        executionData.job = testData.job || (testData.jobId ? await storage.getJob(testData.jobId, accountId) : null);
+      } else if (workflow.triggerType === "interview_completed") {
+        executionData.interview = testData.interview || {
+          id: testData.interviewId || 1,
+          scheduledDate: testData.scheduledDate || /* @__PURE__ */ new Date(),
+          conductedDate: testData.conductedDate || /* @__PURE__ */ new Date(),
+          candidateId: testData.candidateId || 1,
+          status: "completed"
+        };
+        executionData.candidate = testData.candidate || (testData.candidateId ? await storage.getCandidate(testData.candidateId, accountId) : {
+          id: testData.candidateId || 1,
+          name: testData.candidateName || "Test Candidate",
+          email: testData.candidateEmail || "test@example.com"
+        });
+        executionData.job = testData.job || (testData.jobId ? await storage.getJob(testData.jobId, accountId) : null);
+      } else if (workflow.triggerType === "manual") {
+        let candidate = testData.candidate;
+        if (!candidate) {
+          if (testData.candidateId) {
+            candidate = await storage.getCandidate(testData.candidateId, accountId);
+          }
+          if (!candidate && (testData.candidateName || testData.candidateEmail)) {
+            candidate = {
+              id: testData.candidateId || 1,
+              name: testData.candidateName || "Test Candidate",
+              email: testData.candidateEmail || "test@example.com"
+            };
+          }
+        } else if (!candidate.email && testData.candidateEmail) {
+          candidate.email = testData.candidateEmail;
+        }
+        executionData = {
+          ...executionData,
+          ...testData,
+          candidate,
+          job: testData.job || (testData.jobId ? await storage.getJob(testData.jobId, accountId) || null : null),
+          interview: testData.interview || (testData.interviewId ? await storage.getInterview(testData.interviewId, accountId) || null : null)
+        };
+      }
+      const execution = await executeWorkflow(workflow, accountId, executionData);
+      const steps = await storage.getWorkflowExecutionSteps(execution.id);
+      res.json({
+        execution,
+        steps,
+        success: execution.status === "completed"
+      });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+  app2.get("/api/workflows/:id/last-execution", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await storage.getUserAccountId(req.user.id);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const workflowId = parseInt(req.params.id);
+      if (isNaN(workflowId)) {
+        return res.status(400).json({ message: "Invalid workflow ID" });
+      }
+      const executions = await storage.getWorkflowExecutions(workflowId, accountId, 1);
+      if (executions.length === 0) {
+        return res.status(404).json({ message: "No previous executions found" });
+      }
+      const lastExecution = executions[0];
+      const steps = await storage.getWorkflowExecutionSteps(lastExecution.id);
+      res.json({
+        execution: lastExecution,
+        steps,
+        executionData: lastExecution.executionData
+      });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+}
+
+// server/security/csrf.ts
+import csrf from "csrf";
+import "express-session";
+var tokens = new csrf();
+var csrfSecret = process.env.CSRF_SECRET || process.env.SESSION_SECRET || "csrf-secret-change-in-production";
+function generateCsrfToken(req) {
+  const secret = req.session?.csrfSecret || csrfSecret;
+  return tokens.create(secret);
+}
+function verifyCsrfToken(req, token) {
+  const secret = req.session?.csrfSecret || csrfSecret;
+  return tokens.verify(secret, token);
+}
+function csrfProtection(req, res, next) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    return next();
+  }
+  const publicEndpoints = [
+    "/api/upload/resume",
+    // Public application form
+    "/api/offers/:token"
+    // Public offer acceptance
+  ];
+  const isPublicEndpoint = publicEndpoints.some((endpoint) => {
+    const pattern = endpoint.replace(/:[^/]+/g, "[^/]+");
+    const regex = new RegExp(`^${pattern}$`);
+    return regex.test(req.path);
+  });
+  if (isPublicEndpoint) {
+    return next();
+  }
+  const token = req.headers["x-csrf-token"] || req.body?._csrf || req.query?._csrf;
+  if (!token) {
+    return res.status(403).json({
+      error: "CSRF token missing",
+      message: "CSRF token is required for this request"
+    });
+  }
+  if (!verifyCsrfToken(req, token)) {
+    return res.status(403).json({
+      error: "Invalid CSRF token",
+      message: "CSRF token validation failed"
+    });
+  }
+  next();
+}
+function csrfTokenMiddleware(req, res, next) {
+  if (!req.session?.csrfSecret) {
+    if (!req.session) {
+      req.session = {};
+    }
+    req.session.csrfSecret = csrfSecret;
+  }
+  const token = generateCsrfToken(req);
+  res.locals.csrfToken = token;
+  res.setHeader("X-CSRF-Token", token);
+  next();
+}
+
 // server/routes.ts
 async function registerRoutes(app2) {
   setupAuth(app2);
+  if (process.env.ENABLE_CSRF === "true") {
+    app2.use("/api", csrfProtection);
+  }
   setupJobRoutes(app2);
   setupCandidateRoutes(app2);
   setupInterviewRoutes(app2);
   setupAnalyticsRoutes(app2);
   setupHiPeopleRoutes(app2);
   setupUserRoutes(app2);
-  setupTestIntegrationRoutes(app2);
-  setupSimpleTestRoutes(app2);
   setupGHLSyncRoutes(app2);
   setupCRMSyncRoutes(app2);
   setupGHLAutomationRoutes(app2);
@@ -6781,6 +11342,13 @@ async function registerRoutes(app2) {
   setupApplicationRoutes(app2);
   setupStorageRoutes(app2);
   setupCalendarWebhookRoutes(app2);
+  setupCalendlyConnectRoutes(app2);
+  setupAIRoutes(app2);
+  setupGmailIntegrationRoutes(app2);
+  setupGoogleCalendarRoutes(app2);
+  setupCommentRoutes(app2);
+  setupNotificationRoutes(app2);
+  setupWorkflowRoutes(app2);
   const httpServer = createServer(app2);
   return httpServer;
 }
@@ -6820,7 +11388,7 @@ function serveStatic(app2) {
 }
 
 // server/index.ts
-import axios7 from "axios";
+import axios9 from "axios";
 
 // server/background-sync.ts
 init_storage();
@@ -6871,17 +11439,11 @@ var BackgroundSyncService = class {
               try {
                 if (integration.platformId === "google-sheets") {
                   const result = await executeGoogleSheetsSync(user.id, void 0, true);
-                  if (result.updated > 0) {
-                    console.log(`[Background Sync] ${integration.platformName}: Updated ${result.updated} candidate(s)`);
-                  }
                   if (result.errors.length > 0) {
                     console.error(`[Background Sync] ${integration.platformName} error:`, result.errors[0]);
                   }
                 } else if (integration.platformId === "airtable") {
                   const result = await executeAirtableSync(user.id, void 0, true);
-                  if (result.updated > 0) {
-                    console.log(`[Background Sync] ${integration.platformName}: Updated ${result.updated} candidate(s)`);
-                  }
                   if (result.errors.length > 0) {
                     console.error(`[Background Sync] ${integration.platformName} error:`, result.errors[0]);
                   }
@@ -6909,14 +11471,42 @@ var BackgroundSyncService = class {
 var backgroundSyncService = new BackgroundSyncService();
 
 // server/index.ts
+import helmet from "helmet";
 dns2.setDefaultResultOrder("ipv4first");
-if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+if (process.env.NODE_ENV !== "production" && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+  console.warn("\u26A0\uFE0F  WARNING: TLS certificate validation disabled in development mode only");
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+} else if (process.env.NODE_ENV === "production") {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "1";
+  console.log("\u2705 TLS certificate validation enabled for production");
 }
 var app = express2();
 app.set("trust proxy", 1);
-app.use(express2.json());
-app.use(express2.urlencoded({ extended: false }));
+app.use(helmet({
+  contentSecurityPolicy: process.env.NODE_ENV === "production" ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      // Allow inline styles for UI components
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https:"]
+    }
+  } : false,
+  // Disable strict CSP in development
+  hsts: {
+    maxAge: 31536e3,
+    // 1 year
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+app.use("/api", apiRateLimiter);
+app.use(express2.json({ limit: "1mb" }));
+app.use(express2.urlencoded({ extended: false, limit: "1mb" }));
+if (process.env.ENABLE_CSRF === "true") {
+  app.use(csrfTokenMiddleware);
+}
 app.use((req, res, next) => {
   const start = Date.now();
   const path2 = req.path;
@@ -6929,14 +11519,21 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path2.startsWith("/api")) {
+      const sanitizedResponse = capturedJsonResponse ? sanitizeForLogging(capturedJsonResponse) : void 0;
       let logLine = `${req.method} ${path2} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      if (sanitizedResponse) {
+        const responseStr = JSON.stringify(sanitizedResponse);
+        if (responseStr.length > 200) {
+          logLine += ` :: ${responseStr.slice(0, 199)}\u2026`;
+        } else {
+          logLine += ` :: ${responseStr}`;
+        }
       }
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "\u2026";
+      if (res.statusCode >= 400) {
+        SecureLogger.error(`API ${req.method} ${path2}`, { status: res.statusCode, duration });
+      } else {
+        SecureLogger.debug(`API ${req.method} ${path2}`, { status: res.statusCode, duration });
       }
-      log(logLine);
     }
   });
   next();
@@ -6947,12 +11544,12 @@ app.post("/send-message", async (req, res) => {
     return res.status(500).json({ success: false, error: "Slack webhook not configured" });
   }
   try {
-    await axios7.post(process.env.SLACK_WEBHOOK, {
+    await axios9.post(process.env.SLACK_WEBHOOK, {
       text: message
     });
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error("Error sending message to Slack:", error);
+    SecureLogger.error("Error sending message to Slack", { error: error instanceof Error ? error.message : String(error) });
     res.status(500).json({ success: false, error: "Failed to send message to Slack" });
   }
 });
@@ -6962,7 +11559,13 @@ var initApp = async () => {
   const server = await registerRoutes(app);
   app.use((err, _req, res, _next) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    const message = process.env.NODE_ENV === "production" ? status >= 500 ? "Internal Server Error" : err.message || "An error occurred" : err.message || "Internal Server Error";
+    SecureLogger.error("Unhandled error", {
+      status,
+      path: _req.path,
+      method: _req.method,
+      error: err.message
+    });
     res.status(status).json({ message });
   });
   if (process.env.VERCEL !== "1") {
