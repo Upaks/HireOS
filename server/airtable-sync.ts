@@ -59,8 +59,9 @@ export async function syncAirtableContacts(
     const airtableContacts = await fetchAirtableContacts(300, userId);
     result.totalCRMContacts = airtableContacts.length;
 
-    // Fetch all candidates
-    const candidates = await storage.getCandidates({});
+    // Fetch all candidates - get accountId from userId first
+    const accountId = userId ? await storage.getUserAccountId(userId) : null;
+    const candidates = accountId ? await storage.getCandidates(accountId, {}) : [];
     result.totalCandidates = candidates.length;
 
     // Get field mappings
@@ -169,7 +170,7 @@ export async function syncAirtableContacts(
           // Actually create the candidate from Airtable
           try {
             // Check for duplicate by email first
-            const existingCandidates = await storage.getCandidates({});
+            const existingCandidates = accountId ? await storage.getCandidates(accountId, {}) : [];
             const duplicateCandidate = existingCandidates.find(
               c => c.email && c.email.toLowerCase() === contactEmail.toLowerCase()
             );
@@ -201,11 +202,24 @@ export async function syncAirtableContacts(
               : [];
 
             // Get first active job to assign (if available)
-            const jobs = await storage.getJobs('active');
+            const jobs = accountId ? await storage.getJobs(accountId, 'active') : [];
             const defaultJobId = jobs.length > 0 ? jobs[0].id : null;
 
             // Create new candidate from Airtable data
+            if (!accountId) {
+              result.skipped++;
+              result.details.push({
+                contactId: airtableContact.id,
+                crmName: contactName || contactEmail,
+                candidateName: 'N/A',
+                action: 'skipped',
+                reason: 'Account ID not found - cannot create candidate',
+              });
+              continue;
+            }
+
             const newCandidate = await storage.createCandidate({
+              accountId,
               name: contactName || contactEmail,
               email: contactEmail,
               phone: airtablePhone || null,
@@ -345,7 +359,10 @@ export async function syncAirtableContacts(
         // Only update if there are changes
         if (!dryRun && Object.keys(updateData).length > 0) {
           try {
-            await storage.updateCandidate(matchingCandidate.id, updateData);
+            if (!accountId) {
+              throw new Error('Account ID not found');
+            }
+            await storage.updateCandidate(matchingCandidate.id, accountId, updateData);
           } catch (updateError: any) {
             result.errors.push(`Failed to update candidate ${matchingCandidate.name}: ${updateError.message}`);
             result.details.push({
@@ -444,7 +461,9 @@ export async function createAirtableCandidatesWithJobs(
     const mappings = credentials?.fieldMappings;
 
     // Get all existing candidates to check for duplicates
-    const existingCandidates = await storage.getCandidates({});
+    // Get accountId from userId first
+    const accountId = userId ? await storage.getUserAccountId(userId) : null;
+    const existingCandidates = accountId ? await storage.getCandidates(accountId, {}) : [];
 
     for (const assignment of assignments) {
       const airtableContact = contactMap.get(assignment.contactId);
@@ -507,7 +526,20 @@ export async function createAirtableCandidatesWithJobs(
           : [];
 
         // Create candidate with assigned job
+        if (!accountId) {
+          result.skipped++;
+          result.details.push({
+            contactId: assignment.contactId,
+            crmName: contactName || contactEmail,
+            candidateName: 'N/A',
+            action: 'skipped',
+            reason: 'Account ID not found - cannot create candidate',
+          });
+          continue;
+        }
+
         const newCandidate = await storage.createCandidate({
+          accountId,
           name: contactName || contactEmail,
           email: contactEmail,
           phone: airtablePhone || null,
