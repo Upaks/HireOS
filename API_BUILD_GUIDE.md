@@ -66,6 +66,24 @@ This will regenerate `api/index.js` from your TypeScript source.
 ## File Status
 
 - ✅ **Edit these**: `server/api/*.ts` files
-- ❌ **Don't edit**: `api/index.js` (auto-generated)
-- ✅ **Tracked in git**: TypeScript source files
-- ❌ **Ignored by git**: `api/index.js` (in `.gitignore`)
+- ❌ **Don't edit**: `api/index.js` (auto-generated, but kept in git for Vercel)
+- ✅ **Tracked in git**: Both TypeScript source files AND `api/index.js`
+- ⚠️ **Important**: Always run `npm run build:api` after editing TypeScript files to keep them in sync
+
+## Workflow Summary
+
+**After editing any TypeScript API file:**
+
+1. Make your changes in `server/api/*.ts`
+2. Rebuild the API file:
+   ```bash
+   npm run build:api
+   ```
+3. Commit both files:
+   ```bash
+   git add server/api/ api/index.js
+   git commit -m "Your changes"
+   git push
+   ```
+
+This ensures `api/index.js` stays in sync with your TypeScript source.
