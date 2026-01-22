@@ -6130,16 +6130,27 @@ function setupCRMIntegrationRoutes(app2) {
       if (!req.isAuthenticated() || !req.user) {
         return res.status(401).json({ message: "Authentication required" });
       }
-      let redirectUri = process.env.GOOGLE_REDIRECT_URI;
-      if (!redirectUri) {
-        const protocol = req.protocol || (req.secure ? "https" : "http");
-        const host = req.get("host") || "localhost:5000";
-        redirectUri = `${protocol}://${host}/api/crm-integrations/google-sheets/callback`;
-      } else {
-        if (!redirectUri.includes("/api/crm-integrations")) {
-          redirectUri = redirectUri.replace(/\/crm-integrations/, "/api/crm-integrations");
+      // Determine redirect URI - use request host to match current ngrok tunnel
+      const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
+      const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5000';
+      let redirectUri = `${protocol}://${host}/api/crm-integrations/google-sheets/callback`;
+      
+      // If env variable is set and matches current host, extract base URL and use correct path
+      const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
+      if (envRedirectUri) {
+        try {
+          const envUrl = new URL(envRedirectUri);
+          const currentUrl = new URL(redirectUri);
+          if (envUrl.hostname === currentUrl.hostname || 
+              (!host.includes('ngrok') && !host.includes('localhost'))) {
+            // Extract base URL (protocol + hostname) from env variable and append correct path
+            redirectUri = `${envUrl.protocol}//${envUrl.host}/api/crm-integrations/google-sheets/callback`;
+          }
+        } catch (e) {
+          // Invalid env URL, use dynamically detected one
         }
       }
+      
       redirectUri = redirectUri.replace(/\/$/, "");
       const oauth2Client = new google2.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
@@ -6167,25 +6178,36 @@ function setupCRMIntegrationRoutes(app2) {
     try {
       const { code, state } = req.query;
       if (!code) {
-        return res.redirect(`/settings?error=oauth_cancelled`);
+        return res.redirect(`/integrations?error=oauth_cancelled`);
       }
       let userId;
       try {
         const stateData = JSON.parse(state);
         userId = stateData.userId;
       } catch {
-        return res.redirect(`/settings?error=invalid_state`);
+        return res.redirect(`/integrations?error=invalid_state`);
       }
-      let redirectUri = process.env.GOOGLE_REDIRECT_URI;
-      if (!redirectUri) {
-        const protocol = req.protocol || (req.secure ? "https" : "http");
-        const host = req.get("host") || "localhost:5000";
-        redirectUri = `${protocol}://${host}/api/crm-integrations/google-sheets/callback`;
-      } else {
-        if (!redirectUri.includes("/api/crm-integrations")) {
-          redirectUri = redirectUri.replace(/\/crm-integrations/, "/api/crm-integrations");
+      // Use the same redirect URI logic as the auth endpoint
+      const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
+      const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5000';
+      let redirectUri = `${protocol}://${host}/api/crm-integrations/google-sheets/callback`;
+      
+      // If env variable is set and matches current host, extract base URL and use correct path
+      const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
+      if (envRedirectUri) {
+        try {
+          const envUrl = new URL(envRedirectUri);
+          const currentUrl = new URL(redirectUri);
+          if (envUrl.hostname === currentUrl.hostname || 
+              (!host.includes('ngrok') && !host.includes('localhost'))) {
+            // Extract base URL (protocol + hostname) from env variable and append correct path
+            redirectUri = `${envUrl.protocol}//${envUrl.host}/api/crm-integrations/google-sheets/callback`;
+          }
+        } catch (e) {
+          // Invalid env URL, use dynamically detected one
         }
       }
+      
       redirectUri = redirectUri.replace(/\/$/, "");
       const oauth2Client = new google2.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
@@ -6194,7 +6216,7 @@ function setupCRMIntegrationRoutes(app2) {
       );
       const { tokens } = await oauth2Client.getToken(code);
       if (!tokens.access_token) {
-        return res.redirect(`/settings?error=no_access_token`);
+        return res.redirect(`/integrations?error=no_access_token`);
       }
       const existing = await storage.getPlatformIntegration("google-sheets", userId);
       const credentials = {
@@ -6222,10 +6244,10 @@ function setupCRMIntegrationRoutes(app2) {
           isEnabled: true
         });
       }
-      res.redirect(`/settings?google_sheets_connected=true`);
+      res.redirect(`/integrations?google_sheets_connected=true`);
     } catch (error) {
       console.error("Google OAuth callback error:", error);
-      res.redirect(`/settings?error=${encodeURIComponent(error.message)}`);
+      res.redirect(`/integrations?error=${encodeURIComponent(error.message)}`);
     }
   });
   app2.get("/api/crm-integrations/google-sheets/schema", async (req, res) => {
