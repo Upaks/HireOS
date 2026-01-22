@@ -123,7 +123,7 @@ export function setupGoogleCalendarRoutes(app: Express) {
         return res.redirect(`/integrations?error=no_access_token`);
       }
 
-      // Check if integration already exists
+      // Check if integration already exists for this user
       const existing = await storage.getPlatformIntegration('google-calendar', userId);
       
       const credentials = {
@@ -132,10 +132,9 @@ export function setupGoogleCalendarRoutes(app: Express) {
       };
 
       if (existing) {
-        // Update existing - delete old and create new to ensure userId is correct
+        // Update existing integration for this user
         const existingId = existing.id;
         if (existingId) {
-          // Delete by ID to ensure we delete the right record
           await db.delete(platformIntegrations)
             .where(eq(platformIntegrations.id, existingId));
         }
@@ -150,7 +149,7 @@ export function setupGoogleCalendarRoutes(app: Express) {
           isEnabled: true,
         });
       } else {
-        // Create new
+        // Create new integration for this user
         await storage.createPlatformIntegration({
           userId,
           platformId: 'google-calendar',
