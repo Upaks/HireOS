@@ -20,7 +20,7 @@ export function setupGoogleCalendarRoutes(app: Express) {
       const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5000';
       let redirectUri = `${protocol}://${host}/api/google-calendar/callback`;
       
-      // If env variable is set and matches current host, use it (for production)
+      // If env variable is set and matches current host, extract base URL and use correct path
       const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
       if (envRedirectUri) {
         try {
@@ -30,11 +30,8 @@ export function setupGoogleCalendarRoutes(app: Express) {
           // For ngrok, always use the current request host
           if (envUrl.hostname === currentUrl.hostname || 
               (!host.includes('ngrok') && !host.includes('localhost'))) {
-            redirectUri = envRedirectUri.replace(/\/crm-integrations/, '/api/google-calendar');
-            // Ensure it has /api in the path
-            if (!redirectUri.includes('/api/google-calendar')) {
-              redirectUri = redirectUri.replace(/\/google-calendar/, '/api/google-calendar');
-            }
+            // Extract base URL (protocol + hostname) from env variable and append correct path
+            redirectUri = `${envUrl.protocol}//${envUrl.host}/api/google-calendar/callback`;
           }
         } catch (e) {
           // Invalid env URL, use dynamically detected one
@@ -97,10 +94,8 @@ export function setupGoogleCalendarRoutes(app: Express) {
           const currentUrl = new URL(redirectUri);
           if (envUrl.hostname === currentUrl.hostname || 
               (!host.includes('ngrok') && !host.includes('localhost'))) {
-            redirectUri = envRedirectUri.replace(/\/crm-integrations/, '/api/google-calendar');
-            if (!redirectUri.includes('/api/google-calendar')) {
-              redirectUri = redirectUri.replace(/\/google-calendar/, '/api/google-calendar');
-            }
+            // Extract base URL (protocol + hostname) from env variable and append correct path
+            redirectUri = `${envUrl.protocol}//${envUrl.host}/api/google-calendar/callback`;
           }
         } catch (e) {
           // Invalid env URL, use dynamically detected one

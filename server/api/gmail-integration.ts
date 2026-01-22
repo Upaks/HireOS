@@ -19,7 +19,7 @@ export function setupGmailIntegrationRoutes(app: Express) {
       const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5000';
       let redirectUri = `${protocol}://${host}/api/gmail/callback`;
       
-      // If env variable is set and matches current host, use it (for production)
+      // If env variable is set and matches current host, extract base URL and use correct path
       const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
       if (envRedirectUri) {
         try {
@@ -29,11 +29,8 @@ export function setupGmailIntegrationRoutes(app: Express) {
           // For ngrok, always use the current request host
           if (envUrl.hostname === currentUrl.hostname || 
               (!host.includes('ngrok') && !host.includes('localhost'))) {
-            redirectUri = envRedirectUri.replace(/\/crm-integrations/, '/api/gmail');
-            // Ensure it has /api in the path
-            if (!redirectUri.includes('/api/gmail')) {
-              redirectUri = redirectUri.replace(/\/gmail/, '/api/gmail');
-            }
+            // Extract base URL (protocol + hostname) from env variable and append correct path
+            redirectUri = `${envUrl.protocol}//${envUrl.host}/api/gmail/callback`;
           }
         } catch (e) {
           // Invalid env URL, use dynamically detected one
@@ -95,10 +92,8 @@ export function setupGmailIntegrationRoutes(app: Express) {
           const currentUrl = new URL(redirectUri);
           if (envUrl.hostname === currentUrl.hostname || 
               (!host.includes('ngrok') && !host.includes('localhost'))) {
-            redirectUri = envRedirectUri.replace(/\/crm-integrations/, '/api/gmail');
-            if (!redirectUri.includes('/api/gmail')) {
-              redirectUri = redirectUri.replace(/\/gmail/, '/api/gmail');
-            }
+            // Extract base URL (protocol + hostname) from env variable and append correct path
+            redirectUri = `${envUrl.protocol}//${envUrl.host}/api/gmail/callback`;
           }
         } catch (e) {
           // Invalid env URL, use dynamically detected one
