@@ -7,6 +7,9 @@ dist
 build
 *.log
 
+# Auto-generated API file (built from TypeScript source)
+api/index.js
+
 # Environment variables (CRITICAL - contains secrets!)
 .env
 .env.local
