@@ -48,6 +48,8 @@ export function setupGoogleCalendarRoutes(app: Express) {
       );
 
       // Generate the authorization URL
+      // IMPORTANT: Log the redirect URI being used so we can verify it matches Google Cloud Console
+      console.log('[Google Calendar Auth] Using redirect URI:', redirectUri);
       const authUrl = oauth2Client.generateAuthUrl({
         access_type: 'offline', // Get refresh token
         scope: [
@@ -66,6 +68,7 @@ export function setupGoogleCalendarRoutes(app: Express) {
 
   // Google Calendar OAuth callback handler
   app.get("/api/google-calendar/callback", async (req, res) => {
+    let redirectUri = '';
     try {
       const { code, state } = req.query;
 
@@ -85,7 +88,7 @@ export function setupGoogleCalendarRoutes(app: Express) {
       // Use the same redirect URI logic as the auth endpoint
       const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
       const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5000';
-      let redirectUri = `${protocol}://${host}/api/google-calendar/callback`;
+      redirectUri = `${protocol}://${host}/api/google-calendar/callback`;
       
       const envRedirectUri = process.env.GOOGLE_REDIRECT_URI;
       if (envRedirectUri) {
@@ -111,9 +114,12 @@ export function setupGoogleCalendarRoutes(app: Express) {
       );
 
       // Exchange code for tokens
+      // IMPORTANT: The redirectUri used here MUST match exactly what was used in the auth request
+      console.log('[Google Calendar Callback] Using redirect URI:', redirectUri);
       const { tokens } = await oauth2Client.getToken(code as string);
       
       if (!tokens.access_token) {
+        console.error('[Google Calendar Callback] No access token received');
         return res.redirect(`/integrations?error=no_access_token`);
       }
 
@@ -160,7 +166,18 @@ export function setupGoogleCalendarRoutes(app: Express) {
       // Redirect back to integrations with success
       res.redirect(`/integrations?google_calendar_connected=true`);
     } catch (error: any) {
-      console.error('Google Calendar OAuth callback error:', error);
+      console.error('[Google Calendar Callback] Error details:', {
+        message: error.message,
+        redirectUri: redirectUri,
+        code: req.query.code ? 'present' : 'missing',
+        state: req.query.state ? 'present' : 'missing',
+      });
+      // Check if it's a redirect_uri_mismatch error
+      if (error.message && error.message.includes('redirect_uri_mismatch')) {
+        console.error('[Google Calendar Callback] Redirect URI mismatch detected!');
+        console.error('[Google Calendar Callback] Expected redirect URI:', redirectUri);
+        console.error('[Google Calendar Callback] Make sure this exact URI is registered in Google Cloud Console');
+      }
       res.redirect(`/integrations?error=${encodeURIComponent(error.message)}`);
     }
   });
