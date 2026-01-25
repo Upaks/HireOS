@@ -777,7 +777,7 @@ function BuiltForScaleSection() {
               {/* Title - at TOP */}
               <h3 className="text-base md:text-lg font-bold text-white mb-2">
                 {feature.title}
-              </h3>
+                      </h3>
 
               {/* Description - below title */}
               <p className="text-xs md:text-sm text-zinc-400 leading-relaxed mb-8">
