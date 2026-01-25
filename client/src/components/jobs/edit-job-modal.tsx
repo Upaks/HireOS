@@ -41,6 +41,7 @@ export default function EditJobModal({
   const [teamContext, setTeamContext] = useState("");
   const [description, setDescription] = useState("");
   const [expressReview, setExpressReview] = useState(false);
+  const [status, setStatus] = useState("draft");
 
   // Initialize form with job data when modal opens
   useEffect(() => {
@@ -53,6 +54,7 @@ export default function EditJobModal({
       setTeamContext(job.teamContext || "");
       setDescription(job.description || "");
       setExpressReview(job.expressReview || false);
+      setStatus(job.status || "draft");
     }
   }, [open, job]);
 
@@ -103,6 +105,7 @@ export default function EditJobModal({
       teamContext: teamContext || null,
       description: description || null,
       expressReview: expressReview,
+      status: status,
     });
   };
 
@@ -125,6 +128,24 @@ export default function EditJobModal({
               value={jobTitle}
               onChange={(e) => setJobTitle(e.target.value)}
             />
+          </div>
+
+          {/* Status Field - allows changing from Draft to Active */}
+          <div>
+            <Label htmlFor="edit-status">Status</Label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger id="edit-status">
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="closed">Closed</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Set to "Active" to make this job visible and accepting applications
+            </p>
           </div>
           
           <div>

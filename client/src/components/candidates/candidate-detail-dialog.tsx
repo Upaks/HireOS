@@ -304,6 +304,7 @@ export default function CandidateDetailDialog({
 
       // Invalidate all candidate-related queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/candidates/${candidate?.id}`] });
       if (candidate?.jobId) {
         queryClient.invalidateQueries({ queryKey: ["/api/candidates", { jobId: candidate.jobId }] });
       }
@@ -439,7 +440,9 @@ export default function CandidateDetailDialog({
             description: selected.successDescription(candidate.name),
           });
 
+          // Invalidate ALL candidate-related queries including the specific candidate query
           queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
+          queryClient.invalidateQueries({ queryKey: [`/api/candidates/${candidate.id}`] });
           if (candidate.jobId) {
             queryClient.invalidateQueries({ queryKey: ["/api/candidates", { jobId: candidate.jobId }] });
           }
@@ -517,7 +520,9 @@ export default function CandidateDetailDialog({
         description: selected.successDescription(candidate.name),
       });
 
+      // Invalidate ALL candidate-related queries including the specific candidate query
       queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/candidates/${candidate.id}`] });
       if (candidate.jobId) {
         queryClient.invalidateQueries({ queryKey: ["/api/candidates", { jobId: candidate.jobId }] });
       }

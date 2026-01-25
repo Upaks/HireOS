@@ -28,15 +28,15 @@ const jobViewSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(1),
   type: z.string().min(1),
-  department: z.string().optional(),
-  urgency: z.string().optional(),
-  skills: z.string().optional(),
-  teamContext: z.string().optional(),
+  department: z.string().nullish(), // Can be null, undefined, or string
+  urgency: z.string().nullish(),
+  skills: z.string().nullish(),
+  teamContext: z.string().nullish(),
   status: z.string().min(1),
-  hiPeopleLink: z.string().optional(),
-  expressReview: z.boolean().optional(),
-  submitterId: z.number().optional(),
-  candidateCount: z.number().optional(),
+  hiPeopleLink: z.string().nullish(),
+  expressReview: z.boolean().nullish(),
+  submitterId: z.number().nullish(),
+  candidateCount: z.number().nullish(),
 });
 
 interface JobViewModalProps {
@@ -93,24 +93,32 @@ export default function JobViewModal({ open, onOpenChange, job, onClose }: JobVi
     }
   }, [submitterData, job.submitterId]);
 
-  // Fetch candidates for this job
+  // Fetch candidates for this job (filtered by jobId)
   const { data: candidatesData } = useQuery<any[]>({
     queryKey: ['/api/candidates', { jobId: job.id }],
+    queryFn: async () => {
+      const res = await fetch(`/api/candidates?jobId=${job.id}`, {
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error('Failed to fetch candidates');
+      return res.json();
+    },
     enabled: open // Only fetch when modal is open
   });
 
-  // Fetch platforms for this job
-  const { data: platformsData } = useQuery<any[]>({
-    queryKey: ['/api/jobs', job.id, 'platforms'],
-    queryFn: async () => {
-      const res = await fetch(`/api/jobs/${job.id}/platforms`, {
-        credentials: 'include'
-      });
-      if (!res.ok) throw new Error('Failed to fetch platforms');
-      return res.json();
-    },
-    enabled: open && job.status === 'active' // Only fetch when modal is open and job is active
-  });
+  // Fetch platforms for this job - DISABLED: Job posting API not currently available
+  // const { data: platformsData } = useQuery<any[]>({
+  //   queryKey: ['/api/jobs', job.id, 'platforms'],
+  //   queryFn: async () => {
+  //     const res = await fetch(`/api/jobs/${job.id}/platforms`, {
+  //       credentials: 'include'
+  //     });
+  //     if (!res.ok) throw new Error('Failed to fetch platforms');
+  //     return res.json();
+  //   },
+  //   enabled: open && job.status === 'active'
+  // });
+  const platformsData = undefined as any[] | undefined; // Placeholder - remove when API is available
 
   // Log candidates data fetching - in an effect to avoid re-renders
   React.useEffect(() => {
