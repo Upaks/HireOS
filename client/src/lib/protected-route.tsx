@@ -66,7 +66,7 @@ export function ProtectedRoute({
             This feature requires one of the following roles: {roles.join(', ')}
           </p>
           <a 
-            href="/"
+            href="/dashboard"
             className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
           >
             Return to Dashboard

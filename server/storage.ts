@@ -709,6 +709,10 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     
+    if (!newCandidate) {
+      throw new Error('Failed to create candidate - database insert returned no result');
+    }
+    
     // Get the job data to enrich the candidate
     const job = newCandidate.jobId ? await this.getJob(newCandidate.jobId, candidate.accountId) : null;
     return { ...newCandidate, job: job || null };

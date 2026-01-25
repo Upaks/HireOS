@@ -51,7 +51,7 @@ export default function Sidebar({ mobileMenuOpen, onCloseMobileMenu }: SidebarPr
     {
       title: "Dashboard",
       icon: <LayoutDashboard className="h-5 w-5 mr-3" />,
-      href: "/",
+      href: "/dashboard",
       roles: [UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]
     },
     {

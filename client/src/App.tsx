@@ -8,6 +8,7 @@ import { ProtectedRoute } from "@/lib/protected-route";
 
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
+import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import Jobs from "@/pages/jobs";
 import CandidateScreener from "@/pages/candidate-screener";
@@ -32,8 +33,11 @@ import { UserRoles } from "@shared/schema";
 function Router() {
   return (
     <Switch>
+      {/* Public landing – logged-in users redirect to /dashboard from within LandingPage */}
+      <Route path="/" component={LandingPage} />
+      
       {/* Dashboard is accessible to all authenticated users */}
-      <ProtectedRoute path="/" component={Dashboard} />
+      <ProtectedRoute path="/dashboard" component={Dashboard} />
       
       {/* Job Postings - accessible to all authenticated users */}
       <ProtectedRoute path="/jobs" component={Jobs} />

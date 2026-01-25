@@ -79,8 +79,9 @@ export async function syncGoogleSheetsContacts(
     // Get headers from first contact (all contacts have same headers)
     const headers = (sheetsContacts[0] as any).headers || [];
 
-    // Fetch all candidates
-    const candidates = await storage.getCandidates({});
+    // Fetch all candidates - get accountId from userId first
+    const accountId = await storage.getUserAccountId(userId);
+    const candidates = accountId ? await storage.getCandidates(accountId, {}) : [];
     result.totalCandidates = candidates.length;
 
     // Get field mappings
@@ -185,7 +186,7 @@ export async function syncGoogleSheetsContacts(
           // Actually create the candidate from Google Sheets
           try {
             // Check for duplicate by email first
-            const existingCandidates = await storage.getCandidates({});
+            const existingCandidates = accountId ? await storage.getCandidates(accountId, {}) : [];
             const duplicateCandidate = existingCandidates.find(
               c => c.email && c.email.toLowerCase() === contactEmail.toLowerCase()
             );
@@ -217,11 +218,24 @@ export async function syncGoogleSheetsContacts(
               : [];
 
             // Get first active job to assign (if available)
-            const jobs = await storage.getJobs('active');
-            const defaultJobId = jobs.length > 0 ? jobs[0].id : null;
+            const jobs = accountId ? await storage.getJobs(accountId, 'active') : [];
+            const defaultJobId = jobs.length > 0 && jobs[0] ? jobs[0].id : null;
 
             // Create new candidate from Google Sheets data
+            if (!accountId) {
+              result.skipped++;
+              result.details.push({
+                contactId: sheetsContact.id,
+                crmName: contactName || contactEmail,
+                candidateName: 'N/A',
+                action: 'skipped',
+                reason: 'Account ID not found - cannot create candidate',
+              });
+              continue;
+            }
+
             const newCandidate = await storage.createCandidate({
+              accountId,
               name: contactName || contactEmail,
               email: contactEmail,
               phone: sheetsPhone || null,
@@ -300,6 +314,10 @@ export async function syncGoogleSheetsContacts(
 
         // Actually update the candidate
         try {
+          if (!accountId) {
+            throw new Error('Account ID not found');
+          }
+
           const skillsArray = sheetsSkillsValue 
             ? (typeof sheetsSkillsValue === 'string' 
                 ? sheetsSkillsValue.split(',').map(s => s.trim()).filter(s => s)
@@ -308,7 +326,7 @@ export async function syncGoogleSheetsContacts(
 
           // IMPORTANT: Never update email from CRM sync to prevent overwriting user changes
           // Only update other fields - email should only be changed manually in HireOS
-          await storage.updateCandidate(matchingCandidate.id, {
+          await storage.updateCandidate(matchingCandidate.id, accountId, {
             name: sheetsNameValue || matchingCandidate.name,
             // email: NOT UPDATED - preserve email changes made in HireOS
             phone: sheetsPhoneValue || matchingCandidate.phone,
@@ -408,7 +426,9 @@ export async function createGoogleSheetsCandidatesWithJobs(
     const mappings = credentials?.fieldMappings;
 
     // Get all existing candidates to check for duplicates
-    const existingCandidates = await storage.getCandidates({});
+    // Get accountId from userId first
+    const accountId = await storage.getUserAccountId(userId);
+    const existingCandidates = accountId ? await storage.getCandidates(accountId, {}) : [];
 
     for (const assignment of assignments) {
       const sheetsContact = contactMap.get(assignment.contactId);
@@ -471,7 +491,20 @@ export async function createGoogleSheetsCandidatesWithJobs(
           : [];
 
         // Create candidate with assigned job
+        if (!accountId) {
+          result.skipped++;
+          result.details.push({
+            contactId: assignment.contactId,
+            crmName: contactName || contactEmail,
+            candidateName: 'N/A',
+            action: 'skipped',
+            reason: 'Account ID not found - cannot create candidate',
+          });
+          continue;
+        }
+
         const newCandidate = await storage.createCandidate({
+          accountId,
           name: contactName || contactEmail,
           email: contactEmail,
           phone: sheetsPhone || null,
