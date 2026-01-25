@@ -23,6 +23,7 @@ import { setupGoogleCalendarRoutes } from "./api/google-calendar";
 import { setupCommentRoutes } from "./api/comments";
 import { setupNotificationRoutes } from "./api/notifications";
 import { setupWorkflowRoutes } from "./api/workflows";
+import { setupInvitationRoutes } from "./api/invitations";
 import { storage } from "./storage";
 import { csrfProtection } from "./security/csrf";
 
@@ -61,6 +62,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupCommentRoutes(app);
   setupNotificationRoutes(app);
   setupWorkflowRoutes(app);
+  setupInvitationRoutes(app);
 
   // We're using the rebuild-users.ts script to create users now
   // The script creates users for each role with the password "justtesting"

@@ -2,7 +2,7 @@ import { Express } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { insertJobSchema, UserRoles, candidates } from "@shared/schema";
-import { handleApiError, validateRequest } from "./utils";
+import { handleApiError, validateRequest, getActiveAccountId } from "./utils";
 import { scrapeHipeople } from "./hipeople";
 import { generateJobDescription } from "./openai";
 import { db } from "../db";
@@ -20,7 +20,7 @@ export function setupJobRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId(req.user!.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -95,7 +95,7 @@ export function setupJobRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId(req.user!.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -139,7 +139,7 @@ export function setupJobRoutes(app: Express) {
       // For now, we'll require auth for security, but could allow public access if needed
       if (req.isAuthenticated()) {
         // MULTI-TENANT: Get user's accountId
-        const accountId = await storage.getUserAccountId(req.user!.id);
+        const accountId = await getActiveAccountId(req);
         if (!accountId) {
           return res.status(400).json({ message: "User is not associated with any account" });
         }
@@ -167,7 +167,7 @@ export function setupJobRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId(req.user!.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -209,7 +209,7 @@ export function setupJobRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId(req.user!.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -280,7 +280,7 @@ export function setupJobRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId(req.user!.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -324,7 +324,7 @@ export function setupJobRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId(req.user!.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }

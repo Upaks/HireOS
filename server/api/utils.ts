@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { z } from "zod";
+import { storage } from "../storage";
 
 // Middleware to validate request body with Zod schema
 export function validateRequest<T extends z.ZodTypeAny>(schema: T) {
@@ -93,4 +94,51 @@ export function isAuthorized(req: Request): boolean {
   const validApiKey = process.env.HireOS_API_Key;
 
   return apiKey === validApiKey;
+}
+
+// Get the active account ID for the current user
+// Checks session first, then falls back to default account
+export async function getActiveAccountId(req: Request): Promise<number | null> {
+  if (!req.user) {
+    return null;
+  }
+
+  const userId = (req.user as any).id;
+  const sessionAccountId = (req.session as any)?.activeAccountId;
+
+  // If there's an active account in session, verify user is still a member
+  if (sessionAccountId) {
+    const userAccounts = await storage.getUserAccounts(userId);
+    const isMember = userAccounts.find(acc => acc.accountId === sessionAccountId);
+    if (isMember) {
+      return sessionAccountId;
+    }
+    // If no longer a member, clear the session value
+    delete (req.session as any).activeAccountId;
+  }
+
+  // Fall back to the user's default (first) account
+  return await storage.getUserAccountId(userId);
+}
+
+// Get the user's role for the active account
+// This is the key function for multi-tenant role management
+export async function getUserRoleForActiveAccount(req: Request): Promise<string | null> {
+  if (!req.user) {
+    return null;
+  }
+
+  const userId = (req.user as any).id;
+  const accountId = await getActiveAccountId(req);
+  
+  if (!accountId) {
+    // Fallback to global role if no account context
+    return (req.user as any).role;
+  }
+
+  // Get the role from account_members for this specific account
+  const role = await storage.getUserRoleForAccount(userId, accountId);
+  
+  // If user is not a member of this account (shouldn't happen), fallback to global role
+  return role || (req.user as any).role;
 }

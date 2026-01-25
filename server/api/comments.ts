@@ -1,6 +1,6 @@
 import { Express } from "express";
 import { storage } from "../storage";
-import { handleApiError } from "./utils";
+import { handleApiError, getActiveAccountId } from "./utils";
 import { z } from "zod";
 
 // Validation schemas
@@ -30,7 +30,7 @@ export function setupCommentRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId((req.user as any).id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -63,7 +63,7 @@ export function setupCommentRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId((req.user as any).id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -122,7 +122,7 @@ export function setupCommentRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId((req.user as any).id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -145,7 +145,7 @@ export function setupCommentRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId((req.user as any).id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }

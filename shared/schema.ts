@@ -303,14 +303,23 @@ export const emailLogs = pgTable("email_logs", {
 export const inAppNotifications = pgTable("in_app_notifications", {
   id: serial("id").primaryKey(),
   accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
-  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(), // Who triggered/is related to this notification
   type: text("type").notNull(), // "interview_scheduled", "offer_sent", "offer_accepted", "offer_rejected", "job_posted", "new_application", "candidate_status_changed", "interview_evaluated"
   title: text("title").notNull(),
   message: text("message").notNull(),
-  read: boolean("read").default(false).notNull(),
+  read: boolean("read").default(false).notNull(), // Legacy field - kept for backwards compatibility
   link: text("link"), // URL to navigate to when clicked (e.g., "/candidates/123")
   metadata: jsonb("metadata"), // Additional data: { candidateId, jobId, interviewId, etc. }
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Per-user notification read status (for team-wide notifications)
+// Tracks which users have read which notifications
+export const notificationReads = pgTable("notification_reads", {
+  id: serial("id").primaryKey(),
+  notificationId: integer("notification_id").references(() => inAppNotifications.id, { onDelete: "cascade" }).notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  readAt: timestamp("read_at").defaultNow().notNull(),
 });
 
 // Notification Queue
@@ -335,6 +344,20 @@ export const ghlTokens = pgTable("ghl_tokens", {
   companyId: text("company_id"), // optional: match GHL companyId if needed
   updatedAt: timestamp("updated_at").defaultNow(),
   expiresAt: timestamp("expires_at"),
+});
+
+// Invitations Table - For inviting users to join an account
+export const invitations = pgTable("invitations", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  role: text("role").notNull(), // The role the invited user will have
+  token: varchar("token", { length: 255 }).unique().notNull(), // Unique invite token for the link
+  invitedById: integer("invited_by_id").references(() => users.id).notNull(),
+  status: text("status").notNull().default("pending"), // "pending", "accepted", "expired", "cancelled"
+  expiresAt: timestamp("expires_at").notNull(), // When the invitation expires (72 hours default)
+  acceptedAt: timestamp("accepted_at"), // When the invitation was accepted
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Type Exports
@@ -367,6 +390,8 @@ export type EmailLog = typeof emailLogs.$inferSelect;
 export type NotificationQueueItem = typeof notificationQueue.$inferSelect;
 export type InAppNotification = typeof inAppNotifications.$inferSelect;
 export type InsertInAppNotification = typeof inAppNotifications.$inferInsert;
+export type NotificationRead = typeof notificationReads.$inferSelect;
+export type InsertNotificationRead = typeof notificationReads.$inferInsert;
 export type Comment = typeof comments.$inferSelect;
 export type InsertComment = typeof comments.$inferInsert;
 
@@ -435,3 +460,39 @@ export const UserRoles = {
 } as const;
 
 export type UserRole = (typeof UserRoles)[keyof typeof UserRoles];
+
+// Role Hierarchy Levels (lower number = higher power)
+// Level 0 is reserved for Account Owner (checked separately via invitedById = null)
+export const RoleHierarchy: Record<string, number> = {
+  [UserRoles.ADMIN]: 1,
+  [UserRoles.CEO]: 2,
+  [UserRoles.COO]: 3,
+  [UserRoles.DIRECTOR]: 3,
+  [UserRoles.PROJECT_MANAGER]: 4,
+  [UserRoles.HIRING_MANAGER]: 5,
+};
+
+// Helper: Get role level (lower = more power)
+export function getRoleLevel(role: string): number {
+  return RoleHierarchy[role] ?? 99; // Unknown roles get lowest priority
+}
+
+// Helper: Check if actor can manage target based on hierarchy
+// Returns true if actor's role level is LOWER (more powerful) than target's
+export function canManageRole(actorRole: string, targetRole: string): boolean {
+  const actorLevel = getRoleLevel(actorRole);
+  const targetLevel = getRoleLevel(targetRole);
+  return actorLevel < targetLevel;
+}
+
+// Helper: Get roles that a given role can manage
+export function getManageableRoles(role: string): string[] {
+  const level = getRoleLevel(role);
+  return Object.entries(RoleHierarchy)
+    .filter(([_, roleLevel]) => roleLevel > level)
+    .map(([roleName]) => roleName);
+}
+
+// Invitation types
+export type Invitation = typeof invitations.$inferSelect;
+export type InsertInvitation = typeof invitations.$inferInsert;

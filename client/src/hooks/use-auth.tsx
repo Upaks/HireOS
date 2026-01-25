@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 interface LoginData {
   username: string;
   password: string;
+  captchaToken: string;
 }
 
 interface RegisterData {
@@ -19,6 +20,7 @@ interface RegisterData {
   fullName: string;
   email: string;
   role?: string;
+  captchaToken: string;
 }
 
 type AuthContextType = {

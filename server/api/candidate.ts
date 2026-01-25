@@ -2,7 +2,7 @@ import { Express } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { insertCandidateSchema, emailLogs } from "@shared/schema";
-import { handleApiError, validateRequest, isAuthorized } from "./utils";
+import { handleApiError, validateRequest, isAuthorized, getActiveAccountId } from "./utils";
 import { isLikelyInvalidEmail } from "../email-validator";
 import { db } from "../db";
 import {
@@ -75,7 +75,7 @@ export function setupCandidateRoutes(app: Express) {
         // MULTI-TENANT: Get user's accountId (if authenticated)
         let accountId: number | null = null;
         if (req.isAuthenticated() && req.user?.id) {
-          accountId = await storage.getUserAccountId(req.user.id);
+          accountId = await getActiveAccountId(req);
           if (!accountId) {
             return res.status(400).json({ message: "User is not associated with any account" });
           }
@@ -318,7 +318,7 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId(req.user!.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -348,7 +348,7 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId(req.user!.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -387,7 +387,7 @@ export function setupCandidateRoutes(app: Express) {
       // MULTI-TENANT: Get user's accountId (if authenticated)
       let accountId: number | null = null;
       if (req.isAuthenticated() && req.user?.id) {
-        accountId = await storage.getUserAccountId(req.user.id);
+        accountId = await getActiveAccountId(req);
         if (!accountId) {
           return res.status(400).json({ message: "User is not associated with any account" });
         }
@@ -784,7 +784,7 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId(req.user!.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -979,7 +979,7 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId(req.user!.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -1112,7 +1112,7 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId(req.user!.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -1261,7 +1261,7 @@ export function setupCandidateRoutes(app: Express) {
         }
 
         // MULTI-TENANT: Get user's accountId
-        const accountId = await storage.getUserAccountId(req.user!.id);
+        const accountId = await getActiveAccountId(req);
         if (!accountId) {
           return res.status(400).json({ message: "User is not associated with any account" });
         }
@@ -1475,7 +1475,7 @@ export function setupCandidateRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId
-      const accountId = await storage.getUserAccountId(req.user!.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }

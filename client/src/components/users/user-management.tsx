@@ -13,7 +13,7 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2, UserPlus, Pencil, Trash2, Copy, CheckCircle } from "lucide-react";
+import { Loader2, UserPlus, Pencil, Trash2, Copy, CheckCircle, Mail, X, Clock, Link2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { User, UserRoles } from "@shared/schema";
@@ -31,13 +31,36 @@ const userFormSchema = z.object({
 
 type UserFormData = z.infer<typeof userFormSchema>;
 
+// Form schema for inviting a user
+const inviteFormSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  role: z.string().min(1, "Role is required"),
+});
+
+type InviteFormData = z.infer<typeof inviteFormSchema>;
+
+// Invitation type
+interface Invitation {
+  id: number;
+  email: string;
+  role: string;
+  status: string;
+  inviteLink?: string;
+  inviterName?: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 export default function UserManagement() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [showNewUserDialog, setShowNewUserDialog] = useState(false);
   const [showEditUserDialog, setShowEditUserDialog] = useState(false);
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [webhookUrlCopied, setWebhookUrlCopied] = useState(false);
+  const [inviteLinkCopied, setInviteLinkCopied] = useState<number | null>(null);
+  const [newInviteLink, setNewInviteLink] = useState<string | null>(null);
   
   // Only admin, CEO, or COO should access this page
   const canManageUsers = user?.role === 'admin' || user?.role === 'ceo' || user?.role === 'coo';
@@ -45,6 +68,12 @@ export default function UserManagement() {
   // Fetch all users
   const { data: users = [], isLoading: isLoadingUsers } = useQuery<User[]>({
     queryKey: ['/api/users'],
+    enabled: canManageUsers,
+  });
+
+  // Fetch pending invitations
+  const { data: pendingInvitations = [], isLoading: isLoadingInvitations } = useQuery<Invitation[]>({
+    queryKey: ['/api/invitations'],
     enabled: canManageUsers,
   });
   
@@ -75,6 +104,15 @@ export default function UserManagement() {
       calendarProvider: undefined,
     },
   });
+
+  // Form for inviting a user
+  const inviteForm = useForm<InviteFormData>({
+    resolver: zodResolver(inviteFormSchema),
+    defaultValues: {
+      email: "",
+      role: "hiringManager",
+    },
+  });
   
   // Reset form when dialog is opened/closed
   const handleNewUserDialogChange = (open: boolean) => {
@@ -90,6 +128,15 @@ export default function UserManagement() {
       editForm.reset();
     }
     setShowEditUserDialog(open);
+  };
+
+  // Reset invite form when dialog is opened/closed
+  const handleInviteDialogChange = (open: boolean) => {
+    if (!open) {
+      inviteForm.reset();
+      setNewInviteLink(null);
+    }
+    setShowInviteDialog(open);
   };
   
   // Set up edit form when a user is selected for editing
@@ -172,6 +219,50 @@ export default function UserManagement() {
       });
     },
   });
+
+  // Create invitation mutation
+  const createInvitationMutation = useMutation({
+    mutationFn: async (data: InviteFormData) => {
+      const response = await apiRequest("POST", "/api/invitations", data);
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Invitation created",
+        description: "Copy the invite link and share it with the user",
+      });
+      setNewInviteLink(data.inviteLink);
+      queryClient.invalidateQueries({ queryKey: ['/api/invitations'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error creating invitation",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Cancel invitation mutation
+  const cancelInvitationMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/invitations/${id}`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Invitation cancelled",
+        description: "The invitation has been cancelled",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/invitations'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error cancelling invitation",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
   
   // Handle form submission for creating a new user
   const onSubmit = (data: UserFormData) => {
@@ -190,6 +281,41 @@ export default function UserManagement() {
     if (confirm("Are you sure you want to delete this user?")) {
       deleteUserMutation.mutate(id);
     }
+  };
+
+  // Handle invitation form submission
+  const onInviteSubmit = (data: InviteFormData) => {
+    createInvitationMutation.mutate(data);
+  };
+
+  // Handle cancel invitation
+  const handleCancelInvitation = (id: number) => {
+    if (confirm("Are you sure you want to cancel this invitation?")) {
+      cancelInvitationMutation.mutate(id);
+    }
+  };
+
+  // Copy invite link to clipboard
+  const copyInviteLink = (link: string, invitationId?: number) => {
+    navigator.clipboard.writeText(link);
+    if (invitationId) {
+      setInviteLinkCopied(invitationId);
+      setTimeout(() => setInviteLinkCopied(null), 2000);
+    }
+    toast({
+      title: "Link copied",
+      description: "Invite link copied to clipboard",
+    });
+  };
+
+  // Format time ago
+  const formatTimeAgo = (date: string) => {
+    const diff = Date.now() - new Date(date).getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    if (hours < 1) return "Just now";
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
   };
   
   // Format role name for display
@@ -225,10 +351,16 @@ export default function UserManagement() {
             <CardTitle>User Management</CardTitle>
             <CardDescription>Manage user accounts and permissions</CardDescription>
           </div>
-          <Button onClick={() => handleNewUserDialogChange(true)} className="flex items-center gap-1">
-            <UserPlus className="h-4 w-4" />
-            <span>Add User</span>
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => handleInviteDialogChange(true)} variant="outline" className="flex items-center gap-1">
+              <Mail className="h-4 w-4" />
+              <span>Invite User</span>
+            </Button>
+            <Button onClick={() => handleNewUserDialogChange(true)} className="flex items-center gap-1">
+              <UserPlus className="h-4 w-4" />
+              <span>Add User</span>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoadingUsers ? (
@@ -297,6 +429,83 @@ export default function UserManagement() {
           )}
         </CardContent>
       </Card>
+
+      {/* Pending Invitations */}
+      {pendingInvitations.filter(inv => inv.status === "pending").length > 0 && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Clock className="h-4 w-4 text-amber-500" />
+              Pending Invitations
+            </CardTitle>
+            <CardDescription>
+              Invitations waiting to be accepted
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Sent</TableHead>
+                  <TableHead className="w-[150px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingInvitations
+                  .filter(inv => inv.status === "pending")
+                  .map((invitation) => (
+                    <TableRow key={invitation.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-4 w-4 text-slate-400" />
+                          {invitation.email}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="px-2 py-1 inline-block rounded-full text-xs bg-slate-100 text-slate-700">
+                          {formatRoleName(invitation.role)}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-500">
+                        {formatTimeAgo(invitation.createdAt)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyInviteLink(
+                              `${window.location.origin}/invite/${(invitation as any).token || ''}`,
+                              invitation.id
+                            )}
+                            className="text-xs"
+                          >
+                            {inviteLinkCopied === invitation.id ? (
+                              <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
+                            ) : (
+                              <Copy className="h-3 w-3 mr-1" />
+                            )}
+                            Copy Link
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleCancelInvitation(invitation.id)}
+                            className="text-destructive hover:text-destructive/80 hover:bg-destructive/10 h-8 w-8"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
       
       {/* New User Dialog */}
       <Dialog open={showNewUserDialog} onOpenChange={handleNewUserDialogChange}>
@@ -613,6 +822,114 @@ export default function UserManagement() {
                     "Save Changes"
                   )}
                 </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite User Dialog */}
+      <Dialog open={showInviteDialog} onOpenChange={handleInviteDialogChange}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Invite User</DialogTitle>
+            <DialogDescription>
+              Send an invite link to add a new team member. They'll create their own account using the link.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...inviteForm}>
+            <form onSubmit={inviteForm.handleSubmit(onInviteSubmit)} className="space-y-4">
+              <FormField
+                control={inviteForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email Address</FormLabel>
+                    <FormControl>
+                      <Input placeholder="colleague@company.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={inviteForm.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Role</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a role" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="hiringManager">Hiring Manager</SelectItem>
+                        <SelectItem value="projectManager">Project Manager</SelectItem>
+                        <SelectItem value="director">Director</SelectItem>
+                        <SelectItem value="coo">COO</SelectItem>
+                        <SelectItem value="ceo">CEO</SelectItem>
+                        <SelectItem value="admin">Administrator</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {newInviteLink && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-green-700 mb-2">
+                    <CheckCircle className="h-4 w-4" />
+                    <span className="font-medium">Invitation Created!</span>
+                  </div>
+                  <p className="text-sm text-green-600 mb-3">
+                    Copy this link and share it with the user. The link expires in 72 hours.
+                  </p>
+                  <div className="flex gap-2">
+                    <Input 
+                      value={newInviteLink} 
+                      readOnly 
+                      className="text-xs bg-white"
+                    />
+                    <Button 
+                      type="button"
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => copyInviteLink(newInviteLink)}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+              
+              <DialogFooter className="mt-4">
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">
+                    {newInviteLink ? "Done" : "Cancel"}
+                  </Button>
+                </DialogClose>
+                {!newInviteLink && (
+                  <Button 
+                    type="submit"
+                    disabled={createInvitationMutation.isPending}
+                  >
+                    {createInvitationMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <Link2 className="mr-2 h-4 w-4" />
+                        Create Invite Link
+                      </>
+                    )}
+                  </Button>
+                )}
               </DialogFooter>
             </form>
           </Form>

@@ -3,74 +3,85 @@
  * Prevents brute force attacks and DoS
  */
 
-import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import rateLimit from 'express-rate-limit';
+import type { Request } from 'express';
 
 /**
  * General API rate limiter
- * 100 requests per 15 minutes per IP
+ * - Authenticated users: 1000 requests per minute
+ * - Unauthenticated: 20 requests per minute
  */
 export const apiRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: (req: Request) => {
+    if (req.isAuthenticated && req.isAuthenticated()) {
+      return 1000;
+    }
+    return 20;
+  },
   message: {
-    error: 'Too many requests from this IP, please try again later',
-    retryAfter: '15 minutes'
+    error: 'Too many requests, please try again later',
+    retryAfter: '1 minute'
   },
-  standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
-  legacyHeaders: false, // Disable `X-RateLimit-*` headers
-  // Skip rate limiting for authenticated users in some cases
-  skip: (req) => {
-    // Skip if user is authenticated admin (optional - can be removed for stricter limits)
-    return false; // Apply to all users
-  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Disable all validations to avoid IPv6 warnings
+  validate: false,
 });
 
 /**
- * Strict rate limiter for authentication endpoints
- * 5 attempts per 15 minutes per IP
+ * Rate limiter for authentication endpoints
+ * 10 attempts per 15 minutes per IP
  */
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per window
+  max: 10,
   message: {
-    error: 'Too many authentication attempts, please try again later',
+    error: 'Too many login attempts, please try again later',
     retryAfter: '15 minutes'
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // SECURITY: Use proper IP key generator for IPv6 support
-  keyGenerator: (req) => {
-    return ipKeyGenerator(req.ip || req.socket.remoteAddress || 'unknown');
-  },
+  validate: false,
 });
 
 /**
- * Strict rate limiter for sensitive endpoints (candidates, users)
- * 20 requests per 15 minutes per IP
+ * Rate limiter for sensitive endpoints (user management, settings)
  */
 export const sensitiveRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // 20 requests per window
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: (req: Request) => {
+    if (req.isAuthenticated && req.isAuthenticated()) {
+      return 100;
+    }
+    return 10;
+  },
   message: {
     error: 'Too many requests to this endpoint, please try again later',
-    retryAfter: '15 minutes'
+    retryAfter: '1 minute'
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false,
 });
 
 /**
  * File upload rate limiter
- * 10 uploads per hour per IP
+ * 20 uploads per hour for authenticated, 5 for anonymous
  */
 export const uploadRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // 10 uploads per hour
+  max: (req: Request) => {
+    if (req.isAuthenticated && req.isAuthenticated()) {
+      return 20;
+    }
+    return 5;
+  },
   message: {
     error: 'Too many file uploads, please try again later',
     retryAfter: '1 hour'
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false,
 });
-

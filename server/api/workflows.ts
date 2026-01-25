@@ -1,6 +1,6 @@
 import { Express } from "express";
 import { storage } from "../storage";
-import { handleApiError, validateRequest } from "./utils";
+import { handleApiError, validateRequest, getActiveAccountId } from "./utils";
 import { z } from "zod";
 import { db } from "../db";
 import { workflows, workflowExecutions, workflowExecutionSteps } from "@shared/schema";
@@ -218,7 +218,7 @@ export function setupWorkflowRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const accountId = await storage.getUserAccountId(req.user.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -237,7 +237,7 @@ export function setupWorkflowRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const accountId = await storage.getUserAccountId(req.user.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -265,7 +265,7 @@ export function setupWorkflowRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const accountId = await storage.getUserAccountId(req.user.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -294,7 +294,7 @@ export function setupWorkflowRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const accountId = await storage.getUserAccountId(req.user.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -318,7 +318,7 @@ export function setupWorkflowRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const accountId = await storage.getUserAccountId(req.user.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -342,7 +342,7 @@ export function setupWorkflowRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const accountId = await storage.getUserAccountId(req.user.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -380,7 +380,7 @@ export function setupWorkflowRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const accountId = await storage.getUserAccountId(req.user.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -405,7 +405,7 @@ export function setupWorkflowRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const accountId = await storage.getUserAccountId(req.user.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -438,7 +438,7 @@ export function setupWorkflowRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const accountId = await storage.getUserAccountId(req.user.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -572,7 +572,7 @@ export function setupWorkflowRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const accountId = await storage.getUserAccountId(req.user.id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }

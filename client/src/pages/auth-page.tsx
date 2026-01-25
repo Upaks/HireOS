@@ -8,8 +8,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Redirect } from "wouter";
 import { Loader2, Eye, EyeOff } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Turnstile } from "@/components/ui/turnstile";
+import { useToast } from "@/hooks/use-toast";
 
 const loginSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
@@ -49,11 +51,38 @@ const FEATURES = [
 
 export default function AuthPage() {
   const { user, loginMutation, registerMutation } = useAuth();
+  const { toast } = useToast();
   const [isRegister, setIsRegister] = useState(false);
   const [activeFeature, setActiveFeature] = useState(0);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
+  // CAPTCHA token state
+  const [loginCaptchaToken, setLoginCaptchaToken] = useState<string | null>(null);
+  const [registerCaptchaToken, setRegisterCaptchaToken] = useState<string | null>(null);
+  
+  // CAPTCHA handlers
+  const handleLoginCaptchaVerify = useCallback((token: string) => {
+    setLoginCaptchaToken(token);
+  }, []);
+  
+  const handleRegisterCaptchaVerify = useCallback((token: string) => {
+    setRegisterCaptchaToken(token);
+  }, []);
+  
+  const handleCaptchaError = useCallback(() => {
+    toast({
+      title: "CAPTCHA Error",
+      description: "Failed to load CAPTCHA. Please refresh the page.",
+      variant: "destructive",
+    });
+  }, [toast]);
+  
+  const handleCaptchaExpire = useCallback(() => {
+    setLoginCaptchaToken(null);
+    setRegisterCaptchaToken(null);
+  }, []);
   
   // Auto-cycle through features
   useEffect(() => {
@@ -84,22 +113,44 @@ export default function AuthPage() {
 
   const switchToRegister = () => {
     loginForm.reset();
+    setLoginCaptchaToken(null);
     setIsRegister(true);
   };
 
   const switchToLogin = () => {
     registerForm.reset();
+    setRegisterCaptchaToken(null);
     setIsRegister(false);
   };
 
   const onLoginSubmit = (values: z.infer<typeof loginSchema>) => {
-    loginMutation.mutate(values);
+    if (!loginCaptchaToken) {
+      toast({
+        title: "CAPTCHA Required",
+        description: "Please complete the CAPTCHA verification.",
+        variant: "destructive",
+      });
+      return;
+    }
+    loginMutation.mutate({
+      ...values,
+      captchaToken: loginCaptchaToken,
+    });
   };
 
   const onRegisterSubmit = (values: z.infer<typeof registerSchema>) => {
+    if (!registerCaptchaToken) {
+      toast({
+        title: "CAPTCHA Required",
+        description: "Please complete the CAPTCHA verification.",
+        variant: "destructive",
+      });
+      return;
+    }
     registerMutation.mutate({
       ...values,
-      role: "hiringManager" // Default role for new users
+      role: "hiringManager", // Default role for new users
+      captchaToken: registerCaptchaToken,
     });
   };
 
@@ -190,10 +241,20 @@ export default function AuthPage() {
                       )}
                     />
                     
+                    {/* CAPTCHA Widget */}
+                    <div className="flex justify-center">
+                      <Turnstile
+                        onVerify={handleLoginCaptchaVerify}
+                        onError={handleCaptchaError}
+                        onExpire={handleCaptchaExpire}
+                        theme="dark"
+                      />
+                    </div>
+                    
                     <Button 
                       type="submit" 
                       className="w-full bg-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/90 text-white"
-                      disabled={loginMutation.isPending}
+                      disabled={loginMutation.isPending || !loginCaptchaToken}
                     >
                       {loginMutation.isPending ? (
                         <>
@@ -337,10 +398,20 @@ export default function AuthPage() {
                       )}
                     />
                     
+                    {/* CAPTCHA Widget */}
+                    <div className="flex justify-center">
+                      <Turnstile
+                        onVerify={handleRegisterCaptchaVerify}
+                        onError={handleCaptchaError}
+                        onExpire={handleCaptchaExpire}
+                        theme="dark"
+                      />
+                    </div>
+                    
                     <Button 
                       type="submit" 
                       className="w-full bg-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/90 text-white"
-                      disabled={registerMutation.isPending}
+                      disabled={registerMutation.isPending || !registerCaptchaToken}
                     >
                       {registerMutation.isPending ? (
                         <>

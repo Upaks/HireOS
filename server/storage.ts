@@ -1,7 +1,7 @@
 import { 
   users, jobs, jobPlatforms, candidates, interviews, evaluations, activityLogs, notificationQueue,
-  offers, emailLogs, platformIntegrations, formTemplates, comments, inAppNotifications,
-  accounts, accountMembers, workflows, workflowExecutions, workflowExecutionSteps,
+  offers, emailLogs, platformIntegrations, formTemplates, comments, inAppNotifications, notificationReads,
+  accounts, accountMembers, workflows, workflowExecutions, workflowExecutionSteps, invitations,
   UserRoles,
   type User, 
   type InsertUser,
@@ -32,7 +32,9 @@ import {
   type WorkflowExecution,
   type InsertWorkflowExecution,
   type WorkflowExecutionStep,
-  type InsertWorkflowExecutionStep
+  type InsertWorkflowExecutionStep,
+  type Invitation,
+  type InsertInvitation
 } from "@shared/schema";
 import { isLikelyInvalidEmail } from "./email-validator";
 import session from "express-session";
@@ -52,8 +54,15 @@ export interface IStorage {
   getUserAccountId(userId: number): Promise<number | null>;
   createAccount(name: string, userId: number, role?: string): Promise<Account>;
   getAccountMembers(accountId: number): Promise<AccountMember[]>;
+  getAccount(accountId: number): Promise<Account | undefined>;
+  getUserAccounts(userId: number): Promise<{ id: number; accountId: number; userId: number; role: string; joinedAt: Date; accountName: string }[]>;
+  addUserToAccount(userId: number, accountId: number, role: string): Promise<AccountMember>;
+  getUserRoleForAccount(userId: number, accountId: number): Promise<string | null>;
+  updateUserRoleForAccount(userId: number, accountId: number, role: string): Promise<void>;
+  removeUserFromAccount(userId: number, accountId: number): Promise<void>;
   
   // User operations
+  getUserByEmail(email: string): Promise<User | undefined>;
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -147,6 +156,13 @@ export interface IStorage {
   getWorkflowExecutions(workflowId: number, accountId: number, limit?: number): Promise<any[]>;
   getWorkflowExecutionSteps(executionId: number): Promise<any[]>;
   incrementWorkflowExecutionCount(workflowId: number, accountId: number): Promise<void>;
+  
+  // Invitation operations
+  createInvitation(invitation: InsertInvitation): Promise<Invitation>;
+  getInvitations(accountId: number): Promise<Invitation[]>;
+  getInvitationByToken(token: string): Promise<Invitation | undefined>;
+  updateInvitation(id: number, data: Partial<Invitation>): Promise<Invitation>;
+  deleteInvitation(id: number, accountId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -251,7 +267,106 @@ export class DatabaseStorage implements IStorage {
       .where(eq(accountMembers.accountId, accountId));
   }
 
+  async getAccount(accountId: number): Promise<Account | undefined> {
+    const [account] = await db
+      .select()
+      .from(accounts)
+      .where(eq(accounts.id, accountId));
+    return account;
+  }
+
+  async getUserAccounts(userId: number): Promise<{ id: number; accountId: number; userId: number; role: string; joinedAt: Date; accountName: string }[]> {
+    const memberships = await db
+      .select({
+        id: accountMembers.id,
+        accountId: accountMembers.accountId,
+        userId: accountMembers.userId,
+        role: accountMembers.role,
+        joinedAt: accountMembers.joinedAt,
+        accountName: accounts.name,
+      })
+      .from(accountMembers)
+      .innerJoin(accounts, eq(accountMembers.accountId, accounts.id))
+      .where(eq(accountMembers.userId, userId));
+    return memberships;
+  }
+
+  async addUserToAccount(userId: number, accountId: number, role: string): Promise<AccountMember> {
+    // Check if already a member
+    const existing = await db
+      .select()
+      .from(accountMembers)
+      .where(and(
+        eq(accountMembers.userId, userId),
+        eq(accountMembers.accountId, accountId)
+      ));
+    
+    if (existing.length > 0) {
+      return existing[0];
+    }
+
+    const [member] = await db
+      .insert(accountMembers)
+      .values({
+        userId,
+        accountId,
+        role,
+        joinedAt: new Date(),
+      })
+      .returning();
+    return member;
+  }
+
+  async getUserRoleForAccount(userId: number, accountId: number): Promise<string | null> {
+    try {
+      const [member] = await db
+        .select({ role: accountMembers.role })
+        .from(accountMembers)
+        .where(and(
+          eq(accountMembers.userId, userId),
+          eq(accountMembers.accountId, accountId)
+        ));
+      
+      return member?.role || null;
+    } catch (error) {
+      console.error("Error getting user role for account:", error);
+      return null;
+    }
+  }
+
+  async updateUserRoleForAccount(userId: number, accountId: number, role: string): Promise<void> {
+    await db
+      .update(accountMembers)
+      .set({ role })
+      .where(and(
+        eq(accountMembers.userId, userId),
+        eq(accountMembers.accountId, accountId)
+      ));
+  }
+
+  async removeUserFromAccount(userId: number, accountId: number): Promise<void> {
+    await db
+      .delete(accountMembers)
+      .where(and(
+        eq(accountMembers.userId, userId),
+        eq(accountMembers.accountId, accountId)
+      ));
+  }
+
   // User operations
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    try {
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(sql`LOWER(${users.email}) = LOWER(${email})`);
+      if (!user) return undefined;
+      return this.decryptUserFields(user);
+    } catch (error) {
+      console.error("Error getting user by email:", error);
+      return undefined;
+    }
+  }
   async getUser(id: number): Promise<User | undefined> {
     try {
       const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -308,6 +423,7 @@ export class DatabaseStorage implements IStorage {
     
     if (accountId) {
       // Get users who are members of this account
+      // IMPORTANT: Use accountMembers.role for account-specific role, not users.role
       usersList = await db
         .select({
           id: users.id,
@@ -315,7 +431,7 @@ export class DatabaseStorage implements IStorage {
           password: users.password,
           fullName: users.fullName,
           email: users.email,
-          role: users.role,
+          role: accountMembers.role, // Account-specific role from account_members
           createdAt: users.createdAt,
           calendarLink: users.calendarLink,
           emailTemplates: users.emailTemplates,
@@ -1414,39 +1530,72 @@ export class DatabaseStorage implements IStorage {
     return newNotification;
   }
 
-  async getInAppNotifications(accountId: number, userId: number, filters?: { read?: boolean; limit?: number }): Promise<InAppNotification[]> {
-    let conditions: any[] = [
-      eq(inAppNotifications.accountId, accountId),
-      eq(inAppNotifications.userId, userId)
-    ];
-
-    if (filters?.read !== undefined) {
-      conditions.push(eq(inAppNotifications.read, filters.read));
-    }
-
-    let query = db
-      .select()
+  // TEAM-WIDE NOTIFICATIONS with PER-USER READ STATUS
+  // All account members see the same notifications, but each has their own read/unread status
+  async getInAppNotifications(accountId: number, userId: number, filters?: { read?: boolean; limit?: number }): Promise<(InAppNotification & { isRead: boolean })[]> {
+    // Get all notifications for the account with per-user read status
+    const notifications = await db
+      .select({
+        id: inAppNotifications.id,
+        accountId: inAppNotifications.accountId,
+        userId: inAppNotifications.userId,
+        type: inAppNotifications.type,
+        title: inAppNotifications.title,
+        message: inAppNotifications.message,
+        read: inAppNotifications.read,
+        link: inAppNotifications.link,
+        metadata: inAppNotifications.metadata,
+        createdAt: inAppNotifications.createdAt,
+        readAt: notificationReads.readAt,
+      })
       .from(inAppNotifications)
-      .where(and(...conditions))
+      .leftJoin(
+        notificationReads,
+        and(
+          eq(notificationReads.notificationId, inAppNotifications.id),
+          eq(notificationReads.userId, userId)
+        )
+      )
+      .where(eq(inAppNotifications.accountId, accountId))
       .orderBy(desc(inAppNotifications.createdAt));
 
-    if (filters?.limit) {
-      query = query.limit(filters.limit) as any;
+    // Map results to include isRead based on whether user has a read record
+    let result = notifications.map(n => ({
+      id: n.id,
+      accountId: n.accountId,
+      userId: n.userId,
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      read: n.readAt !== null, // Per-user read status
+      link: n.link,
+      metadata: n.metadata,
+      createdAt: n.createdAt,
+      isRead: n.readAt !== null,
+    }));
+
+    // Filter by read status if requested
+    if (filters?.read !== undefined) {
+      result = result.filter(n => n.isRead === filters.read);
     }
 
-    return await query;
+    // Apply limit if requested
+    if (filters?.limit) {
+      result = result.slice(0, filters.limit);
+    }
+
+    return result;
   }
 
   async markNotificationAsRead(id: number, accountId: number, userId: number): Promise<void> {
-    // Verify the notification belongs to the user and account
+    // Verify the notification belongs to the account
     const [notification] = await db
       .select()
       .from(inAppNotifications)
       .where(
         and(
           eq(inAppNotifications.id, id),
-          eq(inAppNotifications.accountId, accountId),
-          eq(inAppNotifications.userId, userId)
+          eq(inAppNotifications.accountId, accountId)
         )
       );
 
@@ -1454,31 +1603,74 @@ export class DatabaseStorage implements IStorage {
       throw new Error('Notification not found or unauthorized');
     }
 
-    await db
-      .update(inAppNotifications)
-      .set({ read: true })
-      .where(eq(inAppNotifications.id, id));
+    // Check if already marked as read by this user
+    const [existingRead] = await db
+      .select()
+      .from(notificationReads)
+      .where(
+        and(
+          eq(notificationReads.notificationId, id),
+          eq(notificationReads.userId, userId)
+        )
+      );
+
+    if (!existingRead) {
+      // Insert per-user read record
+      await db.insert(notificationReads).values({
+        notificationId: id,
+        userId: userId,
+        readAt: new Date(),
+      });
+    }
   }
 
   async markAllNotificationsAsRead(accountId: number, userId: number): Promise<void> {
-    await db
-      .update(inAppNotifications)
-      .set({ read: true })
-      .where(and(
-        eq(inAppNotifications.accountId, accountId),
-        eq(inAppNotifications.userId, userId)
-      ));
-  }
-
-  async getUnreadNotificationCount(accountId: number, userId: number): Promise<number> {
-    const result = await db
-      .select({ count: sql<number>`count(*)` })
+    // Get all notification IDs for this account that the user hasn't read yet
+    const unreadNotifications = await db
+      .select({ id: inAppNotifications.id })
       .from(inAppNotifications)
+      .leftJoin(
+        notificationReads,
+        and(
+          eq(notificationReads.notificationId, inAppNotifications.id),
+          eq(notificationReads.userId, userId)
+        )
+      )
       .where(
         and(
           eq(inAppNotifications.accountId, accountId),
-          eq(inAppNotifications.userId, userId),
-          eq(inAppNotifications.read, false)
+          isNull(notificationReads.id)
+        )
+      );
+
+    // Insert read records for all unread notifications
+    if (unreadNotifications.length > 0) {
+      await db.insert(notificationReads).values(
+        unreadNotifications.map(n => ({
+          notificationId: n.id,
+          userId: userId,
+          readAt: new Date(),
+        }))
+      );
+    }
+  }
+
+  async getUnreadNotificationCount(accountId: number, userId: number): Promise<number> {
+    // Count notifications that this user hasn't read
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(inAppNotifications)
+      .leftJoin(
+        notificationReads,
+        and(
+          eq(notificationReads.notificationId, inAppNotifications.id),
+          eq(notificationReads.userId, userId)
+        )
+      )
+      .where(
+        and(
+          eq(inAppNotifications.accountId, accountId),
+          isNull(notificationReads.id)
         )
       );
     
@@ -1670,6 +1862,43 @@ export class DatabaseStorage implements IStorage {
         lastExecutedAt: sql`NOW()`,
       })
       .where(and(eq(workflows.id, workflowId), eq(workflows.accountId, accountId)));
+  }
+
+  // Invitation operations
+  async createInvitation(invitation: InsertInvitation): Promise<Invitation> {
+    const [created] = await db.insert(invitations).values(invitation).returning();
+    return created;
+  }
+
+  async getInvitations(accountId: number): Promise<Invitation[]> {
+    return await db
+      .select()
+      .from(invitations)
+      .where(eq(invitations.accountId, accountId))
+      .orderBy(desc(invitations.createdAt));
+  }
+
+  async getInvitationByToken(token: string): Promise<Invitation | undefined> {
+    const [invitation] = await db
+      .select()
+      .from(invitations)
+      .where(eq(invitations.token, token));
+    return invitation;
+  }
+
+  async updateInvitation(id: number, data: Partial<Invitation>): Promise<Invitation> {
+    const [updated] = await db
+      .update(invitations)
+      .set(data)
+      .where(eq(invitations.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteInvitation(id: number, accountId: number): Promise<void> {
+    await db
+      .delete(invitations)
+      .where(and(eq(invitations.id, id), eq(invitations.accountId, accountId)));
   }
 }
 

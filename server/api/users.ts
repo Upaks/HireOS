@@ -1,10 +1,42 @@
 import { Express } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
-import { UserRoles, insertUserSchema } from "@shared/schema";
-import { handleApiError, validateRequest } from "./utils";
+import { UserRoles, insertUserSchema, canManageRole, getRoleLevel } from "@shared/schema";
+import { handleApiError, validateRequest, getActiveAccountId } from "./utils";
 import { hashPassword } from "../auth";
 import { SecureLogger } from "../security/logger";
+
+// Helper to check if actor can manage target user in an account
+async function canActorManageTarget(actorId: number, targetId: number, accountId: number): Promise<{ canManage: boolean; reason?: string }> {
+  const members = await storage.getAccountMembers(accountId);
+  const actorMember = members.find(m => m.userId === actorId);
+  const targetMember = members.find(m => m.userId === targetId);
+  
+  if (!actorMember) {
+    return { canManage: false, reason: "You are not a member of this account" };
+  }
+  
+  if (!targetMember) {
+    return { canManage: false, reason: "Target user is not a member of this account" };
+  }
+  
+  // Account owner can manage everyone
+  if (actorMember.invitedById === null) {
+    return { canManage: true };
+  }
+  
+  // Cannot manage the account owner
+  if (targetMember.invitedById === null) {
+    return { canManage: false, reason: "Cannot modify the account owner" };
+  }
+  
+  // Check role hierarchy - can only manage roles below your level
+  if (!canManageRole(actorMember.role, targetMember.role)) {
+    return { canManage: false, reason: "You can only manage users with roles below your level" };
+  }
+  
+  return { canManage: true };
+}
 
 // SECURITY: Strong password requirements
 const passwordSchema = z.string()
@@ -49,7 +81,7 @@ export function setupUserRoutes(app: Express) {
       }
 
       // MULTI-TENANT: Get user's accountId and filter users by account
-      const accountId = await storage.getUserAccountId((req.user as any).id);
+      const accountId = await getActiveAccountId(req);
       if (!accountId) {
         return res.status(400).json({ message: "User is not associated with any account" });
       }
@@ -129,7 +161,7 @@ export function setupUserRoutes(app: Express) {
       const { password, ...userWithoutPassword } = user;
 
       // MULTI-TENANT: Get accountId for activity log
-      const accountId = await storage.getUserAccountId((req.user as any).id);
+      const accountId = await getActiveAccountId(req);
       
       // Log activity (sanitized)
       SecureLogger.info("User created", { userId: user.id, username: user.username, role: user.role });
@@ -154,7 +186,7 @@ export function setupUserRoutes(app: Express) {
     }
   });
 
-  // Update a user (COO/CEO/Admin only)
+  // Update a user (with hierarchy-based permissions)
   app.patch("/api/users/:id", validateRequest(updateUserSchema), async (req, res) => {
     try {
       if (!req.isAuthenticated()) {
@@ -169,6 +201,22 @@ export function setupUserRoutes(app: Express) {
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
+      }
+
+      // MULTI-TENANT: Get accountId
+      const accountId = await getActiveAccountId(req);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
+      const actorId = (req.user as any).id;
+
+      // HIERARCHY CHECK: If modifying another user, verify permissions
+      if (actorId !== userId) {
+        const { canManage, reason } = await canActorManageTarget(actorId, userId, accountId);
+        if (!canManage) {
+          return res.status(403).json({ message: reason || "Access denied" });
+        }
       }
 
       // If password is being updated, validate and hash it
@@ -188,36 +236,61 @@ export function setupUserRoutes(app: Express) {
         updateData.password = await hashPassword(updateData.password);
       }
 
-      const updatedUser = await storage.updateUser(userId, updateData);
-
-      // MULTI-TENANT: Get accountId for activity log
-      const accountId = await storage.getUserAccountId((req.user as any).id);
-
-      // Log activity
-      if (accountId) {
-        await storage.createActivityLog({
-          accountId,
-          userId: req.user?.id,
-          action: "Updated user",
-          entityType: "user",
-          entityId: userId,
-          details: { 
-            username: user.username,
-            fieldsUpdated: Object.keys(req.body),
-          },
-          timestamp: new Date()
-        });
+      // MULTI-TENANT: If role is being updated, update account_members.role instead of users.role
+      if (updateData.role) {
+        const newRole = updateData.role;
+        
+        // HIERARCHY CHECK: Can only assign roles below your level (unless you're the owner)
+        const members = await storage.getAccountMembers(accountId);
+        const actorMember = members.find(m => m.userId === actorId);
+        
+        if (actorMember && actorMember.invitedById !== null) {
+          // Not the owner - check if they can assign this role
+          if (!canManageRole(actorMember.role, newRole)) {
+            return res.status(403).json({ 
+              message: `You cannot assign the role "${newRole}". You can only assign roles below your level.` 
+            });
+          }
+        }
+        
+        await storage.updateUserRoleForAccount(userId, accountId, newRole);
+        // Remove role from updateData so we don't update users.role
+        delete updateData.role;
       }
 
+      // Update remaining user fields (if any)
+      let updatedUser = user;
+      if (Object.keys(updateData).length > 0) {
+        updatedUser = await storage.updateUser(userId, updateData);
+      }
+
+      // Log activity
+      await storage.createActivityLog({
+        accountId,
+        userId: req.user?.id,
+        action: "Updated user",
+        entityType: "user",
+        entityId: userId,
+        details: { 
+          username: user.username,
+          fieldsUpdated: Object.keys(req.body),
+        },
+        timestamp: new Date()
+      });
+
+      // Fetch fresh user data with account-specific role
+      const allUsers = await storage.getAllUsers(accountId);
+      const freshUser = allUsers.find(u => u.id === userId);
+
       // Remove password from response
-      const { password, ...userWithoutPassword } = updatedUser;
+      const { password, ...userWithoutPassword } = freshUser || updatedUser;
       res.json(userWithoutPassword);
     } catch (error) {
       handleApiError(error, res);
     }
   });
 
-  // Delete a user (COO/CEO/Admin only)
+  // Delete/remove a user (with hierarchy-based permissions)
   app.delete("/api/users/:id", async (req, res) => {
     try {
       if (!req.isAuthenticated()) {
@@ -234,15 +307,28 @@ export function setupUserRoutes(app: Express) {
         return res.status(400).json({ message: "Cannot delete your own account" });
       }
 
+      // MULTI-TENANT: Get accountId
+      const accountId = await getActiveAccountId(req);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+
+      const actorId = (req.user as any).id;
+
+      // HIERARCHY CHECK: Verify actor can manage target user
+      const { canManage, reason } = await canActorManageTarget(actorId, userId, accountId);
+      if (!canManage) {
+        return res.status(403).json({ message: reason || "Access denied" });
+      }
+
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
 
-      await storage.deleteUser(userId);
-
-      // MULTI-TENANT: Get accountId for activity log
-      const accountId = await storage.getUserAccountId((req.user as any).id);
+      // Remove user from this account (not delete their entire user record)
+      // This preserves their data in their own account if they have one
+      await storage.removeUserFromAccount(userId, accountId);
 
       // Log activity
       if (accountId) {
