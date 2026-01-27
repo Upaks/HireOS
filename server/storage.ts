@@ -40,7 +40,7 @@ import { isLikelyInvalidEmail } from "./email-validator";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { db, pool } from "./db";
-import { and, eq, or, isNull, desc, sql } from "drizzle-orm";
+import { and, eq, or, isNull, desc, sql, inArray } from "drizzle-orm";
 import { encrypt, decrypt } from "./security/encryption";
 
 // Database session store configuration
@@ -80,12 +80,20 @@ export interface IStorage {
   createJobPlatform(platform: Partial<JobPlatform> & { accountId: number }): Promise<JobPlatform>;
   getJobPlatforms(jobId: number, accountId: number): Promise<JobPlatform[]>;
   
-  // Platform integration operations
-  getPlatformIntegrations(): Promise<PlatformIntegration[]>;
-  getPlatformIntegration(platformId: string): Promise<PlatformIntegration | undefined>;
-  createPlatformIntegration(integration: InsertPlatformIntegration): Promise<PlatformIntegration>;
-  updatePlatformIntegration(platformId: string, data: Partial<PlatformIntegration>): Promise<PlatformIntegration>;
-  deletePlatformIntegration(platformId: string): Promise<void>;
+  // Platform integration operations (account-scoped)
+  getPlatformIntegrations(accountId: number): Promise<PlatformIntegration[]>;
+  getPlatformIntegration(platformId: string, accountId: number): Promise<PlatformIntegration | undefined>;
+  createPlatformIntegration(integration: InsertPlatformIntegration & { accountId: number }): Promise<PlatformIntegration>;
+  updatePlatformIntegration(platformId: string, accountId: number, data: Partial<PlatformIntegration>): Promise<PlatformIntegration>;
+  deletePlatformIntegration(platformId: string, accountId: number): Promise<void>;
+  
+  // Specific integration helpers (account-scoped)
+  getOpenRouterApiKey(accountId: number): Promise<string | null>;
+  setOpenRouterApiKey(accountId: number, apiKey: string): Promise<void>;
+  getSlackConfig(accountId: number): Promise<{ webhookUrl: string; scope: string; roles: string[]; events: string[] } | null>;
+  setSlackConfig(accountId: number, config: { webhookUrl: string; scope: string; roles: string[]; events: string[] }): Promise<void>;
+  getEmailTemplates(accountId: number): Promise<Record<string, { subject: string; body: string }> | null>;
+  setEmailTemplates(accountId: number, templates: Record<string, { subject: string; body: string }>): Promise<void>;
   
   // Form template operations
   getFormTemplates(accountId: number): Promise<FormTemplate[]>;
@@ -177,24 +185,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   // SECURITY: Helper to decrypt sensitive user fields
+  // Note: openRouterApiKey, slackWebhookUrl, emailTemplates moved to platform_integrations (account-scoped)
   private decryptUserFields(user: User): User {
     if (!user) return user;
     
     const decrypted = { ...user };
     
-    // Decrypt sensitive fields if they exist
-    // The decrypt function handles legacy unencrypted data gracefully
-    if (decrypted.openRouterApiKey) {
-      decrypted.openRouterApiKey = decrypt(decrypted.openRouterApiKey);
-    }
-    
+    // Decrypt calendlyToken (user-personal calendar integration)
     if (decrypted.calendlyToken) {
       decrypted.calendlyToken = decrypt(decrypted.calendlyToken);
-    }
-    
-    if (decrypted.slackWebhookUrl) {
-      // decrypt() handles legacy data gracefully - no try/catch needed
-      decrypted.slackWebhookUrl = decrypt(decrypted.slackWebhookUrl);
     }
     
     return decrypted;
@@ -204,17 +203,9 @@ export class DatabaseStorage implements IStorage {
   private encryptUserFields(data: Partial<User>): Partial<User> {
     const encrypted = { ...data };
     
-    // Encrypt sensitive fields if they exist
-    if (encrypted.openRouterApiKey !== undefined && encrypted.openRouterApiKey !== null) {
-      encrypted.openRouterApiKey = encrypt(encrypted.openRouterApiKey);
-    }
-    
+    // Encrypt calendlyToken (user-personal calendar integration)
     if (encrypted.calendlyToken !== undefined && encrypted.calendlyToken !== null) {
       encrypted.calendlyToken = encrypt(encrypted.calendlyToken);
-    }
-    
-    if (encrypted.slackWebhookUrl !== undefined && encrypted.slackWebhookUrl !== null) {
-      encrypted.slackWebhookUrl = encrypt(encrypted.slackWebhookUrl);
     }
     
     return encrypted;
@@ -434,15 +425,9 @@ export class DatabaseStorage implements IStorage {
           role: accountMembers.role, // Account-specific role from account_members
           createdAt: users.createdAt,
           calendarLink: users.calendarLink,
-          emailTemplates: users.emailTemplates,
           calendarProvider: users.calendarProvider,
           calendlyToken: users.calendlyToken,
           calendlyWebhookId: users.calendlyWebhookId,
-          openRouterApiKey: users.openRouterApiKey,
-          slackWebhookUrl: users.slackWebhookUrl,
-          slackNotificationScope: users.slackNotificationScope,
-          slackNotificationRoles: users.slackNotificationRoles,
-          slackNotificationEvents: users.slackNotificationEvents,
         })
         .from(users)
         .innerJoin(accountMembers, eq(users.id, accountMembers.userId))
@@ -555,29 +540,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Platform integration operations
-  async getPlatformIntegrations(userId?: number): Promise<PlatformIntegration[]> {
-    let integrations: PlatformIntegration[];
-    
-    if (userId) {
-      // Get user-specific integrations (CRM/ATS) and system-wide integrations (job posting platforms)
-      integrations = await db
-        .select()
-        .from(platformIntegrations)
-        .where(
-          // User's integrations OR system-wide (user_id IS NULL)
-          or(
-            eq(platformIntegrations.userId, userId),
-            isNull(platformIntegrations.userId)
-          )
-        )
-        .orderBy(platformIntegrations.platformName);
-    } else {
-      // Legacy: Get all integrations (for backward compatibility)
-      integrations = await db
-        .select()
-        .from(platformIntegrations)
-        .orderBy(platformIntegrations.platformName);
-    }
+  async getPlatformIntegrations(accountId: number): Promise<PlatformIntegration[]> {
+    // Get account-specific integrations
+    const integrations = await db
+      .select()
+      .from(platformIntegrations)
+      .where(eq(platformIntegrations.accountId, accountId))
+      .orderBy(platformIntegrations.platformName);
     
     // SECURITY: Decrypt sensitive fields for all integrations
     return integrations.map(integration => this.decryptIntegrationFields(integration));
@@ -664,44 +633,32 @@ export class DatabaseStorage implements IStorage {
     return encrypted;
   }
 
-  async getPlatformIntegration(platformId: string, userId?: number): Promise<PlatformIntegration | undefined> {
-    let integration: PlatformIntegration | undefined;
+  async getPlatformIntegration(platformId: string, accountId: number): Promise<PlatformIntegration | undefined> {
+    // Get account-specific integration
+    const [result] = await db
+      .select()
+      .from(platformIntegrations)
+      .where(
+        and(
+          eq(platformIntegrations.platformId, platformId),
+          eq(platformIntegrations.accountId, accountId)
+        )
+      );
     
-    if (userId) {
-      // Get user-specific integration
-      const [result] = await db
-        .select()
-        .from(platformIntegrations)
-        .where(
-          and(
-            eq(platformIntegrations.platformId, platformId),
-            eq(platformIntegrations.userId, userId)
-          )
-        );
-      integration = result || undefined;
-    } else {
-      // Legacy: Get by platformId only (for backward compatibility)
-      const [result] = await db
-        .select()
-        .from(platformIntegrations)
-        .where(eq(platformIntegrations.platformId, platformId));
-      integration = result || undefined;
-    }
-    
-    if (!integration) return undefined;
+    if (!result) return undefined;
     
     // SECURITY: Decrypt sensitive fields before returning
-    return this.decryptIntegrationFields(integration);
+    return this.decryptIntegrationFields(result);
   }
 
-  // Get CRM/ATS integrations for a user
-  async getCRMIntegrations(userId: number): Promise<PlatformIntegration[]> {
+  // Get CRM/ATS integrations for an account
+  async getCRMIntegrations(accountId: number): Promise<PlatformIntegration[]> {
     const integrations = await db
       .select()
       .from(platformIntegrations)
       .where(
         and(
-          eq(platformIntegrations.userId, userId),
+          eq(platformIntegrations.accountId, accountId),
           or(
             eq(platformIntegrations.platformType, "crm"),
             eq(platformIntegrations.platformType, "ats")
@@ -731,7 +688,7 @@ export class DatabaseStorage implements IStorage {
     return this.decryptIntegrationFields(newIntegration);
   }
 
-  async updatePlatformIntegration(platformId: string, data: Partial<PlatformIntegration>): Promise<PlatformIntegration> {
+  async updatePlatformIntegration(platformId: string, accountId: number, data: Partial<PlatformIntegration>): Promise<PlatformIntegration> {
     // SECURITY: Encrypt sensitive fields before saving
     const encryptedData = this.encryptIntegrationFields(data);
     
@@ -741,17 +698,171 @@ export class DatabaseStorage implements IStorage {
         ...encryptedData,
         updatedAt: new Date()
       })
-      .where(eq(platformIntegrations.platformId, platformId))
+      .where(
+        and(
+          eq(platformIntegrations.platformId, platformId),
+          eq(platformIntegrations.accountId, accountId)
+        )
+      )
       .returning();
     
     // SECURITY: Decrypt sensitive fields before returning
     return this.decryptIntegrationFields(updatedIntegration);
   }
 
-  async deletePlatformIntegration(platformId: string): Promise<void> {
+  async deletePlatformIntegration(platformId: string, accountId: number): Promise<void> {
     await db
       .delete(platformIntegrations)
-      .where(eq(platformIntegrations.platformId, platformId));
+      .where(
+        and(
+          eq(platformIntegrations.platformId, platformId),
+          eq(platformIntegrations.accountId, accountId)
+        )
+      );
+  }
+
+  // ============================================
+  // Account-scoped integration helpers
+  // ============================================
+
+  async getOpenRouterApiKey(accountId: number): Promise<string | null> {
+    const integration = await this.getPlatformIntegration("openrouter", accountId);
+    if (!integration || !integration.credentials) return null;
+    const creds = integration.credentials as any;
+    return creds.apiKey || null;
+  }
+
+  async setOpenRouterApiKey(accountId: number, apiKey: string): Promise<void> {
+    const existing = await this.getPlatformIntegration("openrouter", accountId);
+    
+    if (existing) {
+      await this.updatePlatformIntegration("openrouter", accountId, {
+        credentials: { apiKey },
+        status: apiKey ? "connected" : "disconnected",
+      });
+    } else {
+      await this.createPlatformIntegration({
+        accountId,
+        platformId: "openrouter",
+        platformName: "OpenRouter AI",
+        platformType: "ai",
+        status: apiKey ? "connected" : "disconnected",
+        credentials: { apiKey },
+        isEnabled: true,
+      });
+    }
+  }
+
+  async getSlackConfig(accountId: number): Promise<{ webhookUrl: string; scope: string; roles: string[]; events: string[] } | null> {
+    const integration = await this.getPlatformIntegration("slack", accountId);
+    if (!integration || !integration.credentials) return null;
+    const creds = integration.credentials as any;
+    return {
+      webhookUrl: creds.webhookUrl || "",
+      scope: creds.scope || "all_users",
+      roles: creds.roles || [],
+      events: creds.events || [],
+    };
+  }
+
+  async setSlackConfig(accountId: number, config: { webhookUrl: string; scope: string; roles: string[]; events: string[] }): Promise<void> {
+    const existing = await this.getPlatformIntegration("slack", accountId);
+    
+    const credentials = {
+      webhookUrl: config.webhookUrl,
+      scope: config.scope,
+      roles: config.roles,
+      events: config.events,
+    };
+    
+    if (existing) {
+      await this.updatePlatformIntegration("slack", accountId, {
+        credentials,
+        status: config.webhookUrl ? "connected" : "disconnected",
+      });
+    } else {
+      await this.createPlatformIntegration({
+        accountId,
+        platformId: "slack",
+        platformName: "Slack",
+        platformType: "notification",
+        status: config.webhookUrl ? "connected" : "disconnected",
+        credentials,
+        isEnabled: true,
+      });
+    }
+  }
+
+  async getEmailTemplates(accountId: number): Promise<Record<string, { subject: string; body: string }> | null> {
+    const integration = await this.getPlatformIntegration("email-templates", accountId);
+    if (!integration || !integration.credentials) return null;
+    return integration.credentials as Record<string, { subject: string; body: string }>;
+  }
+
+  async setEmailTemplates(accountId: number, templates: Record<string, { subject: string; body: string }>): Promise<void> {
+    const existing = await this.getPlatformIntegration("email-templates", accountId);
+    
+    if (existing) {
+      await this.updatePlatformIntegration("email-templates", accountId, {
+        credentials: templates as any,
+        status: "connected",
+      });
+    } else {
+      await this.createPlatformIntegration({
+        accountId,
+        platformId: "email-templates",
+        platformName: "Email Templates",
+        platformType: "settings",
+        status: "connected",
+        credentials: templates as any,
+        isEnabled: true,
+      });
+    }
+  }
+
+  // Get users who should receive Slack notifications for an account
+  async getUsersForSlackNotificationByAccount(accountId: number, eventType: string): Promise<User[]> {
+    const slackConfig = await this.getSlackConfig(accountId);
+    if (!slackConfig || !slackConfig.webhookUrl) return [];
+    if (!slackConfig.events?.includes(eventType)) return [];
+    
+    // Get all users in this account
+    const members = await db
+      .select({ userId: accountMembers.userId })
+      .from(accountMembers)
+      .where(eq(accountMembers.accountId, accountId));
+    
+    if (members.length === 0) return [];
+    
+    const userIds = members.map(m => m.userId);
+    const allUsers = await db
+      .select()
+      .from(users)
+      .where(inArray(users.id, userIds));
+    
+    // Filter by scope
+    if (slackConfig.scope === "all_users") {
+      return allUsers.map(u => this.decryptUserFields(u));
+    } else if (slackConfig.scope === "specific_roles" && slackConfig.roles?.length) {
+      return allUsers
+        .filter(u => slackConfig.roles.includes(u.role))
+        .map(u => this.decryptUserFields(u));
+    }
+    
+    return [];
+  }
+
+  // Send Slack notification for an account
+  async sendSlackNotificationForAccount(accountId: number, message: string): Promise<void> {
+    try {
+      const slackConfig = await this.getSlackConfig(accountId);
+      if (!slackConfig || !slackConfig.webhookUrl) return;
+      
+      const axios = await import('axios');
+      await axios.default.post(slackConfig.webhookUrl, { text: message });
+    } catch (error) {
+      console.error("Failed to send Slack notification:", error);
+    }
   }
 
   // Form template operations
@@ -1325,18 +1436,20 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  // Direct Slack notification (no queue, immediate send)
+  /**
+   * @deprecated Use sendSlackNotificationForAccount instead
+   * Kept for backward compatibility - now tries to find user's account and use account-based notification
+   */
   async sendSlackNotification(userId: number, message: string): Promise<void> {
     try {
-      const user = await this.getUser(userId);
-      if (!user || !user.slackWebhookUrl) {
-        return; // User hasn't configured Slack, silently skip
+      // Get user's account and use account-based notification
+      const userAccountId = await this.getUserAccountId(userId);
+      if (!userAccountId) {
+        console.warn(`sendSlackNotification: Could not find account for user ${userId}`);
+        return;
       }
-
-      const axios = await import('axios');
-      await axios.default.post(user.slackWebhookUrl, {
-        text: message,
-      });
+      
+      await this.sendSlackNotificationForAccount(userAccountId, message);
     } catch (error) {
       // Log error but don't throw - Slack failures shouldn't break the main flow
       console.error(`Failed to send Slack notification to user ${userId}:`, error);
@@ -1344,48 +1457,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Get users who should receive Slack notifications based on scope
+  /**
+   * @deprecated Use getUsersForSlackNotificationByAccount instead
+   * This method is kept for backward compatibility but now uses account-based lookup
+   */
   async getUsersForSlackNotification(triggerUserId: number, eventType: string): Promise<User[]> {
-    const triggerUser = await this.getUser(triggerUserId);
-    if (!triggerUser) {
+    // Try to get the account for this user
+    const userAccountId = await this.getUserAccountId(triggerUserId);
+    if (!userAccountId) {
+      console.warn("getUsersForSlackNotification: Could not determine accountId");
       return [];
     }
-
-    // Check if trigger user has Slack configured and wants this event type
-    const userEvents = triggerUser.slackNotificationEvents as string[] | null;
-    if (!triggerUser.slackWebhookUrl || !userEvents?.includes(eventType)) {
-      return []; // User doesn't want this event type
-    }
-
-    const scope = triggerUser.slackNotificationScope;
     
-    if (scope === "all_users") {
-      // Get all users with Slack configured and this event enabled
-      const allUsers = await db.select().from(users);
-      const decryptedUsers = allUsers.map(user => this.decryptUserFields(user));
-      return decryptedUsers.filter(user => {
-        if (!user.slackWebhookUrl) return false;
-        const events = user.slackNotificationEvents as string[] | null;
-        return events?.includes(eventType) || false;
-      });
-    } else if (scope === "specific_roles") {
-      // Get users with specific roles
-      const allowedRoles = triggerUser.slackNotificationRoles as string[] | null;
-      if (!allowedRoles || allowedRoles.length === 0) {
-        return [triggerUser]; // Default to just the trigger user
-      }
-      
-      const allUsers = await db.select().from(users);
-      const decryptedUsers = allUsers.map(user => this.decryptUserFields(user));
-      return decryptedUsers.filter(user => {
-        if (!user.slackWebhookUrl) return false;
-        if (!allowedRoles.includes(user.role)) return false;
-        const events = user.slackNotificationEvents as string[] | null;
-        return events?.includes(eventType) || false;
-      });
-    } else {
-      // Default: only notify the user who triggered the event
-      return [triggerUser];
-    }
+    return this.getUsersForSlackNotificationByAccount(userAccountId, eventType);
   }
 
   // Comment operations
@@ -1499,15 +1583,9 @@ export class DatabaseStorage implements IStorage {
         role: users.role,
         createdAt: users.createdAt,
         calendarLink: users.calendarLink,
-        emailTemplates: users.emailTemplates,
         calendarProvider: users.calendarProvider,
         calendlyToken: users.calendlyToken,
         calendlyWebhookId: users.calendlyWebhookId,
-        openRouterApiKey: users.openRouterApiKey,
-        slackWebhookUrl: users.slackWebhookUrl,
-        slackNotificationScope: users.slackNotificationScope,
-        slackNotificationRoles: users.slackNotificationRoles,
-        slackNotificationEvents: users.slackNotificationEvents,
       })
       .from(users)
       .innerJoin(accountMembers, eq(users.id, accountMembers.userId))

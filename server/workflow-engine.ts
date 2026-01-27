@@ -197,18 +197,17 @@ export class WorkflowActionLibrary {
     let subject = replaceVariables(config.subject || "", context);
     let body = replaceVariables(config.body || "", context);
 
-    // If template is specified, use it
-    if (config.template && context.user) {
-      const user = await storage.getUser(context.user.id);
-      const templates = (user as any)?.emailTemplates || {};
+    // If template is specified, use account-scoped templates
+    if (config.template) {
+      const templates = await storage.getEmailTemplates(accountId) || {};
       const template = templates[config.template];
       if (template) {
         body = replaceVariables(template.body || "", context);
         const templateSubject = replaceVariables(template.subject || "", context);
         if (templateSubject) subject = templateSubject;
         // Also replace to field in template if it exists
-        if (template.to) {
-          to = replaceVariables(template.to, context);
+        if ((template as any).to) {
+          to = replaceVariables((template as any).to, context);
         }
       }
     }

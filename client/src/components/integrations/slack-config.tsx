@@ -7,14 +7,21 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Loader2, CheckCircle, ExternalLink } from "lucide-react";
 import { UserRoles } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
+
+interface SlackConfig {
+  webhookUrl: string;
+  scope: string;
+  roles: string[];
+  events: string[];
+}
 
 interface SlackConfigFormProps {
-  user: any;
   onSave: (data: {
-    slackWebhookUrl: string;
-    slackNotificationScope: "all_users" | "specific_roles";
-    slackNotificationRoles?: string[];
-    slackNotificationEvents: string[];
+    webhookUrl: string;
+    scope: "all_users" | "specific_roles";
+    roles?: string[];
+    events: string[];
   }) => void;
   onRemove: () => void;
   onCancel: () => void;
@@ -38,28 +45,38 @@ const AVAILABLE_ROLES = [
 ];
 
 export default function SlackConfigForm({
-  user,
   onSave,
   onRemove,
   onCancel,
 }: SlackConfigFormProps) {
-  const [webhookUrl, setWebhookUrl] = useState(user?.slackWebhookUrl || "");
-  const [notificationScope, setNotificationScope] = useState<"all_users" | "specific_roles">(
-    (user?.slackNotificationScope as "all_users" | "specific_roles") || "all_users"
-  );
-  const [selectedRoles, setSelectedRoles] = useState<string[]>(
-    (user?.slackNotificationRoles as string[]) || []
-  );
-  const [selectedEvents, setSelectedEvents] = useState<string[]>(
-    (user?.slackNotificationEvents as string[]) || [
-      "interview_scheduled",
-      "offer_accepted",
-      "offer_sent",
-      "job_posted",
-      "new_application",
-    ]
-  );
+  // Fetch current Slack config from the account-scoped endpoint
+  const { data: slackConfig, isLoading: isLoadingConfig } = useQuery<SlackConfig>({
+    queryKey: ['/api/integrations/slack'],
+  });
+
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [notificationScope, setNotificationScope] = useState<"all_users" | "specific_roles">("all_users");
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [selectedEvents, setSelectedEvents] = useState<string[]>([
+    "interview_scheduled",
+    "offer_accepted",
+    "offer_sent",
+    "job_posted",
+    "new_application",
+  ]);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Load config when data arrives
+  useEffect(() => {
+    if (slackConfig) {
+      setWebhookUrl(slackConfig.webhookUrl || "");
+      setNotificationScope((slackConfig.scope as "all_users" | "specific_roles") || "all_users");
+      setSelectedRoles(slackConfig.roles || []);
+      if (slackConfig.events && slackConfig.events.length > 0) {
+        setSelectedEvents(slackConfig.events);
+      }
+    }
+  }, [slackConfig]);
 
   const handleEventToggle = (eventId: string) => {
     setSelectedEvents((prev) =>
@@ -91,19 +108,26 @@ export default function SlackConfigForm({
     setIsLoading(true);
     try {
       await onSave({
-        slackWebhookUrl: webhookUrl.trim(),
-        slackNotificationScope: notificationScope,
-        slackNotificationRoles:
-          notificationScope === "specific_roles" ? selectedRoles : undefined,
-        slackNotificationEvents: selectedEvents,
+        webhookUrl: webhookUrl.trim(),
+        scope: notificationScope,
+        roles: notificationScope === "specific_roles" ? selectedRoles : undefined,
+        events: selectedEvents,
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const isConnected = !!user?.slackWebhookUrl;
+  const isConnected = !!slackConfig?.webhookUrl;
   const canSave = webhookUrl.trim() && selectedEvents.length > 0 && (notificationScope === "all_users" || selectedRoles.length > 0);
+
+  if (isLoadingConfig) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -137,7 +161,7 @@ export default function SlackConfigForm({
       <div>
         <Label>Notification Events</Label>
         <p className="text-xs text-muted-foreground mb-3">
-          Select which events should trigger Slack notifications
+          Select which events should trigger Slack notifications for this account
         </p>
         <div className="space-y-2">
           {ALL_EVENTS.map((event) => (
@@ -162,7 +186,7 @@ export default function SlackConfigForm({
       <div>
         <Label>Notification Scope</Label>
         <p className="text-xs text-muted-foreground mb-3">
-          Choose who should receive notifications when you trigger an event
+          Choose who in this account should receive notifications
         </p>
         <RadioGroup
           value={notificationScope}
@@ -173,7 +197,7 @@ export default function SlackConfigForm({
           <div className="flex items-center space-x-2">
             <RadioGroupItem value="all_users" id="all_users" />
             <Label htmlFor="all_users" className="cursor-pointer">
-              All users in workspace (anyone with Slack connected)
+              All team members in this account
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -215,7 +239,7 @@ export default function SlackConfigForm({
             <div className="flex items-center">
               <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
               <span className="text-sm font-medium text-green-900">
-                Slack is connected
+                Slack is connected for this account
               </span>
             </div>
             <Button
@@ -250,4 +274,3 @@ export default function SlackConfigForm({
     </div>
   );
 }
-

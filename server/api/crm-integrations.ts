@@ -20,15 +20,19 @@ const updateCRMIntegrationSchema = z.object({
 });
 
 export function setupCRMIntegrationRoutes(app: Express) {
-  // Get all CRM integrations for the current user
+  // Get all CRM integrations for the current account
   app.get("/api/crm-integrations", async (req, res) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const userId = (req.user as any).id;
-      const integrations = await storage.getCRMIntegrations(userId);
+      const accountId = req.session.activeAccountId;
+      if (!accountId) {
+        return res.status(400).json({ message: "No active account selected" });
+      }
+
+      const integrations = await storage.getCRMIntegrations(accountId);
       res.json(integrations);
     } catch (error) {
       handleApiError(error, res);
@@ -42,9 +46,13 @@ export function setupCRMIntegrationRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      const accountId = req.session.activeAccountId;
+      if (!accountId) {
+        return res.status(400).json({ message: "No active account selected" });
+      }
+
       const { platformId } = req.params;
-      const userId = (req.user as any).id;
-      const integration = await storage.getPlatformIntegration(platformId, userId);
+      const integration = await storage.getPlatformIntegration(platformId, accountId);
       
       if (!integration) {
         return res.status(404).json({ message: "CRM integration not found" });
@@ -63,6 +71,11 @@ export function setupCRMIntegrationRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      const accountId = req.session.activeAccountId;
+      if (!accountId) {
+        return res.status(400).json({ message: "No active account selected" });
+      }
+
       const validationResult = createCRMIntegrationSchema.safeParse(req.body);
       if (!validationResult.success) {
         return res.status(400).json({ 
@@ -71,16 +84,16 @@ export function setupCRMIntegrationRoutes(app: Express) {
         });
       }
 
-      const userId = (req.user as any).id;
       const data = validationResult.data;
       
-      // Check if integration already exists for this user
-      const existing = await storage.getPlatformIntegration(data.platformId, userId);
+      // Check if integration already exists for this account
+      const existing = await storage.getPlatformIntegration(data.platformId, accountId);
       
       if (existing) {
         // Update existing integration
         const updated = await storage.updatePlatformIntegration(
           data.platformId,
+          accountId,
           {
             credentials: data.credentials,
             syncDirection: data.syncDirection,
@@ -93,7 +106,7 @@ export function setupCRMIntegrationRoutes(app: Express) {
 
       // Create new integration
       const integration = await storage.createPlatformIntegration({
-        userId,
+        accountId,
         platformId: data.platformId,
         platformName: data.platformName,
         platformType: "crm",
@@ -116,8 +129,12 @@ export function setupCRMIntegrationRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
+      const accountId = req.session.activeAccountId;
+      if (!accountId) {
+        return res.status(400).json({ message: "No active account selected" });
+      }
+
       const { platformId } = req.params;
-      const userId = (req.user as any).id;
       const validationResult = updateCRMIntegrationSchema.safeParse(req.body);
       
       if (!validationResult.success) {
@@ -129,13 +146,13 @@ export function setupCRMIntegrationRoutes(app: Express) {
 
       const data = validationResult.data;
 
-      // Verify the integration belongs to this user
-      const existing = await storage.getPlatformIntegration(platformId, userId);
+      // Verify the integration belongs to this account
+      const existing = await storage.getPlatformIntegration(platformId, accountId);
       if (!existing) {
         return res.status(404).json({ message: "CRM integration not found" });
       }
 
-      const updated = await storage.updatePlatformIntegration(platformId, data);
+      const updated = await storage.updatePlatformIntegration(platformId, accountId, data);
       res.json(updated);
     } catch (error) {
       handleApiError(error, res);
@@ -149,16 +166,20 @@ export function setupCRMIntegrationRoutes(app: Express) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const { platformId } = req.params;
-      const userId = (req.user as any).id;
+      const accountId = req.session.activeAccountId;
+      if (!accountId) {
+        return res.status(400).json({ message: "No active account selected" });
+      }
 
-      // Verify the integration belongs to this user
-      const existing = await storage.getPlatformIntegration(platformId, userId);
+      const { platformId } = req.params;
+
+      // Verify the integration belongs to this account
+      const existing = await storage.getPlatformIntegration(platformId, accountId);
       if (!existing) {
         return res.status(404).json({ message: "CRM integration not found" });
       }
 
-      await storage.deletePlatformIntegration(platformId);
+      await storage.deletePlatformIntegration(platformId, accountId);
       res.status(204).send();
     } catch (error) {
       handleApiError(error, res);

@@ -166,21 +166,16 @@ export default function EmailTemplates() {
     onboarding: { subject: "", body: "" }
   });
 
-  // Fetch user's email templates
-  const { data: userData, isLoading } = useQuery({
-    queryKey: ['/api/users', user?.id],
-    enabled: !!user?.id,
-    queryFn: async () => {
-      const res = await apiRequest("GET", `/api/users/${user?.id}`);
-      return await res.json();
-    }
+  // Fetch account's email templates (now account-scoped, not user-scoped)
+  const { data: emailTemplatesData, isLoading } = useQuery({
+    queryKey: ['/api/integrations/email-templates'],
+    enabled: !!user,
   });
 
-  // Load custom templates when userData is available
+  // Load custom templates when data is available
   useEffect(() => {
-    if (userData) {
-      // Load custom templates if they exist
-      const emailTemplates = (userData as any)?.emailTemplates || {};
+    if (emailTemplatesData) {
+      const emailTemplates = emailTemplatesData as Record<string, { subject: string; body: string }> || {};
       const loadedTemplates: Record<EmailTemplateType, { subject: string; body: string }> = {
         interview: {
           subject: emailTemplates.interview?.subject || "",
@@ -209,14 +204,14 @@ export default function EmailTemplates() {
       };
       setTemplates(loadedTemplates);
     }
-  }, [userData]);
+  }, [emailTemplatesData]);
 
   const saveTemplateMutation = useMutation({
     mutationFn: async (type: EmailTemplateType) => {
       const template = templates[type];
       
       // Get current email templates
-      const currentTemplates = (userData as any)?.emailTemplates || {};
+      const currentTemplates = emailTemplatesData as Record<string, { subject: string; body: string }> || {};
       
       // Update the specific template type
       const updatedTemplates = {
@@ -227,9 +222,7 @@ export default function EmailTemplates() {
         }
       };
 
-      const res = await apiRequest("PATCH", `/api/users/${user?.id}`, {
-        emailTemplates: updatedTemplates
-      });
+      const res = await apiRequest("POST", `/api/integrations/email-templates`, updatedTemplates);
       return await res.json();
     },
     onSuccess: () => {
@@ -237,7 +230,7 @@ export default function EmailTemplates() {
         title: "Template saved",
         description: "Your email template has been saved successfully.",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/users', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/integrations/email-templates'] });
     },
     onError: (error: Error) => {
       toast({

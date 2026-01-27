@@ -71,6 +71,26 @@ export default function Integrations() {
     enabled: !!user && (googleCalendarStatus?.connected || false),
   });
 
+  // Fetch Slack config (now account-scoped)
+  const { data: slackConfig, refetch: refetchSlackConfig } = useQuery<{
+    webhookUrl: string;
+    scope: string;
+    roles: string[];
+    events: string[];
+  }>({
+    queryKey: ['/api/integrations/slack'],
+    enabled: !!user,
+  });
+
+  // Fetch OpenRouter config (now account-scoped)
+  const { data: openRouterConfig, refetch: refetchOpenRouter } = useQuery<{
+    configured: boolean;
+    maskedKey: string | null;
+  }>({
+    queryKey: ['/api/integrations/openrouter'],
+    enabled: !!user,
+  });
+
   // Get full integration details for settings dialog
   const getIntegrationForPlatform = (platformId: string) => {
     return (crmIntegrations as any[]).find((i) => i.platformId === platformId);
@@ -281,23 +301,21 @@ export default function Integrations() {
     },
   });
 
-  // Update OpenRouter API key mutation
+  // Update OpenRouter API key mutation (now account-scoped)
   const updateOpenRouterMutation = useMutation({
     mutationFn: async (apiKey: string) => {
-      const res = await apiRequest("PATCH", `/api/users/${user?.id}`, {
-        openRouterApiKey: apiKey,
+      const res = await apiRequest("POST", `/api/integrations/openrouter`, {
+        apiKey,
       });
       return await res.json();
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/integrations/openrouter'] });
       toast({
         title: "OpenRouter API key saved",
         description: "AI features are now enabled.",
       });
       setSelectedIntegration(null);
-      // Refresh page to get updated user data
-      setTimeout(() => window.location.reload(), 500);
     },
     onError: (error: Error) => {
       toast({
@@ -322,7 +340,7 @@ export default function Integrations() {
       name: "OpenRouter AI",
       description: "Enable AI-powered resume parsing and candidate matching. Uses Google Gemini for intelligent candidate analysis.",
       category: "ai",
-      connected: !!user?.openRouterApiKey,
+      connected: openRouterConfig?.configured || false,
     },
     {
       id: "google-sheets",
@@ -350,7 +368,7 @@ export default function Integrations() {
       name: "Slack",
       description: "Get real-time notifications in Slack for interviews, offers, job postings, and new applications.",
       category: "notification",
-      connected: !!user?.slackWebhookUrl,
+      connected: !!slackConfig?.webhookUrl,
     },
     {
       id: "gmail",
@@ -571,7 +589,7 @@ export default function Integrations() {
               </DialogDescription>
             </DialogHeader>
             <OpenRouterConfigForm
-              currentApiKey={user?.openRouterApiKey || undefined}
+              currentApiKey={openRouterConfig?.configured ? openRouterConfig.maskedKey || "configured" : undefined}
               onSave={(apiKey) => updateOpenRouterMutation.mutate(apiKey)}
               onRemove={() => updateOpenRouterMutation.mutate("")}
               isLoading={updateOpenRouterMutation.isPending}
@@ -731,35 +749,37 @@ export default function Integrations() {
               </DialogDescription>
             </DialogHeader>
             <SlackConfigForm
-              user={user}
               onSave={async (data) => {
-                const res = await apiRequest("PATCH", `/api/users/${user?.id}`, data);
+                const res = await apiRequest("POST", `/api/integrations/slack`, {
+                  webhookUrl: data.webhookUrl,
+                  scope: data.scope,
+                  roles: data.roles || [],
+                  events: data.events,
+                });
                 await res.json();
-                queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+                queryClient.invalidateQueries({ queryKey: ['/api/integrations/slack'] });
                 toast({
                   title: "Slack settings saved",
-                  description: "Your Slack integration has been configured.",
+                  description: "Your Slack integration has been configured for this account.",
                 });
                 setShowSlackDialog(false);
                 setSelectedIntegration(null);
-                setTimeout(() => window.location.reload(), 500);
               }}
               onRemove={async () => {
-                const res = await apiRequest("PATCH", `/api/users/${user?.id}`, {
-                  slackWebhookUrl: null,
-                  slackNotificationScope: null,
-                  slackNotificationRoles: null,
-                  slackNotificationEvents: null,
+                const res = await apiRequest("POST", `/api/integrations/slack`, {
+                  webhookUrl: "",
+                  scope: "all_users",
+                  roles: [],
+                  events: [],
                 });
                 await res.json();
-                queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+                queryClient.invalidateQueries({ queryKey: ['/api/integrations/slack'] });
                 toast({
                   title: "Slack disconnected",
-                  description: "Your Slack integration has been removed.",
+                  description: "Your Slack integration has been removed from this account.",
                 });
                 setShowSlackDialog(false);
                 setSelectedIntegration(null);
-                setTimeout(() => window.location.reload(), 500);
               }}
               onCancel={() => {
                 setShowSlackDialog(false);

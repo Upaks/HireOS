@@ -272,9 +272,22 @@ export function setupAuth(app: Express) {
     // Remove password from response
     const { password, ...userWithoutPassword } = req.user as SelectUser;
     
+    // Ensure activeAccountId is set in session (handles users who logged in before multi-tenancy)
+    let activeAccountId: number | undefined = req.session.activeAccountId;
+    if (!activeAccountId) {
+      const fetchedAccountId = await storage.getUserAccountId(userWithoutPassword.id);
+      activeAccountId = fetchedAccountId ?? undefined;
+      if (activeAccountId) {
+        req.session.activeAccountId = activeAccountId;
+        // Persist to session store
+        req.session.save((err) => {
+          if (err) console.error("Failed to save session:", err);
+        });
+      }
+    }
+    
     // Get the account-scoped role for the active account
     const accountRole = await getUserRoleForActiveAccount(req);
-    const activeAccountId = req.session.activeAccountId || await storage.getUserAccountId(userWithoutPassword.id);
     
     res.json({
       ...userWithoutPassword,

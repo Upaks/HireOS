@@ -114,15 +114,15 @@ export function setupCandidateRoutes(app: Express) {
           }
         }
 
-        // Auto-parse resume if URL is provided and user has OpenRouter API key
-        if (userId && candidate.resumeUrl) {
+        // Auto-parse resume if URL is provided and account has OpenRouter API key
+        if (accountId && candidate.resumeUrl) {
           try {
-            const user = await storage.getUser(userId);
-            if (user?.openRouterApiKey) {
+            const openRouterKey = await storage.getOpenRouterApiKey(accountId);
+            if (openRouterKey) {
               // Parse resume in background (don't block the response)
               import('./resume-parser').then(async ({ parseResume }) => {
                 try {
-                  const parsedData = await parseResume(candidate.resumeUrl!, user.openRouterApiKey!);
+                  const parsedData = await parseResume(candidate.resumeUrl!, openRouterKey);
                   const updates: any = {
                     parsedResumeData: parsedData,
                   };
@@ -163,7 +163,7 @@ export function setupCandidateRoutes(app: Express) {
                             department: job.department,
                             description: job.description,
                           },
-                          user.openRouterApiKey!
+                          openRouterKey
                         );
                         await storage.updateCandidate(candidate.id, accountId, { matchScore: matchResult.score });
                       }
@@ -452,84 +452,81 @@ export function setupCandidateRoutes(app: Express) {
         updateData,
       );
 
-      // Auto-parse resume if resumeUrl was just added/updated and user has OpenRouter API key
-      const userId = (req.user as any)?.id;
-      if (userId && req.body.resumeUrl && req.body.resumeUrl !== candidate.resumeUrl) {
-        try {
-          const user = await storage.getUser(userId);
-          if (user?.openRouterApiKey) {
-            // Parse resume in background (don't block the response)
-            import('./resume-parser').then(async ({ parseResume }) => {
-              try {
-                const parsedData = await parseResume(req.body.resumeUrl, user.openRouterApiKey!);
-                const updates: any = {
-                  parsedResumeData: parsedData,
-                };
-                
-                // Auto-fill empty fields (don't overwrite existing data)
-                if (parsedData.phone && !updatedCandidate.phone) {
-                  updates.phone = parsedData.phone;
-                }
-                if (parsedData.location && !updatedCandidate.location) {
-                  updates.location = parsedData.location;
-                }
-                if (parsedData.skills && parsedData.skills.length > 0) {
-                  // Merge with existing skills if any
-                  const existingSkills = Array.isArray(updatedCandidate.skills) ? updatedCandidate.skills : [];
-                  const skillsSet = new Set([...existingSkills, ...parsedData.skills]);
-                  updates.skills = Array.from(skillsSet);
-                }
-                if (parsedData.experienceYears && !updatedCandidate.experienceYears) {
-                  updates.experienceYears = parsedData.experienceYears;
-                }
-                
-                await storage.updateCandidate(updatedCandidate.id, accountId, updates);
-                
-                // Auto-calculate match score if jobId exists
-                if (updatedCandidate.jobId) {
-                  try {
-                    const { calculateMatchScore } = await import('./ai-matching');
-                    const job = await storage.getJob(updatedCandidate.jobId, accountId);
-                    if (job) {
-                      const finalCandidate = await storage.getCandidate(updatedCandidate.id, accountId);
-                      const matchResult = await calculateMatchScore(
-                        {
-                          name: finalCandidate!.name,
-                          skills: finalCandidate!.skills as string[] | null,
-                          experienceYears: finalCandidate!.experienceYears,
-                          parsedResumeData: parsedData,
-                          applicationData: finalCandidate!.applicationData,
-                        },
-                        {
-                          title: job.title,
-                          skills: job.skills,
-                          type: job.type,
-                          department: job.department,
-                          description: job.description,
-                        },
-                        user.openRouterApiKey!
-                      );
-                      await storage.updateCandidate(updatedCandidate.id, accountId, { matchScore: matchResult.score });
-                    }
-                  } catch (matchError) {
-                    console.error("Error auto-calculating match score:", matchError);
-                  }
-                }
-              } catch (parseError) {
-                console.error("Error auto-parsing resume:", parseError);
+      // Auto-parse resume if resumeUrl was just added/updated and account has OpenRouter API key
+      if (req.body.resumeUrl && req.body.resumeUrl !== candidate.resumeUrl) {
+        // Get account's OpenRouter API key (account-scoped)
+        const apiKey = await storage.getOpenRouterApiKey(accountId);
+        if (apiKey) {
+          // Parse resume in background (don't block the response)
+          import('./resume-parser').then(async ({ parseResume }) => {
+            try {
+              const parsedData = await parseResume(req.body.resumeUrl, apiKey);
+              const updates: any = {
+                parsedResumeData: parsedData,
+              };
+              
+              // Auto-fill empty fields (don't overwrite existing data)
+              if (parsedData.phone && !updatedCandidate.phone) {
+                updates.phone = parsedData.phone;
               }
-            });
-          }
-        } catch (error) {
-          console.error("Error setting up auto-parse:", error);
+              if (parsedData.location && !updatedCandidate.location) {
+                updates.location = parsedData.location;
+              }
+              if (parsedData.skills && parsedData.skills.length > 0) {
+                // Merge with existing skills if any
+                const existingSkills = Array.isArray(updatedCandidate.skills) ? updatedCandidate.skills : [];
+                const skillsSet = new Set([...existingSkills, ...parsedData.skills]);
+                updates.skills = Array.from(skillsSet);
+              }
+              if (parsedData.experienceYears && !updatedCandidate.experienceYears) {
+                updates.experienceYears = parsedData.experienceYears;
+              }
+              
+              await storage.updateCandidate(updatedCandidate.id, accountId, updates);
+              
+              // Auto-calculate match score if jobId exists
+              if (updatedCandidate.jobId) {
+                try {
+                  const { calculateMatchScore } = await import('./ai-matching');
+                  const job = await storage.getJob(updatedCandidate.jobId, accountId);
+                  if (job) {
+                    const finalCandidate = await storage.getCandidate(updatedCandidate.id, accountId);
+                    const matchResult = await calculateMatchScore(
+                      {
+                        name: finalCandidate!.name,
+                        skills: finalCandidate!.skills as string[] | null,
+                        experienceYears: finalCandidate!.experienceYears,
+                        parsedResumeData: parsedData,
+                        applicationData: finalCandidate!.applicationData,
+                      },
+                      {
+                        title: job.title,
+                        skills: job.skills,
+                        type: job.type,
+                        department: job.department,
+                        description: job.description,
+                      },
+                      apiKey
+                    );
+                    await storage.updateCandidate(updatedCandidate.id, accountId, { matchScore: matchResult.score });
+                  }
+                } catch (matchError) {
+                  console.error("Error auto-calculating match score:", matchError);
+                }
+              }
+            } catch (parseError) {
+              console.error("Error auto-parsing resume:", parseError);
+            }
+          });
         }
       }
 
-      // Sync to connected CRMs (Airtable, GHL, etc.)
-      if (userId) {
+      // Sync to connected CRMs (Airtable, GHL, etc.) - now account-scoped
+      const userId = (req.user as any)?.id;
+      if (accountId) {
         try {
-          // Get all connected CRM integrations for this user
-          const crmIntegrations = await storage.getCRMIntegrations(userId);
+          // Get all connected CRM integrations for this account
+          const crmIntegrations = await storage.getCRMIntegrations(accountId);
           
           for (const integration of crmIntegrations) {
             if (!integration.isEnabled || integration.status !== 'connected') {
@@ -893,9 +890,9 @@ export function setupCandidateRoutes(app: Express) {
       {{companyName}}</p>
       `;
       
-      // Use user's custom template or default (from emailTemplates JSONB)
-      const userTemplates = (user as any).emailTemplates || {};
-      const interviewTemplate = userTemplates.interview || {};
+      // Use account's custom template or default (account-scoped)
+      const accountTemplates = accountId ? await storage.getEmailTemplates(accountId) || {} : {};
+      const interviewTemplate = accountTemplates.interview || {};
       const subjectTemplate = interviewTemplate.subject || defaultSubject;
       const bodyTemplate = interviewTemplate.body || defaultBody;
       
@@ -1065,9 +1062,10 @@ export function setupCandidateRoutes(app: Express) {
       {{companyName}}</p>
       `;
       
-      // Use user's custom template or default (from emailTemplates JSONB)
-      const userTemplates = (user as any)?.emailTemplates || {};
-      const talentPoolTemplate = userTemplates.talentPool || userTemplates.talent_pool || {};
+      // Use account's custom template or default (account-scoped)
+      const accountIdForTemplate = await getActiveAccountId(req);
+      const accountTemplatesForTalentPool = accountIdForTemplate ? await storage.getEmailTemplates(accountIdForTemplate) || {} : {};
+      const talentPoolTemplate = accountTemplatesForTalentPool.talentPool || accountTemplatesForTalentPool.talent_pool || {};
       const subjectTemplate = talentPoolTemplate.subject || defaultSubject;
       const bodyTemplate = talentPoolTemplate.body || defaultBody;
       
@@ -1204,9 +1202,10 @@ export function setupCandidateRoutes(app: Express) {
       {{companyName}}</p>
       `;
       
-      // Use user's custom template or default (from emailTemplates JSONB)
-      const userTemplates = (user as any)?.emailTemplates || {};
-      const rejectionTemplate = userTemplates.rejection || userTemplates.reject || {};
+      // Use account's custom template or default (account-scoped)
+      const accountIdForRejection = await getActiveAccountId(req);
+      const accountTemplatesForRejection = accountIdForRejection ? await storage.getEmailTemplates(accountIdForRejection) || {} : {};
+      const rejectionTemplate = accountTemplatesForRejection.rejection || accountTemplatesForRejection.reject || {};
       const subjectTemplate = rejectionTemplate.subject || defaultSubject;
       const bodyTemplate = rejectionTemplate.body || defaultBody;
       
@@ -1405,9 +1404,10 @@ export function setupCandidateRoutes(app: Express) {
           {{companyName}}</p>
           `;
           
-          // Use user's custom template or default (from emailTemplates JSONB)
-          const userTemplates = (user as any)?.emailTemplates || {};
-          const offerTemplate = userTemplates.offer || {};
+          // Use account's custom template or default (account-scoped)
+          const accountIdForOffer = await getActiveAccountId(req);
+          const accountTemplatesForOffer = accountIdForOffer ? await storage.getEmailTemplates(accountIdForOffer) || {} : {};
+          const offerTemplate = accountTemplatesForOffer.offer || {};
           const subjectTemplate = offerTemplate.subject || defaultSubject;
           const bodyTemplate = offerTemplate.body || defaultBody;
           
@@ -1700,9 +1700,10 @@ export function setupCandidateRoutes(app: Express) {
         {{companyName}}</p>
         `;
 
-        // Use user's custom onboarding template or default
-        const userTemplates = (approvingUser as any)?.emailTemplates || {};
-        const onboardingTemplate = userTemplates.onboarding || {};
+        // Use account's custom onboarding template or default (account-scoped)
+        const accountIdForOnboarding = await getActiveAccountId(req);
+        const accountTemplatesForOnboarding = accountIdForOnboarding ? await storage.getEmailTemplates(accountIdForOnboarding) || {} : {};
+        const onboardingTemplate = accountTemplatesForOnboarding.onboarding || {};
         const onboardingSubjectTemplate = onboardingTemplate.subject || defaultOnboardingSubject;
         const onboardingBodyTemplate = onboardingTemplate.body || defaultOnboardingBody;
 

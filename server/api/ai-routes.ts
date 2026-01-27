@@ -21,25 +21,21 @@ export function setupAIRoutes(app: Express) {
         return res.status(400).json({ message: "resumeUrl is required" });
       }
 
-      // Get user's OpenRouter API key
-      const userId = (req.user as any)?.id;
-      if (!userId) {
-        return res.status(401).json({ message: "User not authenticated" });
+      // Get account's OpenRouter API key
+      const accountId = req.session.activeAccountId;
+      if (!accountId) {
+        return res.status(400).json({ message: "No active account selected" });
       }
 
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      if (!user.openRouterApiKey) {
+      const apiKey = await storage.getOpenRouterApiKey(accountId);
+      if (!apiKey) {
         return res.status(400).json({ 
-          message: "OpenRouter API key not configured. Please add your API key in Settings." 
+          message: "OpenRouter API key not configured. Please add your API key in Integrations." 
         });
       }
 
       // Parse the resume
-      const parsedData = await parseResume(resumeUrl, user.openRouterApiKey);
+      const parsedData = await parseResume(resumeUrl, apiKey);
 
       // If candidateId is provided, update the candidate with parsed data
       if (candidateId) {
@@ -74,7 +70,7 @@ export function setupAIRoutes(app: Express) {
         // Auto-calculate match score if jobId exists
         if (candidate.jobId) {
           try {
-            const job = await storage.getJob(candidate.jobId);
+            const job = await storage.getJob(candidate.jobId, accountId);
             if (job) {
               const updatedCandidate = await storage.getCandidate(candidateId);
               const matchResult = await calculateMatchScore(
@@ -92,7 +88,7 @@ export function setupAIRoutes(app: Express) {
                   department: job.department,
                   description: job.description,
                 },
-                user.openRouterApiKey!
+                apiKey
               );
               await storage.updateCandidate(candidateId, { matchScore: matchResult.score });
             }
@@ -126,20 +122,16 @@ export function setupAIRoutes(app: Express) {
         return res.status(400).json({ message: "candidateId and jobId are required" });
       }
 
-      // Get user's OpenRouter API key
-      const userId = (req.user as any)?.id;
-      if (!userId) {
-        return res.status(401).json({ message: "User not authenticated" });
+      // Get account's OpenRouter API key
+      const accountId = req.session.activeAccountId;
+      if (!accountId) {
+        return res.status(400).json({ message: "No active account selected" });
       }
 
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      if (!user.openRouterApiKey) {
+      const apiKey = await storage.getOpenRouterApiKey(accountId);
+      if (!apiKey) {
         return res.status(400).json({ 
-          message: "OpenRouter API key not configured. Please add your API key in Settings." 
+          message: "OpenRouter API key not configured. Please add your API key in Integrations." 
         });
       }
 
@@ -149,7 +141,7 @@ export function setupAIRoutes(app: Express) {
         return res.status(404).json({ message: "Candidate not found" });
       }
 
-      const job = await storage.getJob(jobId);
+      const job = await storage.getJob(jobId, accountId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
@@ -176,7 +168,7 @@ export function setupAIRoutes(app: Express) {
       const matchResult = await calculateMatchScore(
         candidateData,
         jobRequirements,
-        user.openRouterApiKey
+        apiKey
       );
 
       // Update candidate with match score
@@ -205,28 +197,21 @@ export function setupAIRoutes(app: Express) {
         return res.status(400).json({ message: "Invalid job ID" });
       }
 
-      // Get user's OpenRouter API key
-      const userId = (req.user as any)?.id;
-      if (!userId) {
-        return res.status(401).json({ message: "User not authenticated" });
+      // Get account's OpenRouter API key
+      const accountId = req.session.activeAccountId;
+      if (!accountId) {
+        return res.status(400).json({ message: "No active account selected" });
       }
 
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      if (!user.openRouterApiKey) {
+      const apiKey = await storage.getOpenRouterApiKey(accountId);
+      if (!apiKey) {
         return res.status(400).json({ 
-          message: "OpenRouter API key not configured. Please add your API key in Settings." 
+          message: "OpenRouter API key not configured. Please add your API key in Integrations." 
         });
       }
 
-      // Store API key in const so TypeScript knows it's not null
-      const apiKey = user.openRouterApiKey;
-
       // Get job
-      const job = await storage.getJob(jobId);
+      const job = await storage.getJob(jobId, accountId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
@@ -295,4 +280,3 @@ export function setupAIRoutes(app: Express) {
     }
   });
 }
-

@@ -34,15 +34,15 @@ const createWorkflowSchema = z.object({
 const updateWorkflowSchema = createWorkflowSchema.partial();
 
 export function setupWorkflowRoutes(app: Express) {
-  // Get user email templates
+  // Get account email templates (account-scoped)
   app.get("/api/workflows/email-templates", async (req, res) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const user = await storage.getUser(req.user.id);
-      const userTemplates = (user as any)?.emailTemplates || {};
+      const accountId = req.session.activeAccountId;
+      const accountTemplates = accountId ? await storage.getEmailTemplates(accountId) || {} : {};
       
       // Default templates that should always be available
       const defaultTemplates: Record<string, { subject: string; body: string }> = {
@@ -64,8 +64,8 @@ export function setupWorkflowRoutes(app: Express) {
         },
       };
 
-      // Merge user templates with defaults (user templates override defaults)
-      const allTemplates = { ...defaultTemplates, ...userTemplates };
+      // Merge account templates with defaults (account templates override defaults)
+      const allTemplates = { ...defaultTemplates, ...accountTemplates };
       
       // Return templates in a format that's easy to use
       const templateList = Object.keys(allTemplates).map((key) => {
