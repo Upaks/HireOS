@@ -1765,7 +1765,7 @@ export default function LandingPage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="border-white/20 text-white hover:bg-white/5 hover:border-white/30 h-14 text-base font-semibold px-8"
+                  className="border-gray-900 text-gray-900 dark:border-white/20 dark:text-white hover:bg-black hover:text-white dark:hover:bg-white/5 h-14 text-base font-semibold px-8"
                   onClick={() => scrollToSection("features")}
                 >
                   <Play className="mr-2 h-5 w-5" />
