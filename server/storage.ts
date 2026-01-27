@@ -74,6 +74,7 @@ export interface IStorage {
   createJob(job: InsertJob & { description: string, hiPeopleLink?: string, suggestedTitle?: string, accountId: number }): Promise<Job>;
   getJob(id: number, accountId: number): Promise<Job | undefined>;
   getJobs(accountId: number, status?: string): Promise<Job[]>;
+  getJobsByFormTemplateId(formTemplateId: number, accountId: number): Promise<Job[]>;
   updateJob(id: number, accountId: number, data: Partial<Job>): Promise<Job>;
   
   // Job platform operations
@@ -99,6 +100,7 @@ export interface IStorage {
   getFormTemplates(accountId: number): Promise<FormTemplate[]>;
   getFormTemplate(id: number, accountId: number): Promise<FormTemplate | undefined>;
   getDefaultFormTemplate(accountId: number): Promise<FormTemplate | undefined>;
+  getFormTemplateResponses(formTemplateId: number, accountId: number): Promise<{ candidate: Candidate; jobTitle: string }[]>;
   createFormTemplate(template: InsertFormTemplate & { accountId: number }): Promise<FormTemplate>;
   updateFormTemplate(id: number, accountId: number, data: Partial<FormTemplate>): Promise<FormTemplate>;
   deleteFormTemplate(id: number, accountId: number): Promise<void>;
@@ -497,6 +499,35 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(jobs)
       .where(and(...conditions));
+  }
+
+  async getJobsByFormTemplateId(formTemplateId: number, accountId: number): Promise<Job[]> {
+    return await db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.formTemplateId, formTemplateId), eq(jobs.accountId, accountId)));
+  }
+
+  async getFormTemplateResponses(
+    formTemplateId: number,
+    accountId: number
+  ): Promise<{ candidate: Candidate; jobTitle: string }[]> {
+    const rows = await db
+      .select({
+        candidate: candidates,
+        jobTitle: jobs.title,
+      })
+      .from(candidates)
+      .innerJoin(jobs, eq(candidates.jobId, jobs.id))
+      .where(
+        and(
+          eq(jobs.formTemplateId, formTemplateId),
+          eq(jobs.accountId, accountId),
+          eq(candidates.accountId, accountId)
+        )
+      )
+      .orderBy(desc(candidates.createdAt));
+    return rows.map((r) => ({ candidate: r.candidate, jobTitle: r.jobTitle }));
   }
 
   async updateJob(id: number, accountId: number, data: Partial<Job>): Promise<Job> {

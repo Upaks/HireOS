@@ -15,7 +15,8 @@
     "db:migrate:calendly": "node scripts/run-calendly-migration.js",
     "db:migrate:ai": "node scripts/run-ai-migration.js",
     "db:migrate:slack": "node scripts/run-slack-migration.js",
-    "db:migrate:comments": "node scripts/run-comments-migration.js"
+    "db:migrate:comments": "node scripts/run-comments-migration.js",
+    "db:migrate:forms": "node scripts/run-forms-settings-migration.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

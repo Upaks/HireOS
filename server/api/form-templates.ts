@@ -15,7 +15,8 @@ const fieldSchema = z.object({
   description: z.string().optional(),
   placeholder: z.string().optional(),
   required: z.boolean().default(false),
-  options: z.array(z.string()).optional(), // For select, multiselect, radio, checkbox fields
+  defaultValue: z.string().optional(),
+  options: z.array(z.string()).optional(),
   validation: z.object({
     min: z.number().optional(),
     max: z.number().optional(),
@@ -30,15 +31,36 @@ const fieldSchema = z.object({
     max: z.number().optional(),
     step: z.number().optional(),
     rows: z.number().optional(),
+    width: z.enum(["full", "half"]).optional(),
+    showWhen: z.object({
+      fieldId: z.string(),
+      operator: z.enum(["equals", "notEquals", "contains", "empty"]),
+      value: z.string().optional(),
+    }).optional(),
   }).optional(),
 });
 
-// Validation schemas
+const formSettingsSchema = z.object({
+  allowAttachments: z.boolean().optional(),
+  allowComments: z.boolean().optional(),
+  successMessage: z.string().optional(),
+  redirectUrl: z.string().optional(),
+  expiryDate: z.string().optional(),
+  submissionLimit: z.number().int().positive().optional().nullable(),
+  notifyOnSubmit: z.boolean().optional(),
+  themePreset: z.enum(["default", "minimal", "professional", "warm"]).optional(),
+  accentColor: z.string().optional(),
+  colorMode: z.enum(["light", "dark", "system"]).optional(),
+  fontFamily: z.enum(["system", "serif", "sans", "mono"]).optional(),
+  borderRadius: z.enum(["sharp", "default", "rounded"]).optional(),
+}).optional();
+
 const createFormTemplateSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   fields: z.array(fieldSchema).min(1),
   isDefault: z.boolean().optional().default(false),
+  settings: formSettingsSchema,
 });
 
 const updateFormTemplateSchema = z.object({
@@ -46,6 +68,7 @@ const updateFormTemplateSchema = z.object({
   description: z.string().optional(),
   fields: z.array(fieldSchema).optional(),
   isDefault: z.boolean().optional(),
+  settings: formSettingsSchema,
 });
 
 export function setupFormTemplateRoutes(app: Express) {
@@ -79,6 +102,88 @@ export function setupFormTemplateRoutes(app: Express) {
       // This endpoint might need to be updated to accept jobId and look up accountId
       // For now, return error requiring authentication or accept accountId as query param
       return res.status(401).json({ message: "Authentication required for default template" });
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+
+  // Get jobs using this form template (for "Used by" / linked jobs)
+  app.get("/api/form-templates/:id/jobs", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await getActiveAccountId(req);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid template ID" });
+      }
+      const template = await storage.getFormTemplate(id, accountId);
+      if (!template) {
+        return res.status(404).json({ message: "Form template not found" });
+      }
+      const jobs = await storage.getJobsByFormTemplateId(id, accountId);
+      res.json(jobs);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+
+  // Get form responses (submissions = candidates from jobs using this form)
+  app.get("/api/form-templates/:id/responses", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await getActiveAccountId(req);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid template ID" });
+      }
+      const template = await storage.getFormTemplate(id, accountId);
+      if (!template) {
+        return res.status(404).json({ message: "Form template not found" });
+      }
+      const responses = await storage.getFormTemplateResponses(id, accountId);
+      res.json(responses);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+  });
+
+  // Duplicate a form template
+  app.post("/api/form-templates/:id/duplicate", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const accountId = await getActiveAccountId(req);
+      if (!accountId) {
+        return res.status(400).json({ message: "User is not associated with any account" });
+      }
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid template ID" });
+      }
+      const source = await storage.getFormTemplate(id, accountId);
+      if (!source) {
+        return res.status(404).json({ message: "Form template not found" });
+      }
+      const duplicate = await storage.createFormTemplate({
+        accountId,
+        name: `${source.name} (Copy)`,
+        description: source.description ?? undefined,
+        fields: source.fields as any,
+        isDefault: false,
+        settings: (source as any).settings ?? {},
+      });
+      res.status(201).json(duplicate);
     } catch (error) {
       handleApiError(error, res);
     }

@@ -162,6 +162,7 @@ export const formTemplates = pgTable("form_templates", {
   description: text("description"),
   fields: jsonb("fields").notNull(), // Array of field definitions
   isDefault: boolean("is_default").default(false).notNull(),
+  settings: jsonb("settings").default({}), // allowAttachments, allowComments, successMessage, redirectUrl, expiryDate, submissionLimit, notifyOnSubmit
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

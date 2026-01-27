@@ -11,7 +11,6 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Job } from '@/types';
@@ -144,8 +143,8 @@ export default function JobAssignmentModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="shrink-0 px-6 pt-6 pb-4 pr-10">
           <DialogTitle>Assign Jobs to New Candidates</DialogTitle>
           <DialogDescription>
             Select which candidates to import and assign them to job postings. Each candidate must be assigned to a job. Unselected candidates will be skipped.
@@ -157,10 +156,10 @@ export default function JobAssignmentModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {/* Bulk Actions */}
           {candidates.length > 0 && (
-            <div className="flex items-center justify-between p-4 border-b bg-slate-50 dark:bg-slate-900">
+            <div className="shrink-0 flex items-center justify-between p-4 border-b bg-slate-50 dark:bg-slate-900">
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -197,8 +196,8 @@ export default function JobAssignmentModal({
             </div>
           )}
 
-          {/* Candidates List */}
-          <ScrollArea className="flex-1">
+          {/* Candidates List - scrollable */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="space-y-2 p-4">
               {candidates.map((candidate) => {
                 const isSelected = selectedCandidates.has(candidate.contactId);
@@ -243,10 +242,10 @@ export default function JobAssignmentModal({
                 );
               })}
             </div>
-          </ScrollArea>
+          </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0 px-6 pb-6 pt-4 border-t">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}

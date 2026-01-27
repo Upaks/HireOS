@@ -20,6 +20,8 @@ import Settings from "@/pages/settings";
 import AdminPage from "@/pages/admin";
 import CRMSyncPage from "@/pages/crm-sync";
 import Forms from "@/pages/forms";
+import FormBuilderPage from "@/pages/form-builder-page";
+import FormResponsesPage from "@/pages/form-responses-page";
 import ApplyPage from "@/pages/apply";
 import AcceptOfferPage from "@/pages/accept-offer";
 import AcceptInvitePage from "@/pages/accept-invite";
@@ -61,10 +63,26 @@ function Router() {
       {/* Interview grading for all authenticated users */}
       <ProtectedRoute path="/interviews/:id" component={InterviewGrading} />
       
-      {/* Forms page - accessible to all authenticated users */}
+      {/* Forms page - list */}
       <ProtectedRoute 
         path="/forms" 
         component={Forms}
+        roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]}
+      />
+      {/* Form builder - full width, no sidebar */}
+      <ProtectedRoute 
+        path="/forms/new" 
+        component={FormBuilderPage}
+        roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]}
+      />
+      <ProtectedRoute 
+        path="/forms/:id/edit" 
+        component={FormBuilderPage}
+        roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]}
+      />
+      <ProtectedRoute 
+        path="/forms/:id/responses" 
+        component={FormResponsesPage}
         roles={[UserRoles.HIRING_MANAGER, UserRoles.PROJECT_MANAGER, UserRoles.COO, UserRoles.CEO, UserRoles.DIRECTOR, UserRoles.ADMIN]}
       />
       

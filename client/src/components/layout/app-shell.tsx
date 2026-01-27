@@ -13,8 +13,12 @@ export default function AppShell({ children, hideSidebar }: AppShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [location] = useLocation();
   
-  // Hide sidebar for workflow builder
-  const shouldHideSidebar = hideSidebar || location.includes("/workflows/new") || location.includes("/workflows/") && location.includes("/edit");
+  // Hide sidebar for workflow builder and form builder (full-width pages)
+  const shouldHideSidebar = hideSidebar 
+    || location.includes("/workflows/new") 
+    || (location.includes("/workflows/") && location.includes("/edit"))
+    || location === "/forms/new"
+    || (location.includes("/forms/") && location.includes("/edit"));
 
   return (
     <div className="flex h-screen overflow-hidden">

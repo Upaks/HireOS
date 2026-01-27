@@ -89,6 +89,7 @@ export interface FormField {
   description?: string;
   placeholder?: string;
   required: boolean;
+  defaultValue?: string;
   options?: string[]; // For select, multiselect, radio, checkbox
   validation?: {
     min?: number;
@@ -98,12 +99,14 @@ export interface FormField {
     pattern?: string;
   };
   settings?: {
-    allowMultiple?: boolean; // For file uploads
-    accept?: string; // For file uploads (e.g., "image/*,application/pdf")
-    min?: number; // For rating/scale
-    max?: number; // For rating/scale
-    step?: number; // For scale
-    rows?: number; // For textarea
+    allowMultiple?: boolean;
+    accept?: string;
+    min?: number;
+    max?: number;
+    step?: number;
+    rows?: number;
+    width?: "full" | "half";
+    showWhen?: { fieldId: string; operator: "equals" | "notEquals" | "contains" | "empty"; value?: string };
   };
 }
 
@@ -113,6 +116,7 @@ export interface FormTemplate {
   description?: string;
   fields: FormField[];
   isDefault: boolean;
+  settings?: Record<string, unknown>;
 }
 
 const DEFAULT_FIELDS: FormField[] = [
@@ -149,7 +153,7 @@ const DEFAULT_FIELDS: FormField[] = [
   },
 ];
 
-const FIELD_TYPE_ICONS: Record<FieldType, React.ReactNode> = {
+export const FIELD_TYPE_ICONS: Record<FieldType, React.ReactNode> = {
   text: <Type className="h-4 w-4" />,
   email: <Mail className="h-4 w-4" />,
   phone: <Phone className="h-4 w-4" />,
@@ -170,7 +174,7 @@ const FIELD_TYPE_ICONS: Record<FieldType, React.ReactNode> = {
   pagebreak: <FileText className="h-4 w-4" />,
 };
 
-const FIELD_TYPE_LABELS: Record<FieldType, string> = {
+export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   text: "Short Text",
   email: "Email",
   phone: "Phone",
@@ -813,8 +817,27 @@ function SortableFieldItem({
   );
 }
 
-// Form Preview Component
-function FormPreview({ fields }: { fields: FormField[] }) {
+// Theme options applied in form preview (and optionally on apply page)
+export type FormPreviewTheme = {
+  themePreset?: "default" | "minimal" | "professional" | "warm";
+  accentColor?: string;
+  colorMode?: "light" | "dark" | "system";
+  fontFamily?: "system" | "serif" | "sans" | "mono";
+  borderRadius?: "sharp" | "default" | "rounded";
+};
+
+// Form Preview Component (exported for form-builder-page preview modal)
+export function FormPreview({
+  fields,
+  name,
+  description,
+  theme,
+}: {
+  fields: FormField[];
+  name?: string;
+  description?: string;
+  theme?: FormPreviewTheme;
+}) {
   // Split fields into pages based on pagebreaks
   const pages = fields.reduce((acc: FormField[][], field) => {
     if (field.type === "pagebreak") {
@@ -831,19 +854,53 @@ function FormPreview({ fields }: { fields: FormField[] }) {
   const totalPages = pages.length || 1;
   const currentFields = pages[currentPage] || [];
 
-  return (
+  const colorMode = theme?.colorMode ?? "light";
+  const accentColor = theme?.accentColor;
+  const isDark = colorMode === "dark";
+  const isSystem = colorMode === "system";
+  const fontClass =
+    theme?.fontFamily === "serif"
+      ? "font-serif"
+      : theme?.fontFamily === "sans"
+      ? "font-sans"
+      : theme?.fontFamily === "mono"
+      ? "font-mono"
+      : "";
+  const radiusClass =
+    theme?.borderRadius === "sharp"
+      ? "rounded-none"
+      : theme?.borderRadius === "rounded"
+      ? "rounded-xl"
+      : "rounded-lg";
+
+  const wrapperStyle: React.CSSProperties = {
+    ...(accentColor ? { ["--form-accent" as string]: accentColor } : {}),
+  };
+  if (isDark) {
+    wrapperStyle.backgroundColor = "#0f172a";
+    wrapperStyle.color = "#e2e8f0";
+  }
+
+  const accentStyle = accentColor ? { backgroundColor: accentColor, borderColor: accentColor } : undefined;
+
+  const previewContent = (
     <div className="max-w-2xl mx-auto">
-      <Card className="border-2">
-        <CardHeader className="bg-gradient-to-r from-primary/5 to-primary/10 border-b">
+      <Card className={`border-2 form-preview-card ${isDark ? "!bg-slate-800 !border-slate-600" : ""}`}>
+        <CardHeader
+          className={`border-b ${isDark ? "!bg-slate-800/80 !border-slate-600" : "bg-gradient-to-r from-primary/5 to-primary/10"}`}
+          style={accentColor ? { background: `linear-gradient(to right, ${accentColor}15, ${accentColor}25)` } : undefined}
+        >
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-2xl">Form Preview</CardTitle>
-              <CardDescription>
-                This is how your form will appear to applicants
+              <CardTitle className={`text-2xl ${isDark ? "text-slate-100" : ""}`}>
+                {name || "Form Preview"}
+              </CardTitle>
+              <CardDescription className={isDark ? "text-slate-400" : ""}>
+                {description || "This is how your form will appear to applicants"}
               </CardDescription>
             </div>
             {totalPages > 1 && (
-              <div className="text-sm text-slate-600 font-medium">
+              <div className={`text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}>
                 Page {currentPage + 1} of {totalPages}
               </div>
             )}
@@ -856,27 +913,28 @@ function FormPreview({ fields }: { fields: FormField[] }) {
                     key={idx}
                     className={`h-2 flex-1 rounded-full transition-colors ${
                       idx === currentPage
-                        ? "bg-primary"
+                        ? accentColor ? "" : "bg-primary"
                         : idx < currentPage
-                        ? "bg-primary/50"
-                        : "bg-slate-200"
+                        ? accentColor ? "opacity-60" : "bg-primary/50"
+                        : isDark ? "bg-slate-600" : "bg-slate-200"
                     }`}
+                    style={idx <= currentPage && accentColor ? { backgroundColor: accentColor } : undefined}
                   />
                 ))}
               </div>
             </div>
           )}
         </CardHeader>
-        <CardContent className="p-8 space-y-6">
+        <CardContent className={`p-8 space-y-6 ${isDark ? "text-slate-200" : ""}`}>
           {fields.length === 0 ? (
-            <div className="text-center py-12 text-slate-500">
-              <FileText className="h-12 w-12 mx-auto mb-4 text-slate-300" />
+            <div className={`text-center py-12 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              <FileText className={`h-12 w-12 mx-auto mb-4 ${isDark ? "text-slate-500" : "text-slate-300"}`} />
               <p>No fields yet. Add fields to see the preview.</p>
             </div>
           ) : (
             <>
               {currentFields.map((field) => (
-                <FormFieldPreview key={field.id} field={field} />
+                <FormFieldPreview key={field.id} field={field} isDark={isDark} />
               ))}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between pt-6 border-t">
@@ -884,17 +942,19 @@ function FormPreview({ fields }: { fields: FormField[] }) {
                     variant="outline"
                     onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
                     disabled={currentPage === 0}
+                    className={isDark ? "border-slate-600 text-slate-200 hover:bg-slate-700" : ""}
                   >
                     <ChevronLeft className="mr-2 h-4 w-4" />
                     Previous
                   </Button>
-                  <span className="text-sm text-slate-500">
+                  <span className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                     Page {currentPage + 1} of {totalPages}
                   </span>
                   <Button
                     variant="outline"
                     onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
                     disabled={currentPage === totalPages - 1}
+                    className={isDark ? "border-slate-600 text-slate-200 hover:bg-slate-700" : ""}
                   >
                     Next
                     <ChevronRight className="ml-2 h-4 w-4" />
@@ -903,7 +963,7 @@ function FormPreview({ fields }: { fields: FormField[] }) {
               )}
               {currentPage === totalPages - 1 && (
                 <div className="pt-4">
-                  <Button size="lg" className="w-full">
+                  <Button size="lg" className="w-full" style={accentStyle}>
                     Submit Application
                   </Button>
                 </div>
@@ -914,31 +974,53 @@ function FormPreview({ fields }: { fields: FormField[] }) {
       </Card>
     </div>
   );
+
+  return (
+    <div
+      className={`form-preview-themed ${radiusClass} p-1 ${isSystem ? "form-preview-system" : ""} ${fontClass}`}
+      data-theme={colorMode}
+      data-preset={theme?.themePreset ?? "default"}
+      style={isSystem ? undefined : wrapperStyle}
+    >
+      {isSystem && (
+        <style>{`
+          .form-preview-system { background: #fff; color: #0f172a; }
+          .form-preview-system .form-preview-card { background: #fff !important; border-color: #e2e8f0 !important; }
+          @media (prefers-color-scheme: dark) {
+            .form-preview-system { background: #0f172a; color: #e2e8f0; }
+            .form-preview-system .form-preview-card { background: #1e293b !important; border-color: #475569 !important; }
+          }
+        `}</style>
+      )}
+      {previewContent}
+    </div>
+  );
 }
 
 // Form Field Preview Component
-function FormFieldPreview({ field }: { field: FormField }) {
+function FormFieldPreview({ field, isDark }: { field: FormField; isDark?: boolean }) {
+  const d = isDark;
   if (field.type === "section") {
     return (
       <div className="py-4">
-        <Separator className="my-4" />
-        <h3 className="text-lg font-semibold text-slate-900">{field.label}</h3>
+        <Separator className={`my-4 ${d ? "bg-slate-600" : ""}`} />
+        <h3 className={`text-lg font-semibold ${d ? "text-slate-100" : "text-slate-900"}`}>{field.label}</h3>
         {field.description && (
-          <p className="text-sm text-slate-500 mt-1">{field.description}</p>
+          <p className={`text-sm mt-1 ${d ? "text-slate-400" : "text-slate-500"}`}>{field.description}</p>
         )}
-        <Separator className="my-4" />
+        <Separator className={`my-4 ${d ? "bg-slate-600" : ""}`} />
       </div>
     );
   }
 
   if (field.type === "pagebreak") {
     return (
-      <div className="py-8 border-t-2 border-dashed border-slate-300 my-8">
+      <div className={`py-8 border-t-2 border-dashed my-8 ${d ? "border-slate-600" : "border-slate-300"}`}>
         <div className="text-center">
-          <FileText className="h-8 w-8 text-slate-400 mx-auto mb-2" />
-          <p className="text-sm font-medium text-slate-600">Page Break</p>
+          <FileText className={`h-8 w-8 mx-auto mb-2 ${d ? "text-slate-500" : "text-slate-400"}`} />
+          <p className={`text-sm font-medium ${d ? "text-slate-300" : "text-slate-600"}`}>Page Break</p>
           {field.label && field.label !== "New Page" && (
-            <p className="text-xs text-slate-500 mt-1">{field.label}</p>
+            <p className={`text-xs mt-1 ${d ? "text-slate-400" : "text-slate-500"}`}>{field.label}</p>
           )}
         </div>
       </div>
@@ -947,12 +1029,12 @@ function FormFieldPreview({ field }: { field: FormField }) {
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={field.id} className="text-base">
+      <Label htmlFor={field.id} className={`text-base ${d ? "text-slate-200" : ""}`}>
         {field.label}
         {field.required && <span className="text-red-500 ml-1">*</span>}
       </Label>
       {field.description && (
-        <p className="text-sm text-slate-500">{field.description}</p>
+        <p className={`text-sm ${d ? "text-slate-400" : "text-slate-500"}`}>{field.description}</p>
       )}
       
       {field.type === "text" && (
@@ -960,7 +1042,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
           id={field.id}
           placeholder={field.placeholder}
           disabled
-          className="bg-slate-50"
+          className={d ? "bg-slate-700 border-slate-600 text-slate-100" : "bg-slate-50"}
         />
       )}
       
@@ -970,7 +1052,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
           type="email"
           placeholder={field.placeholder}
           disabled
-          className="bg-slate-50"
+          className={d ? "bg-slate-700 border-slate-600 text-slate-100" : "bg-slate-50"}
         />
       )}
       
@@ -980,7 +1062,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
           type="tel"
           placeholder={field.placeholder}
           disabled
-          className="bg-slate-50"
+          className={d ? "bg-slate-700 border-slate-600 text-slate-100" : "bg-slate-50"}
         />
       )}
       
@@ -990,7 +1072,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
           placeholder={field.placeholder}
           disabled
           rows={field.settings?.rows || 4}
-          className="bg-slate-50"
+          className={d ? "bg-slate-700 border-slate-600 text-slate-100" : "bg-slate-50"}
         />
       )}
       
@@ -1000,13 +1082,13 @@ function FormFieldPreview({ field }: { field: FormField }) {
           type="number"
           placeholder={field.placeholder}
           disabled
-          className="bg-slate-50"
+          className={d ? "bg-slate-700 border-slate-600 text-slate-100" : "bg-slate-50"}
         />
       )}
       
       {field.type === "select" && (
         <Select disabled>
-          <SelectTrigger className="bg-slate-50">
+          <SelectTrigger className={d ? "bg-slate-700 border-slate-600 text-slate-100" : "bg-slate-50"}>
             <SelectValue placeholder={field.placeholder || "Select an option"} />
           </SelectTrigger>
           <SelectContent>
@@ -1065,13 +1147,13 @@ function FormFieldPreview({ field }: { field: FormField }) {
       )}
       
       {field.type === "file" && (
-        <div className="border-2 border-dashed rounded-lg p-8 text-center bg-slate-50">
-          <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
-          <p className="text-sm text-slate-500">
+        <div className={`border-2 border-dashed rounded-lg p-8 text-center ${d ? "border-slate-600 bg-slate-700/50" : "bg-slate-50"}`}>
+          <Upload className={`h-8 w-8 mx-auto mb-2 ${d ? "text-slate-500" : "text-slate-400"}`} />
+          <p className={`text-sm ${d ? "text-slate-400" : "text-slate-500"}`}>
             {field.placeholder || "Click to upload or drag and drop"}
           </p>
           {field.settings?.accept && (
-            <p className="text-xs text-slate-400 mt-1">
+            <p className={`text-xs mt-1 ${d ? "text-slate-500" : "text-slate-400"}`}>
               Accepted: {field.settings.accept}
             </p>
           )}
@@ -1083,7 +1165,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
           id={field.id}
           type="date"
           disabled
-          className="bg-slate-50"
+          className={d ? "bg-slate-700 border-slate-600 text-slate-100" : "bg-slate-50"}
         />
       )}
       
@@ -1092,7 +1174,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
           id={field.id}
           type="time"
           disabled
-          className="bg-slate-50"
+          className={d ? "bg-slate-700 border-slate-600 text-slate-100" : "bg-slate-50"}
         />
       )}
       
@@ -1101,7 +1183,7 @@ function FormFieldPreview({ field }: { field: FormField }) {
           id={field.id}
           type="datetime-local"
           disabled
-          className="bg-slate-50"
+          className={d ? "bg-slate-700 border-slate-600 text-slate-100" : "bg-slate-50"}
         />
       )}
       
